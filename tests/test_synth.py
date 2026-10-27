@@ -100,3 +100,19 @@ def test_truth_is_json_serializable_and_marked_synthetic(truth):
     assert truth["exchange_rates"]["source"]["api_query"].startswith(rates.API_URL)
     json.dumps(truth, ensure_ascii=False)
     assert Path(FONTS / "OFL.txt").exists()
+
+
+def test_text_boxes_sit_inside_their_cells(truth):
+    def inside(inner, outer):
+        return (
+            outer["x0"] <= inner["x0"] < inner["x1"] <= outer["x1"]
+            and outer["y0"] <= inner["y0"] < inner["y1"] <= outer["y1"]
+        )
+
+    for s in truth["statements"]:
+        for f in s["fields"].values():
+            assert inside(f["text_bbox"], f["bbox"])
+        for t in s["transactions"]:
+            assert inside(t["amount_text_bbox"], t["amount_bbox"])
+            if t["balance_bbox"]:
+                assert inside(t["balance_text_bbox"], t["balance_bbox"])

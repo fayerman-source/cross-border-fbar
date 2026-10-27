@@ -170,7 +170,11 @@ class _Doc:
             s = s[:-2] + "…"
         pdf.set_xy(x, y)
         pdf.cell(w, h, s, align=align)
-        return {"page": self.page, "bbox": box(x, y, w, h)}
+        # The ink, not the cell: models box printed text tightly, so scoring
+        # their boxes against whole cells understates them (step-1 probe, Oct 27).
+        sw, sh = pdf.get_string_width(s), size * 0.3528  # pt -> mm
+        tx = {"L": x + pdf.c_margin, "R": x + w - pdf.c_margin - sw, "C": x + (w - sw) / 2}[align]
+        return {"page": self.page, "bbox": box(x, y, w, h), "text_bbox": box(tx, y + (h - sh) / 2, sw, sh)}
 
     def new_page(self):
         self.pdf.add_page()
@@ -319,7 +323,9 @@ def render_statement(spec: AccountSpec, stmt: Statement, fonts: Path, out: Path)
             "page": doc.page,
             "row_bbox": box(MARGIN, y, sum(c.width for c in lay.columns), ROW_H),
             "amount_bbox": None,
+            "amount_text_bbox": None,
             "balance_bbox": None,
+            "balance_text_bbox": None,
         }
         for c in lay.columns:
             val, font = "", "latin"
@@ -343,9 +349,9 @@ def render_statement(spec: AccountSpec, stmt: Statement, fonts: Path, out: Path)
                 val = money(t.balance_after)
             pos = doc.text(x, y, c.width, ROW_H, val, size=8.5, align=c.align, font=font)
             if val and c.key in ("amount", "debit", "credit"):
-                rec["amount_bbox"] = pos["bbox"]
+                rec["amount_bbox"], rec["amount_text_bbox"] = pos["bbox"], pos["text_bbox"]
             if c.key == "balance":
-                rec["balance_bbox"] = pos["bbox"]
+                rec["balance_bbox"], rec["balance_text_bbox"] = pos["bbox"], pos["text_bbox"]
             x += c.width
         doc.pdf.set_draw_color(225)
         doc.pdf.line(MARGIN, y + ROW_H, MARGIN + sum(c.width for c in lay.columns), y + ROW_H)
