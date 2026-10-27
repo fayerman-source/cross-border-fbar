@@ -63,12 +63,17 @@ def fetch(year: int, currencies: list[str]) -> dict:
         "tax_year": year,
         "record_date": f"{year}-12-31",
         "basis": "foreign currency units per 1 USD",
-        "source": {"api_query": url, "dataset_page": DATASET_PAGE,
-                   "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds")},
+        "source": {
+            "api_query": url,
+            "dataset_page": DATASET_PAGE,
+            "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        },
         "rates": {
-            c: {"treasury_label": TREASURY_LABELS[c],
+            c: {
+                "treasury_label": TREASURY_LABELS[c],
                 "units_per_usd": by_label[TREASURY_LABELS[c]]["exchange_rate"],
-                "effective_date": by_label[TREASURY_LABELS[c]]["effective_date"]}
+                "effective_date": by_label[TREASURY_LABELS[c]]["effective_date"],
+            }
             for c in currencies
         },
     }
