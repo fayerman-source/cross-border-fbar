@@ -1,45 +1,63 @@
-# Extraction accuracy
+# Accuracy
 
-How well a Meta model reads synthetic bank statements, scored against the generator's answer key. Raw counts, errors included.
+How well a Meta model reads synthetic bank statements, and whether the numbers reconciled from those readings match the answer key. Raw counts, errors included.
 
 ```bash
 uv run python -m cross_border_fbar.synth --out out/synth --png
-uv run python -m cross_border_fbar.eval --set out/synth            # replay: no key, no network
-uv run python -m cross_border_fbar.eval --set out/synth --mode live # calls the API under the spend cap
+uv run python -m cross_border_fbar.eval --set out/synth                 # extraction, replayed
+uv run python -m cross_border_fbar.eval.reconcile_eval --set out/synth  # reconciliation
+uv run python -m cross_border_fbar.eval --set out/synth --mode live     # re-read with the API (spend-capped)
 ```
 
-Replay uses the model responses recorded in `recordings/`, keyed by a hash of the exact request (model, prompt, schema, page image). CI runs it on every push.
+Replay uses the model responses recorded in `recordings/`, keyed by a hash of the exact request (model, prompt, schema, page image), so it needs no key and no network. CI runs both evals on every push and fails on any regression.
 
 ## Method
 
-- **Input:** each statement page rendered at 150 dpi as a PNG. The model sees only the image and the prompt in `src/cross_border_fbar/extract/prompts/`.
-- **The model copies; code computes.** The model returns printed text and boxes on a 0-1000 page grid. Plain code parses amounts (`1.234,56`, `1,234.56`, `1,234`) and dates, including Buddhist-era years.
-- **Scoring:**
+- **Input:** each statement page rendered at 150 dpi as a PNG. The model sees only the image and the versioned prompt in `src/cross_border_fbar/extract/prompts/`.
+- **The model copies; code computes.** The model returns printed text and boxes on a 0-1000 page grid. Plain code parses amounts (`1.234,56`, `1,234.56`, `1,234`), dates (including Buddhist-era years), statement periods and currencies, then reconciles.
+- **Extraction scoring:**
   - Rows are matched in printed order.
-  - A value is correct only if it equals the answer key exactly after parsing.
+  - A value counts only if it equals the answer key exactly after parsing.
   - A box is "in the right row" if its centre falls inside the true row.
   - Box overlap (IoU) is measured against the tight box of the printed text.
-- **Snapping:** the model's row boxes drift upward down the page. `extract/snap.py` finds printed lines from the image alone (no answer key) and aligns rows to them in order. It abstains when the best alignment doesn't clearly beat the runner-up.
+- **Snapping:** the model's row boxes drift vertically, by different amounts on different runs. `extract/snap.py` finds printed lines in the image alone, with no answer key. Its primary signal is the model's horizontal positions, which stay accurate: each row's amount sits in a debit or credit column, so its true line has ink in that column and none in the other. When that pattern can't decide (one-column layouts), a fit-plus-anchor cost is used, and the code abstains rather than guess.
+- **Reconciliation scoring:**
+  - Per account: the maximum, the statement it came from, and its USD value. A value counts only if it matches the answer key exactly.
+  - Review and info flags are scored as true positives, false positives and misses.
+  - Intake facts (owner vs signature authority) come from the answer key here. In the product they come from the client call or the CPA.
 
-## Results: muse-spark-1.3, clean renders (Oct 27, 2026)
+## Results: muse-spark-1.3, prompt v2, clean renders (Oct 27, 2026)
 
-47 pages (Korean 23, German 12 in two layouts, Thai 12), one run. Cost $0.63; median latency 10 s per page.
+47 pages: Korean 23, German 12 (two layouts), Thai 12. One run. Cost $0.76; median latency about 10 s per page.
+
+### Extraction
 
 | Measure | Raw counts |
 |---|---|
-| Fields: account number, holder, opening, closing balance | 188/188 |
+| Fields: bank, currency, account number, holder, opening, closing | 282/282 |
 | Transaction rows returned | 240/240 (0 extra) |
 | Dates / amounts / running balances | 240/240 / 240/240 / 240/240 |
-| Row box in the right row: raw → snapped | 209/240 → 239/240 |
-| Balance box IoU ≥ 0.5: raw → snapped | 78/212 → 209/212 |
-| Field box centred in its cell (fields aren't snapped yet) | 157/188 |
+| Row box in the right row: raw → snapped | 187/240 → 240/240 |
+| Balance box IoU ≥ 0.5: raw → snapped | 43/212 → 203/212 |
+| Field box centred in its cell (fields aren't snapped) | 249/282 |
 
-Full per-page output: `results/muse-spark-1.3_synth.json`.
+### Reconciliation: model readings → FBAR worksheet
+
+| Measure | Result |
+|---|---|
+| Accounts found | 4/4 |
+| Maximum value / source statement / USD value | 4/4 / 4/4 / 4/4 |
+| Flags | 7 correct, 0 false, 0 missed |
+| Household aggregate | $373,618 (answer key: $373,618) |
+
+## Run-to-run variance in boxes
+
+An earlier run (prompt v1, before pages printed a currency line) placed 209/240 raw row boxes in the right row; this run placed 187/240. The direction and size of the drift differed between runs. The first snapping rule assumed the first row drifts least. It reached 239/240 on run 1 but snapped one page confidently onto the wrong lines on run 2 (218/240). The column-pattern rule above reaches 240/240 on run 2. Treat box placement as variable, and judge snapping on data it wasn't tuned on. The photographed and scanned copies are that test.
 
 ## What these numbers do not show
 
-- **Clean renders only.** Photographed and scanned copies are the real test and are not in this table yet.
-- **The alignment rule was chosen after looking at 3 of the 47 pages.** The other 44 are out of sample for it.
-- **Known miss: a page with a single transaction row.** There's no pattern to fit, so the snap can pick the wrong line.
-- **One model and one run.** Glimmer (open weights) has not been evaluated yet.
-- **No unreadable or missing fields yet,** so abstention isn't scored.
+- **Clean renders only.** Photographed and scanned copies are the real test and are not in these tables yet.
+- **Snapping was revised after seeing this run's failures.** Its 240/240 is in-sample.
+- **One model, one run.** Glimmer (open weights) has not been evaluated.
+- **No unreadable or missing fields on the pages,** so abstention isn't scored yet.
+- **Same author.** The answer key and the reconciliation were written separately but by the same author, so a shared misunderstanding of the rules would not show up here.

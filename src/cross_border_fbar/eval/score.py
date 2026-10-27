@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from ..extract.parse import normalize_account_number, normalize_name, parse_amount, parse_date
 
-FIELDS = ("account_number", "holder", "opening_balance", "closing_balance")
+FIELDS = ("institution", "currency", "account_number", "holder", "opening_balance", "closing_balance")
 
 
 def iou(a: dict, b: dict) -> float:
@@ -34,6 +34,10 @@ def _field_ok(name: str, got: dict, want) -> bool:
         return normalize_account_number(got["text"]) == normalize_account_number(want)
     if name == "holder":
         return normalize_name(got["text"]) == normalize_name(want)
+    if name == "institution":  # bilingual headers: the printed name plus a translation is still right
+        return normalize_name(want) in normalize_name(got["text"])
+    if name == "currency":
+        return got["text"].strip().upper() == want
     value = parse_amount(got["text"])
     return value is not None and value == Decimal(want)
 

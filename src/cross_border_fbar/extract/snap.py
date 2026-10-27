@@ -6,11 +6,15 @@ text line). This finds printed lines from the image alone (no answer key):
 
 1. Ink bands: horizontal runs of dark pixels inside the table's x-range.
 2. Alignment: rows come back in printed order, so they map onto a contiguous
-   run of bands. Evenly spaced bands make every shifted run fit the *shape*
-   equally well, so each run's cost is the least-squares residual plus the
-   first row's displacement, where the model drifts least.
-3. Confidence: if the best run doesn't beat the runner-up by MIN_MARGIN grid
-   units, don't snap; a wrong snap is worse than a loose box.
+   run of bands. The model's x positions are reliable even when its y drifts,
+   so the strongest signal is each row's amount column (debit or credit): on
+   the true line that column has ink and the other is empty, which the table
+   header and shifted runs break. A run where every row matches, and no other
+   run does, is accepted.
+3. Fallback when the column pattern can't decide (one-column layouts, all
+   rows in one column): the least-squares residual plus the first row's
+   displacement, and only if it beats the runner-up by MIN_MARGIN grid units.
+   Otherwise don't snap; a wrong snap is worse than a loose box.
 
 Each row's y-extent is replaced by its band's; x is kept. Returns None when no
 confident alignment exists, so callers fall back to the raw boxes.
@@ -18,12 +22,14 @@ confident alignment exists, so callers fall back to the raw boxes.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from PIL import Image
 
 INK_THRESHOLD = 160  # 0-255; the light grey row rules (225) don't count as ink
 MAX_SCALE_DEVIATION = 0.15
+MAX_PATTERN_SHIFT = 45.0  # grid units; about two printed lines
 MIN_MARGIN = 3.0  # grid units between best and runner-up alignment cost
 
 
@@ -59,14 +65,25 @@ def _fit(xs: list[float], ys: list[float]) -> tuple[float, float, float]:
     return a, b, rms
 
 
-def align_rows(row_centres: list[float], bands: list[tuple[int, int]]) -> tuple[list[int], float] | None:
-    """(band index for each row, margin over the runner-up), or None if no run fits confidently."""
+def align_rows(
+    row_centres: list[float], bands: list[tuple[int, int]], pattern: Callable[[int], int] | None = None
+) -> tuple[list[int], float] | None:
+    """(band index for each row, confidence margin), or None if no run fits confidently.
+
+    pattern(s), if given, counts the rows whose ink pattern matches when row 0 sits on band s.
+    """
     k = len(row_centres)
     if k == 0 or len(bands) < k:
         return None
+    starts = range(len(bands) - k + 1)
+    if pattern is not None:
+        matches = sorted(((pattern(s), s) for s in starts), reverse=True)
+        best, runner_up = matches[0], matches[1] if len(matches) > 1 else (-1, None)
+        if best[0] == k and runner_up[0] < k and _near(row_centres, bands, best[1]):
+            return [best[1] + i for i in range(k)], float(best[0] - runner_up[0])
     centres = [(a + b) / 2 for a, b in bands]
     costs = []
-    for s in range(len(bands) - k + 1):
+    for s in starts:
         a, _, rms = _fit(row_centres, centres[s : s + k])
         if k > 1 and abs(a - 1) > MAX_SCALE_DEVIATION:
             continue
@@ -80,6 +97,48 @@ def align_rows(row_centres: list[float], bands: list[tuple[int, int]]) -> tuple[
     return [costs[0][1] + i for i in range(k)], margin
 
 
+def _near(row_centres: list[float], bands: list[tuple[int, int]], start: int) -> bool:
+    """A pattern match must also sit roughly where the model put the rows (guards a skipped row)."""
+    centres = [(a + b) / 2 for a, b in bands[start : start + len(row_centres)]]
+    shift = sum(abs(c - r) for c, r in zip(centres, row_centres, strict=True)) / len(row_centres)
+    return shift <= MAX_PATTERN_SHIFT
+
+
+def _column_pattern(
+    rows: list[dict], bands: list[tuple[int, int]], img: Image.Image
+) -> Callable[[int], int] | None:
+    """Score a start band by how many rows show ink in their own amount column and none in the other."""
+    cols: dict[str, tuple[int, int]] = {}
+    for r in rows:
+        b, c = r["amount_bbox"], r["amount_column"]
+        if c in ("debit", "credit") and any(b.values()):
+            lo, hi = cols.get(c, (b["x_min"], b["x_max"]))
+            cols[c] = (min(lo, b["x_min"]), max(hi, b["x_max"]))
+    if len(cols) < 2:
+        return None  # one column only: the pattern can't tell the header from a row
+    w, h = img.size
+    pixels = img.load()
+
+    def inked(band: tuple[int, int], xr: tuple[int, int]) -> bool:
+        y0 = min(h - 1, band[0] * h // 1000)
+        y1 = min(h, max(y0 + 1, band[1] * h // 1000))
+        x0 = min(w - 1, xr[0] * w // 1000)
+        x1 = min(w, max(x0 + 1, xr[1] * w // 1000))
+        return any(pixels[x, y] < INK_THRESHOLD for y in range(y0, y1) for x in range(x0, x1, 2))
+
+    def score(s: int) -> int:
+        ok = 0
+        for i, r in enumerate(rows):
+            own = r["amount_column"]
+            if own not in cols:
+                continue
+            other = "credit" if own == "debit" else "debit"
+            ok += inked(bands[s + i], cols[own]) and not inked(bands[s + i], cols[other])
+        return ok
+
+    return score
+
+
 def snap_rows(reading: dict, image: Path) -> dict | None:
     """A copy of the reading with row, amount and balance boxes snapped to printed lines."""
     rows = reading.get("rows") or []
@@ -89,7 +148,8 @@ def snap_rows(reading: dict, image: Path) -> dict | None:
     x_max = max(r["row_bbox"]["x_max"] for r in rows)
     bands = ink_bands(image, x_min, x_max)
     centres = [(r["row_bbox"]["y_min"] + r["row_bbox"]["y_max"]) / 2 for r in rows]
-    aligned = align_rows(centres, bands)
+    pattern = _column_pattern(rows, bands, Image.open(image).convert("L"))
+    aligned = align_rows(centres, bands, pattern)
     if aligned is None:
         return None
     idx, margin = aligned

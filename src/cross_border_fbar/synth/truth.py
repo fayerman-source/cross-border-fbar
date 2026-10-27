@@ -190,8 +190,9 @@ def household_totals(accounts: list[dict], month_end_usd: dict[str, int], thresh
     """Aggregate across every reportable account (financial interest or signature authority)."""
     reported = sum(a["max_value_usd"] for a in accounts)
     month_end_only = sum(month_end_usd.values())
+    # One maximum per account: its worst case is its largest possible extra, not the sum of them.
     with_intraday = reported + sum(
-        c["possible_extra_usd"] for a in accounts for c in a["intraday_candidates"]
+        max((c["possible_extra_usd"] for c in a["intraday_candidates"]), default=0) for a in accounts
     )
     crosses = (reported <= FBAR_AGGREGATE_USD) != (with_intraday <= FBAR_AGGREGATE_USD) or (
         month_end_only <= FBAR_AGGREGATE_USD
