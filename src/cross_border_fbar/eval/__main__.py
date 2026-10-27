@@ -24,12 +24,14 @@ RESULTS = Path(__file__).resolve().parents[3] / "results"
 
 def evaluate(set_dir: Path, model: str, mode: str, workers: int, limit: int | None) -> dict:
     truth = json.loads((set_dir / "truth.json").read_text())
-    statements = [s for s in truth["statements"] if s.get("page_images")]
+    statements = truth["statements"]
     if limit:
         statements = statements[:limit]
     client = Client(mode=mode)
 
     def one(st: dict) -> dict:
+        if not st.get("page_images"):
+            return {"statement_id": st["statement_id"], "error": "no page image (generate with --png)"}
         if st["pages"] != 1:
             return {"statement_id": st["statement_id"], "error": "multi-page statements not scored yet"}
         image = set_dir / st["page_images"][0]["file"]
@@ -75,7 +77,7 @@ def main() -> None:
     for e in result["errors"]:
         print("ERROR", e["statement_id"], e["error"])
     print(f"wrote {out}")
-    if result["errors"]:
+    if result["errors"] or not result["summary"]:
         raise SystemExit(1)
 
 

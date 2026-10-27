@@ -106,3 +106,18 @@ def test_alignment_abstains_when_two_runs_fit_equally():
     idx, margin = align_rows([5.0, 25.0], bands)
     assert idx == [0, 1]
     assert margin > 0
+
+
+def test_eval_reports_statements_without_page_images(tmp_path):
+    """Codex review on #2: a set generated without --png used to evaluate nothing and still pass."""
+    import json as _json
+
+    from cross_border_fbar.eval.__main__ import evaluate
+
+    (tmp_path / "truth.json").write_text(
+        _json.dumps({"generator": {}, "statements": [{"statement_id": "x_2025-01", "pages": 1}]})
+    )
+    result = evaluate(tmp_path, "muse-spark-1.3", "replay", workers=1, limit=None)
+    assert result["summary"] == {}
+    assert [e["statement_id"] for e in result["errors"]] == ["x_2025-01"]
+    assert "--png" in result["errors"][0]["error"]
