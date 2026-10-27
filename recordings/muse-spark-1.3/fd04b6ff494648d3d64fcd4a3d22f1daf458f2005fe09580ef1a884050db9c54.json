@@ -1,0 +1,19 @@
+{
+ "label": "eval:th-savings_2025-06",
+ "model": "muse-spark-1.3",
+ "content": "{\"account_number\": {\"bbox\": {\"x_max\": 330, \"x_min\": 228, \"y_max\": 164, \"y_min\": 151}, \"status\": \"read\", \"text\": \"714-2-38065-9\"}, \"closing_balance\": {\"bbox\": {\"x_max\": 544, \"x_min\": 453, \"y_max\": 316, \"y_min\": 303}, \"status\": \"read\", \"text\": \"407,689.96\"}, \"holder\": {\"bbox\": {\"x_max\": 395, \"x_min\": 228, \"y_max\": 144, \"y_min\": 130}, \"status\": \"read\", \"text\": \"MS. JUNG SEULGI JOY\"}, \"opening_balance\": {\"bbox\": {\"x_max\": 926, \"x_min\": 852, \"y_max\": 262, \"y_min\": 249}, \"status\": \"read\", \"text\": \"407,150.25\"}, \"period\": {\"bbox\": {\"x_max\": 405, \"x_min\": 228, \"y_max\": 206, \"y_min\": 193}, \"status\": \"read\", \"text\": \"01/06/2568 - 30/06/2568\"}, \"rows\": [{\"amount_bbox\": {\"x_max\": 785, \"x_min\": 730, \"y_max\": 283, \"y_min\": 270}, \"amount_column\": \"credit\", \"amount_text\": \"539.71\", \"balance_bbox\": {\"x_max\": 926, \"x_min\": 852, \"y_max\": 283, \"y_min\": 270}, \"balance_text\": \"407,689.96\", \"date_text\": \"20/06/2568\", \"description\": \"ดอกเบี้ยเงินฝาก\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 70, \"y_max\": 284, \"y_min\": 268}}]}",
+ "usage": {
+  "completion_tokens": 2153,
+  "prompt_tokens": 3121,
+  "total_tokens": 5274,
+  "completion_tokens_details": {
+   "reasoning_tokens": 1725
+  },
+  "prompt_tokens_details": {
+   "cached_tokens": 362
+  }
+ },
+ "cost_usd": 0.012653,
+ "latency_s": 8.18,
+ "finish_reason": "stop"
+}

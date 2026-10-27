@@ -1,0 +1,19 @@
+{
+ "label": "eval:th-savings_2025-03",
+ "model": "muse-spark-1.3",
+ "content": "{\"account_number\": {\"bbox\": {\"x_max\": 324, \"x_min\": 221, \"y_max\": 166, \"y_min\": 151}, \"status\": \"read\", \"text\": \"714-2-38065-9\"}, \"closing_balance\": {\"bbox\": {\"x_max\": 534, \"x_min\": 444, \"y_max\": 285, \"y_min\": 269}, \"status\": \"read\", \"text\": \"412,150.25\"}, \"holder\": {\"bbox\": {\"x_max\": 375, \"x_min\": 221, \"y_max\": 140, \"y_min\": 124}, \"status\": \"read\", \"text\": \"MS. JUNG SEULGI JOY\"}, \"opening_balance\": {\"bbox\": {\"x_max\": 927, \"x_min\": 823, \"y_max\": 253, \"y_min\": 238}, \"status\": \"read\", \"text\": \"412,150.25\"}, \"period\": {\"bbox\": {\"x_max\": 399, \"x_min\": 221, \"y_max\": 210, \"y_min\": 194}, \"status\": \"read\", \"text\": \"01/03/2568 - 31/03/2568\"}, \"rows\": []}",
+ "usage": {
+  "completion_tokens": 1090,
+  "prompt_tokens": 3121,
+  "total_tokens": 4211,
+  "completion_tokens_details": {
+   "reasoning_tokens": 807
+  },
+  "prompt_tokens_details": {
+   "cached_tokens": 362
+  }
+ },
+ "cost_usd": 0.008136,
+ "latency_s": 7.51,
+ "finish_reason": "stop"
+}
