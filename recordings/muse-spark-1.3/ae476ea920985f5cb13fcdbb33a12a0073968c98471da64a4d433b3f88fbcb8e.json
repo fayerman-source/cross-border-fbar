@@ -1,0 +1,19 @@
+{
+ "label": "eval:de-joint_2025-03",
+ "model": "muse-spark-1.3",
+ "content": "{\"account_number\": {\"bbox\": {\"x_max\": 454, \"x_min\": 231, \"y_max\": 161, \"y_min\": 145}, \"status\": \"read\", \"text\": \"DE36 9901 2345 0481 5273 60\"}, \"closing_balance\": {\"bbox\": {\"x_max\": 622, \"x_min\": 509, \"y_max\": 445, \"y_min\": 429}, \"status\": \"read\", \"text\": \"19.840,05 EUR\"}, \"currency\": {\"bbox\": {\"x_max\": 265, \"x_min\": 231, \"y_max\": 222, \"y_min\": 208}, \"status\": \"read\", \"text\": \"EUR\"}, \"holder\": {\"bbox\": {\"x_max\": 514, \"x_min\": 231, \"y_max\": 143, \"y_min\": 127}, \"status\": \"read\", \"text\": \"JUNG SEULGI JOY und Jonas Albrecht\"}, \"institution\": {\"bbox\": {\"x_max\": 348, \"x_min\": 75, \"y_max\": 92, \"y_min\": 70}, \"status\": \"read\", \"text\": \"Rheinauen Privatbank\"}, \"opening_balance\": {\"bbox\": {\"x_max\": 596, \"x_min\": 475, \"y_max\": 273, \"y_min\": 258}, \"status\": \"read\", \"text\": \"19.318,52 EUR\"}, \"period\": {\"bbox\": {\"x_max\": 416, \"x_min\": 231, \"y_max\": 202, \"y_min\": 187}, \"status\": \"read\", \"text\": \"01.03.2025 - 31.03.2025\"}, \"rows\": [{\"amount_bbox\": {\"x_max\": 927, \"x_min\": 873, \"y_max\": 328, \"y_min\": 314}, \"amount_column\": \"signed\", \"amount_text\": \"-310,00\", \"balance_bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"balance_text\": \"\", \"date_text\": \"01.03.\", \"description\": \"Hausgeld WEG Lindenstr. 12\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 68, \"y_max\": 331, \"y_min\": 311}}, {\"amount_bbox\": {\"x_max\": 927, \"x_min\": 880, \"y_max\": 349, \"y_min\": 335}, \"amount_column\": \"signed\", \"amount_text\": \"950,00\", \"balance_bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"balance_text\": \"\", \"date_text\": \"03.03.\", \"description\": \"Mieteingang Wohnung Leipzig\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 68, \"y_max\": 352, \"y_min\": 331}}, {\"amount_bbox\": {\"x_max\": 927, \"x_min\": 884, \"y_max\": 370, \"y_min\": 356}, \"amount_column\": \"signed\", \"amount_text\": \"-46,36\", \"balance_bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"balance_text\": \"\", \"date_text\": \"04.03.\", \"description\": \"Kartenzahlung DB Fernverkehr\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 68, \"y_max\": 373, \"y_min\": 353}}, {\"amount_bbox\": {\"x_max\": 927, \"x_min\": 884, \"y_max\": 391, \"y_min\": 377}, \"amount_column\": \"signed\", \"amount_text\": \"-45,90\", \"balance_bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"balance_text\": \"\", \"date_text\": \"05.03.\", \"description\": \"Haftpflichtversicherung\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 68, \"y_max\": 394, \"y_min\": 373}}, {\"amount_bbox\": {\"x_max\": 927, \"x_min\": 884, \"y_max\": 412, \"y_min\": 398}, \"amount_column\": \"signed\", \"amount_text\": \"-26,21\", \"balance_bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"balance_text\": \"\", \"date_text\": \"19.03.\", \"description\": \"Kartenzahlung Thalia\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 68, \"y_max\": 415, \"y_min\": 394}}]}",
+ "usage": {
+  "completion_tokens": 3193,
+  "prompt_tokens": 3160,
+  "total_tokens": 6353,
+  "completion_tokens_details": {
+   "reasoning_tokens": 2115
+  },
+  "prompt_tokens_details": {
+   "cached_tokens": 360
+  }
+ },
+ "cost_usd": 0.017124,
+ "latency_s": 20.01,
+ "finish_reason": "stop"
+}
