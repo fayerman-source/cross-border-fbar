@@ -14,25 +14,30 @@ from decimal import Decimal, InvalidOperation
 BUDDHIST_ERA_OFFSET = 543
 
 
+def _is_negative(s: str) -> bool:
+    return s.startswith("-") or s.endswith("-") or (s.startswith("(") and s.endswith(")"))
+
+
+def _decimal_separator(digits: str) -> str | None:
+    """The decimal separator, if any. With both marks the last wins; alone, it needs exactly 2 decimals."""
+    last_dot, last_comma = digits.rfind("."), digits.rfind(",")
+    if last_dot >= 0 and last_comma >= 0:
+        return "." if last_dot > last_comma else ","
+    for sep in (",", "."):
+        if re.search(rf"\{sep}\d{{2}}$", digits):
+            return sep
+    return None
+
+
 def parse_amount(text: str) -> Decimal | None:
     """Parse a printed amount; None if there is no number. A leading or trailing '-' is negative."""
     s = (text or "").strip()
-    if not s:
-        return None
-    negative = s.startswith("-") or s.endswith("-") or s.startswith("(") and s.endswith(")")
     digits = re.sub(r"[^\d.,]", "", s)
     if not re.search(r"\d", digits):
         return None
-    last_dot, last_comma = digits.rfind("."), digits.rfind(",")
-    decimal_sep = None
-    if last_dot >= 0 and last_comma >= 0:
-        decimal_sep = "." if last_dot > last_comma else ","
-    elif last_comma >= 0 and re.search(r",\d{2}$", digits):
-        decimal_sep = ","
-    elif last_dot >= 0 and re.search(r"\.\d{2}$", digits):
-        decimal_sep = "."
-    if decimal_sep:
-        whole, _, frac = digits.rpartition(decimal_sep)
+    sep = _decimal_separator(digits)
+    if sep:
+        whole, _, frac = digits.rpartition(sep)
         normalized = re.sub(r"[.,]", "", whole) + "." + frac
     else:
         normalized = re.sub(r"[.,]", "", digits)
@@ -40,7 +45,7 @@ def parse_amount(text: str) -> Decimal | None:
         value = Decimal(normalized)
     except InvalidOperation:
         return None
-    return -value if negative else value
+    return -value if _is_negative(s) else value
 
 
 def parse_date(text: str, year_hint: int | None = None) -> date | None:

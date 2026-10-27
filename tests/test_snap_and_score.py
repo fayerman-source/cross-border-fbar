@@ -104,4 +104,5 @@ def test_alignment_abstains_when_two_runs_fit_equally():
     # Model centres exactly between two candidate runs: no confident choice.
     assert align_rows([15.0, 35.0], bands) is None
     idx, margin = align_rows([5.0, 25.0], bands)
-    assert idx == [0, 1] and margin > 0
+    assert idx == [0, 1]
+    assert margin > 0
