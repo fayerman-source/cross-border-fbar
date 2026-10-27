@@ -196,7 +196,9 @@ def render_statement(spec: AccountSpec, stmt: Statement, fonts: Path, out: Path)
     def header(first: bool) -> float:
         doc.new_page()
         x, y = MARGIN, MARGIN
-        doc.text(x, y, 120, 8, stmt.bank.name, size=15, bold=True)
+        bank_pos = doc.text(x, y, 120, 8, stmt.bank.name, size=15, bold=True)
+        if first:
+            field("institution", stmt.bank.name, bank_pos)
         if key == "th":
             doc.text(x, y + 7, 120, 5, stmt.bank.name_en, size=9, font="latin")
         if key == "de_saldo":
@@ -210,18 +212,19 @@ def render_statement(spec: AccountSpec, stmt: Statement, fonts: Path, out: Path)
             doc.text(PAGE_W - MARGIN - 70, y + 7, 70, 5, f"Nr. {stmt.month}/{stmt.year}", size=9, align="R")
         y += 22
         labels = {
-            "kr": ("예금주", "계좌번호", "상품명", "조회기간"),
-            "de_plain": ("Kontoinhaber", "IBAN", "Kontoart", "Zeitraum"),
-            "de_saldo": ("Kontoinhaber", "IBAN", "Kontoart", "Zeitraum"),
-            "th": ("ชื่อบัญชี", "เลขที่บัญชี", "ประเภทบัญชี", "รอบรายการ"),
+            "kr": ("예금주", "계좌번호", "상품명", "조회기간", "통화"),
+            "de_plain": ("Kontoinhaber", "IBAN", "Kontoart", "Zeitraum", "Währung"),
+            "de_saldo": ("Kontoinhaber", "IBAN", "Kontoart", "Zeitraum", "Währung"),
+            "th": ("ชื่อบัญชี", "เลขที่บัญชี", "ประเภทบัญชี", "รอบรายการ", "สกุลเงิน"),
         }[key]
         period = (
             f"{fmt_date(start, key)} ~ {fmt_date(end, key)}"
             if key == "kr"
             else f"{fmt_date(start, key)} - {fmt_date(end, key)}"
         )
-        values = (spec.holder_printed, spec.account_number, spec.product, period)
-        rows = list(zip(labels, values, ("holder", "account_number", "product", "period"), strict=True))
+        values = (spec.holder_printed, spec.account_number, spec.product, period, cur)
+        names = ("holder", "account_number", "product", "period", "currency")
+        rows = list(zip(labels, values, names, strict=True))
         if not first:
             rows = rows[1:2]
         for label, value, name in rows:

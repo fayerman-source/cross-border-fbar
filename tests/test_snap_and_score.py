@@ -56,7 +56,7 @@ def perfect_reading(rec, drift=lambda y: y):
     f = rec["fields"]
     fields = {
         n: {"text": str(f[n]["value"]), "status": "read", "bbox": _box(f[n]["text_bbox"])}
-        for n in ("account_number", "holder", "opening_balance", "closing_balance")
+        for n in ("institution", "currency", "account_number", "holder", "opening_balance", "closing_balance")
     }
     fields["period"] = {"text": "", "status": "absent", "bbox": _box(f["period"]["bbox"])}
     rows = []
@@ -81,7 +81,7 @@ def test_a_perfect_reading_scores_full_marks(page):
     image, rec = page
     s = summarize([score_page(rec, perfect_reading(rec), None)])["all"]
     n = len(rec["transactions"])
-    assert s["fields_value_ok"] == "4/4"
+    assert s["fields_value_ok"] == "6/6"
     assert s["amount_ok"] == s["balance_ok"] == s["date_ok"] == s["row_centre_in_row"] == f"{n}/{n}"
 
 

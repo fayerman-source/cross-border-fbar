@@ -8,7 +8,7 @@ from pathlib import Path
 
 from ..llm import Client
 
-PROMPT_VERSION = "statement_page_v1"
+PROMPT_VERSION = "statement_page_v2"
 PROMPT = (Path(__file__).parent / "prompts" / f"{PROMPT_VERSION}.md").read_text()
 
 _BOX = {
@@ -18,6 +18,15 @@ _BOX = {
     },
     "required": ["x_min", "y_min", "x_max", "y_max"],
 }
+FIELD_NAMES = (
+    "institution",
+    "currency",
+    "account_number",
+    "holder",
+    "period",
+    "opening_balance",
+    "closing_balance",
+)
 _FIELD = {
     "type": "object",
     "properties": {
@@ -30,10 +39,7 @@ _FIELD = {
 SCHEMA = {
     "type": "object",
     "properties": {
-        **{
-            f: {**_FIELD}
-            for f in ("account_number", "holder", "period", "opening_balance", "closing_balance")
-        },
+        **{f: {**_FIELD} for f in FIELD_NAMES},
         "rows": {
             "type": "array",
             "items": {
@@ -61,7 +67,7 @@ SCHEMA = {
             },
         },
     },
-    "required": ["account_number", "holder", "period", "opening_balance", "closing_balance", "rows"],
+    "required": [*FIELD_NAMES, "rows"],
 }
 
 
