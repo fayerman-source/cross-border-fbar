@@ -1,0 +1,27 @@
+{
+  "tax_year": 2025,
+  "record_date": "2025-12-31",
+  "basis": "foreign currency units per 1 USD",
+  "source": {
+    "api_query": "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/od/rates_of_exchange?fields=record_date,country_currency_desc,exchange_rate,effective_date&filter=record_date:eq:2025-12-31,country_currency_desc:in:(Korea-Won,Euro+Zone-Euro,Thailand-Baht)",
+    "dataset_page": "https://fiscaldata.treasury.gov/datasets/treasury-reporting-rates-exchange/treasury-reporting-rates-of-exchange",
+    "fetched_at": "2026-10-27T06:03:14+00:00"
+  },
+  "rates": {
+    "KRW": {
+      "treasury_label": "Korea-Won",
+      "units_per_usd": "1443.75",
+      "effective_date": "2025-12-31"
+    },
+    "EUR": {
+      "treasury_label": "Euro Zone-Euro",
+      "units_per_usd": "0.851",
+      "effective_date": "2025-12-31"
+    },
+    "THB": {
+      "treasury_label": "Thailand-Baht",
+      "units_per_usd": "31.66",
+      "effective_date": "2025-12-31"
+    }
+  }
+}
