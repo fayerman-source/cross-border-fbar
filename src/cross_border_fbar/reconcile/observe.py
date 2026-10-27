@@ -10,7 +10,10 @@ from decimal import Decimal
 
 from ..extract.parse import normalize_account_number, parse_amount, parse_date
 
-_CURRENCY_SYMBOLS = {"₩": "KRW", "€": "EUR", "฿": "THB", "$": "USD"}
+# ISO codes the tool can convert (Treasury labels in rates.py) plus USD. Anything else is "unknown",
+# not guessed: "All amounts in KRW" must not read as ALL, and "HK$" must not read as USD.
+KNOWN_CURRENCIES = {"KRW", "EUR", "THB", "INR", "USD"}
+_UNAMBIGUOUS_SYMBOLS = {"₩": "KRW", "€": "EUR", "฿": "THB", "₹": "INR"}
 
 
 @dataclass(frozen=True)
@@ -46,15 +49,15 @@ class Observation:
     closing: Decimal | None
     lines: list[Line]
     sources: dict[str, Source] = field(default_factory=dict)
-    unreadable: list[str] = field(default_factory=list)
+    problems: list[str] = field(default_factory=list)  # key fields unreadable, or read but unparseable
 
 
 def parse_currency(text: str) -> str | None:
     t = (text or "").strip()
-    code = re.search(r"\b[A-Z]{3}\b", t.upper())
-    if code:
-        return code.group(0)
-    for sym, iso in _CURRENCY_SYMBOLS.items():
+    for token in re.findall(r"[A-Z]{3}", t.upper()):
+        if token in KNOWN_CURRENCIES:
+            return token
+    for sym, iso in _UNAMBIGUOUS_SYMBOLS.items():
         if sym in t:
             return iso
     return None
@@ -75,6 +78,17 @@ def _signed(row: dict) -> Decimal | None:
     return -abs(amount) if row["amount_column"] == "debit" else abs(amount)
 
 
+def _row_date(text: str, start: date | None, end: date | None) -> date | None:
+    """A row date; a year-less date in a statement crossing a year end takes the year of its month."""
+    d = parse_date(text, start.year if start else end.year if end else None)
+    if d and start and end and start.year != end.year and d.year == start.year and d.month < start.month:
+        d = d.replace(year=end.year)
+    return d
+
+
+KEY_FIELDS = ("account_number", "period", "currency", "opening_balance", "closing_balance")
+
+
 def observe(reading: dict, upload: str, snapped: dict | None = None) -> Observation:
     """Build an observation from a reading; boxes come from the snapped reading when there is one."""
     boxes_from = snapped or reading
@@ -84,37 +98,43 @@ def observe(reading: dict, upload: str, snapped: dict | None = None) -> Observat
         return f["text"] if f["status"] == "read" else ""
 
     start, end = parse_period(value("period"))
-    year_hint = (start or end).year if (start or end) else None
     lines = []
     for i, row in enumerate(reading["rows"]):
         src = Source(upload, f"row:{i}", boxes_from["rows"][i]["row_bbox"])
         lines.append(
             Line(
                 i,
-                parse_date(row["date_text"], year_hint),
+                _row_date(row["date_text"], start, end),
                 _signed(row),
                 parse_amount(row["balance_text"]),
                 row["description"],
                 src,
             )
         )
-    sources = {n: Source(upload, n, reading[n]["bbox"]) for n in ("opening_balance", "closing_balance")}
+    sources = {n: Source(upload, n, reading[n]["bbox"]) for n in KEY_FIELDS}
+    parsed = {
+        "account_number": value("account_number").strip() or None,
+        "period": start and end,
+        "currency": parse_currency(value("currency")),
+        "opening_balance": parse_amount(value("opening_balance")),
+        "closing_balance": parse_amount(value("closing_balance")),
+    }
+    # "absent" is legitimate (page 2 of a statement has no opening); "unreadable" or unparseable is not.
+    problems = [n for n in KEY_FIELDS if reading[n]["status"] != "absent" and parsed[n] is None]
     return Observation(
         upload=upload,
         institution=value("institution").strip(),
-        currency=parse_currency(value("currency")),
+        currency=parsed["currency"],
         account_key=normalize_account_number(value("account_number")),
         account_number=value("account_number").strip(),
         holder=value("holder").strip(),
         period_start=start,
         period_end=end,
-        opening=parse_amount(value("opening_balance")),
-        closing=parse_amount(value("closing_balance")),
+        opening=parsed["opening_balance"],
+        closing=parsed["closing_balance"],
         lines=lines,
         sources=sources,
-        unreadable=[
-            n for n in reading if isinstance(reading[n], dict) and reading[n].get("status") == "unreadable"
-        ],
+        problems=problems,
     )
 
 

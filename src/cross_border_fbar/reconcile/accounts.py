@@ -2,20 +2,22 @@
 
 Rules (FinCEN "Reporting Maximum Account Value"; IRS IRM 4.26.16):
 - An account's maximum is the largest balance that appears on any of its
-  statements: opening, closing or a running balance. When a statement prints no
-  running balances, they are computed from its lines and marked as computed.
+  statements during the tax year: opening, closing or a running balance. When
+  a statement prints no running balances, they are computed from its lines and
+  marked as computed. Balances dated outside the tax year don't count.
 - Convert at the Treasury rate for Dec 31 of the tax year and round up to the
-  next whole dollar; a negative maximum reports as 0.
+  next whole dollar; a negative maximum reports as 0. USD accounts need no rate.
 - What can't be established from the documents is a review flag, never a guess:
-  missing months, statements that don't chain, lines whose arithmetic doesn't
-  add up, a possible peak between printed lines, unknown ownership.
+  uncovered days, statements that don't chain, lines whose arithmetic doesn't
+  add up, unreadable key fields, a possible peak between printed lines,
+  unidentified pages, unknown ownership or currency.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from decimal import ROUND_CEILING, Decimal
 
 from ..extract.parse import normalize_name
@@ -37,7 +39,7 @@ class Flag:
     severity: str  # info | review
     message: str
     sources: list[Source] = field(default_factory=list)
-    month: str | None = None  # YYYY-MM, for period flags
+    month: str | None = None  # YYYY-MM, for missing_statement
     extra_usd: int | None = None
 
 
@@ -53,6 +55,7 @@ class Balance:
 class AccountResult:
     account_key: str
     account_number: str
+    identified: bool
     institutions: list[str]
     currency: str | None
     holders: list[str]
@@ -72,17 +75,13 @@ def usd_ceiling(amount: Decimal, rate: Rate) -> int:
     return int((amount / rate.units_per_usd).to_integral_value(rounding=ROUND_CEILING))
 
 
-def _months(start: date, end: date) -> list[str]:
-    out, y, m = [], start.year, start.month
-    while (y, m) <= (end.year, end.month):
-        out.append(f"{y}-{m:02d}")
-        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
-    return out
+def _in_year(day: date | None, tax_year: int) -> bool:
+    return day is not None and day.year == tax_year
 
 
 def _adjacent(prev: Observation, cur: Observation) -> bool:
     if not (prev.period_end and cur.period_start):
-        return True
+        return False
     return (cur.period_start - prev.period_end).days <= 1
 
 
@@ -97,30 +96,98 @@ def _distinct_institutions(names: list[str]) -> list[str]:
     return out
 
 
-def _dedupe(obs: list[Observation]) -> tuple[list[Observation], list[str]]:
-    """The same statement uploaded twice: same period and the same opening and closing balances."""
-    seen, kept, dupes = set(), [], []
+def _signature(o: Observation):
+    """Identity of a statement's content; None when key fields are missing, so nothing is merged blindly."""
+    if None in (o.period_start, o.period_end, o.opening, o.closing):
+        return None
+    lines = tuple((ln.day, ln.amount, ln.printed_balance) for ln in o.lines)
+    return (o.period_start, o.period_end, o.opening, o.closing, lines)
+
+
+def _dedupe(obs: list[Observation], flags: list[Flag]) -> tuple[list[Observation], list[str]]:
+    """Drop exact re-uploads of the same statement; anything less than identical is kept."""
+    first: dict = {}
+    kept, dupes = [], []
     for o in obs:
-        key = (o.period_start, o.period_end, o.opening, o.closing)
-        if key in seen:
+        sig = _signature(o)
+        if sig is not None and sig in first:
             dupes.append(o.upload)
+            flags.append(
+                Flag(
+                    "duplicate_upload",
+                    "info",
+                    f"same statement as {first[sig]}",
+                    [Source(o.upload, "page", None)],
+                )
+            )
         else:
-            seen.add(key)
+            if sig is not None:
+                first[sig] = o.upload
             kept.append(o)
     return kept, dupes
 
 
-def _balances(o: Observation, flags: list[Flag]) -> list[Balance]:
+def _uncovered(obs: list[Observation], tax_year: int) -> list[tuple[date, date]]:
+    """Ranges of days in the tax year that no statement period covers."""
+    covered = set()
+    for o in obs:
+        if o.period_start and o.period_end:
+            d = max(o.period_start, date(tax_year, 1, 1))
+            while d <= min(o.period_end, date(tax_year, 12, 31)):
+                covered.add(d)
+                d += timedelta(days=1)
+    ranges, start, d = [], None, date(tax_year, 1, 1)
+    while d <= date(tax_year, 12, 31) + timedelta(days=1):
+        missing = d.year == tax_year and d not in covered
+        if missing and start is None:
+            start = d
+        elif not missing and start is not None:
+            ranges.append((start, d - timedelta(days=1)))
+            start = None
+        d += timedelta(days=1)
+    return ranges
+
+
+def _coverage_flags(obs: list[Observation], tax_year: int, flags: list[Flag]) -> None:
+    for start, end in _uncovered(obs, tax_year):
+        d = start
+        while d <= end:  # whole calendar months become missing_statement; the rest coverage_gap
+            month_end = date(d.year + d.month // 12, d.month % 12 + 1, 1) - timedelta(days=1)
+            if d.day == 1 and month_end <= end:
+                m = f"{d.year}-{d.month:02d}"
+                flags.append(Flag("missing_statement", "review", f"no statement covers {m}", month=m))
+                d = month_end + timedelta(days=1)
+            else:
+                stop = min(end, month_end)
+                flags.append(Flag("coverage_gap", "review", f"no statement covers {d} to {stop}"))
+                d = stop + timedelta(days=1)
+
+
+def _seed(o: Observation, prev: Observation | None) -> tuple[Decimal | None, str]:
+    """Balance before the first line: printed opening, else the previous adjacent closing, else derived."""
+    if o.opening is not None:
+        return o.opening, "printed"
+    if prev is not None and prev.closing is not None and _adjacent(prev, o):
+        return prev.closing, "computed"
+    for line in o.lines:
+        if line.printed_balance is not None and line.amount is not None:
+            return line.printed_balance - line.amount, "computed"
+        if line.amount is None:
+            break
+    return None, "computed"
+
+
+def _balances(o: Observation, prev: Observation | None, flags: list[Flag]) -> list[Balance]:
     """Every balance a reader can get from one statement, checking printed against computed."""
     out = []
+    running, seed_kind = _seed(o, prev)
     if o.opening is not None:
         out.append(Balance(o.opening, o.sources["opening_balance"], "printed", o.period_start))
-    running = o.opening
     for line in o.lines:
-        if running is not None and line.amount is not None:
-            running += line.amount
+        if running is not None:
+            running = running + line.amount if line.amount is not None else None
         if line.printed_balance is not None:
-            if running is not None and line.amount is not None and running != line.printed_balance:
+            if running is not None and running != line.printed_balance:
                 flags.append(
                     Flag(
                         "arithmetic_mismatch",
@@ -147,43 +214,90 @@ def _balances(o: Observation, flags: list[Flag]) -> list[Balance]:
     return out
 
 
-def _intraday(o: Observation) -> list[tuple[Decimal, list[Source], date]]:
-    """Per day: the balance if credits had posted first, when higher than any balance printed that day."""
-    by_day: dict[date, list] = defaultdict(list)
-    for line in o.lines:
-        if line.day and line.amount is not None:
-            by_day[line.day].append(line)
-    out, running = [], o.opening
-    for day in sorted(by_day):
-        lines = by_day[day]
-        if running is None:
-            break
-        upper = running + sum(ln.amount for ln in lines if ln.amount > 0)
-        end = running + sum(ln.amount for ln in lines)
-        shown = max([running + sum(ln.amount for ln in lines[: i + 1]) for i in range(len(lines))])
-        if upper > shown:
-            out.append((upper, [ln.source for ln in lines], day))
-        running = end
+def _intraday(
+    o: Observation, prev: Observation | None, tax_year: int
+) -> list[tuple[Decimal, list[Source], date]]:
+    """Same-day runs, in printed order: the balance if credits had posted first, when above all shown."""
+    out = []
+    running, _ = _seed(o, prev)
+    i = 0
+    while i < len(o.lines):
+        j = i
+        while j + 1 < len(o.lines) and o.lines[j + 1].day == o.lines[i].day:
+            j += 1
+        run = o.lines[i : j + 1]
+        i = j + 1
+        if running is None or any(ln.amount is None for ln in run):
+            running = run[-1].printed_balance  # resync where the statement prints one
+            continue
+        shown, bal = [], running
+        for ln in run:
+            bal += ln.amount
+            shown.append(bal)
+        upper = running + sum(ln.amount for ln in run if ln.amount > 0)
+        if _in_year(run[0].day, tax_year) and upper > max(shown):
+            out.append((upper, [ln.source for ln in run], run[0].day))
+        running = run[-1].printed_balance if run[-1].printed_balance is not None else bal
     return out
 
 
-def reconcile_account(
-    obs: list[Observation], intake: Intake | None, rate: Rate | None, tax_year: int, threshold_usd: int
-) -> AccountResult:
-    obs = sorted(obs, key=lambda o: (o.period_start or date.min, o.upload))
-    obs, dupes = _dedupe(obs)
-    flags: list[Flag] = []
+def _field_flags(obs: list[Observation], flags: list[Flag]) -> None:
+    for o in obs:
+        for name in o.problems:
+            flags.append(
+                Flag(
+                    "field_unreadable",
+                    "review",
+                    f"{name} could not be read or parsed",
+                    [o.sources.get(name, Source(o.upload, name, None))],
+                )
+            )
 
-    covered = {
-        m for o in obs if o.period_start and o.period_end for m in _months(o.period_start, o.period_end)
-    }
-    for m in _months(date(tax_year, 1, 1), date(tax_year, 12, 31)):
-        if m not in covered:
-            flags.append(Flag("missing_statement", "review", f"no statement covers {m}", month=m))
-    for prev, cur in zip(obs, obs[1:], strict=False):
-        if not _adjacent(prev, cur):
-            continue  # a gap is already a missing_statement flag
-        if prev.closing is not None and cur.opening is not None and prev.closing != cur.opening:
+
+def _max_value(balances: list[Balance]) -> Balance | None:
+    # On ties prefer printed over computed, and a period-end balance over a mid-period line.
+    if not balances:
+        return None
+    return max(balances, key=lambda b: (b.amount, b.kind == "printed", not b.source.ref.startswith("row:")))
+
+
+def reconcile_account(
+    obs: list[Observation],
+    intake: Intake | None,
+    rate: Rate | None,
+    tax_year: int,
+    threshold_usd: int,
+    identified: bool = True,
+) -> AccountResult:
+    flags: list[Flag] = []
+    obs = sorted(obs, key=lambda o: (o.period_start or date.min, o.upload))
+    out_of_year = [
+        o
+        for o in obs
+        if o.period_end and o.period_end.year < tax_year or o.period_start and o.period_start.year > tax_year
+    ]
+    for o in out_of_year:
+        flags.append(
+            Flag(
+                "out_of_year_statement",
+                "info",
+                f"{o.period_start} to {o.period_end} is outside {tax_year}",
+                [Source(o.upload, "page", None)],
+            )
+        )
+    obs = [o for o in obs if o not in out_of_year]
+    obs, dupes = _dedupe(obs, flags)
+    _field_flags(obs, flags)
+    _coverage_flags(obs, tax_year, flags)
+
+    prevs = [None, *obs[:-1]]
+    for prev, cur in zip(prevs[1:], obs[1:], strict=True):
+        if (
+            _adjacent(prev, cur)
+            and prev.closing is not None
+            and cur.opening is not None
+            and prev.closing != cur.opening
+        ):
             flags.append(
                 Flag(
                     "continuity_break",
@@ -193,8 +307,13 @@ def reconcile_account(
                 )
             )
 
-    balances = [b for o in obs for b in _balances(o, flags)]
-    best = max(balances, key=lambda b: b.amount) if balances else None
+    balances = [
+        b
+        for o, p in zip(obs, prevs, strict=True)
+        for b in _balances(o, p, flags)
+        if _in_year(b.day, tax_year)
+    ]
+    best = _max_value(balances)
     best_usd = usd_ceiling(best.amount, rate) if best and rate else None
     if best and best.source.ref.startswith("row:"):
         flags.append(
@@ -210,26 +329,27 @@ def reconcile_account(
             Flag(
                 "max_from_computed_balance",
                 "info",
-                "the statement prints no running balance; computed",
+                "computed from the lines; not printed on the statement",
                 [best.source],
             )
         )
 
     if best and rate:
-        for upper, sources, day in (c for o in obs for c in _intraday(o)):
-            if upper > best.amount:
-                extra = usd_ceiling(upper, rate) - best_usd
-                if extra >= threshold_usd:
-                    flags.append(
-                        Flag(
-                            "possible_intraday_peak",
-                            "review",
-                            f"crediting first on {day} would show {upper}, about ${extra:,} above the "
-                            "reported maximum",
-                            sources,
-                            extra_usd=extra,
-                        )
+        for upper, sources, day in (
+            c for o, p in zip(obs, prevs, strict=True) for c in _intraday(o, p, tax_year)
+        ):
+            extra = usd_ceiling(upper, rate) - best_usd
+            if upper > best.amount and extra >= threshold_usd:
+                flags.append(
+                    Flag(
+                        "possible_intraday_peak",
+                        "review",
+                        f"crediting first on {day} would show {upper}, about ${extra:,} above the "
+                        "reported maximum",
+                        sources,
+                        extra_usd=extra,
                     )
+                )
 
     institutions = _distinct_institutions([o.institution for o in obs if o.institution])
     if len(institutions) > 1:
@@ -241,7 +361,16 @@ def reconcile_account(
         flags.append(Flag("currency_unknown", "review", "no Treasury rate for this account's currency"))
 
     ownership = intake.ownership if intake else "unknown"
-    if ownership == "signature_authority":
+    if not identified:
+        flags.append(
+            Flag(
+                "account_unidentified",
+                "review",
+                "account number unreadable; not counted in totals",
+                [Source(o.upload, "account_number", None) for o in obs],
+            )
+        )
+    elif ownership == "signature_authority":
         flags.append(
             Flag("signature_authority_only", "review", "signature authority without financial interest")
         )
@@ -252,6 +381,7 @@ def reconcile_account(
     return AccountResult(
         account_key=obs[0].account_key if obs else "",
         account_number=most_common(o.account_number for o in obs) or "",
+        identified=identified,
         institutions=institutions,
         currency=most_common(o.currency for o in obs),
         holders=list(dict.fromkeys(o.holder for o in obs if o.holder)),
@@ -266,6 +396,12 @@ def reconcile_account(
     )
 
 
+def _rate_for(currency: str | None, rates: dict[str, Rate], tax_year: int) -> Rate | None:
+    if currency == "USD":
+        return Rate("USD", Decimal(1), f"{tax_year}-12-31", "no conversion: account held in USD")
+    return rates.get(currency or "")
+
+
 def reconcile(
     observations: list[Observation],
     intake: dict[str, Intake],
@@ -273,14 +409,16 @@ def reconcile(
     tax_year: int,
     threshold_usd: int = 1000,
 ) -> list[AccountResult]:
-    """Group pages by account number and reconcile each account."""
+    """Group pages by account number and reconcile each account; pages without one stay apart, uncounted."""
     groups: dict[str, list[Observation]] = defaultdict(list)
+    unidentified = []
     for o in observations:
-        groups[o.account_key or f"unidentified:{o.upload}"].append(o)
+        (groups[o.account_key] if o.account_key else unidentified).append(o)
     results = []
     for key, obs in sorted(groups.items()):
-        currency = most_common(o.currency for o in obs)
-        results.append(
-            reconcile_account(obs, intake.get(key), rates.get(currency or ""), tax_year, threshold_usd)
-        )
+        rate = _rate_for(most_common(o.currency for o in obs), rates, tax_year)
+        results.append(reconcile_account(obs, intake.get(key), rate, tax_year, threshold_usd))
+    for o in unidentified:
+        rate = _rate_for(o.currency, rates, tax_year)
+        results.append(reconcile_account([o], None, rate, tax_year, threshold_usd, identified=False))
     return results

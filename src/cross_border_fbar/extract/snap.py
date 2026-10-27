@@ -29,6 +29,7 @@ from PIL import Image
 
 INK_THRESHOLD = 160  # 0-255; the light grey row rules (225) don't count as ink
 MAX_SCALE_DEVIATION = 0.15
+MAX_PATTERN_SHIFT = 45.0  # grid units; about two printed lines
 MIN_MARGIN = 3.0  # grid units between best and runner-up alignment cost
 
 
@@ -78,7 +79,7 @@ def align_rows(
     if pattern is not None:
         matches = sorted(((pattern(s), s) for s in starts), reverse=True)
         best, runner_up = matches[0], matches[1] if len(matches) > 1 else (-1, None)
-        if best[0] == k and runner_up[0] < k:
+        if best[0] == k and runner_up[0] < k and _near(row_centres, bands, best[1]):
             return [best[1] + i for i in range(k)], float(best[0] - runner_up[0])
     centres = [(a + b) / 2 for a, b in bands]
     costs = []
@@ -94,6 +95,13 @@ def align_rows(
     if margin < MIN_MARGIN:
         return None
     return [costs[0][1] + i for i in range(k)], margin
+
+
+def _near(row_centres: list[float], bands: list[tuple[int, int]], start: int) -> bool:
+    """A pattern match must also sit roughly where the model put the rows (guards a skipped row)."""
+    centres = [(a + b) / 2 for a, b in bands[start : start + len(row_centres)]]
+    shift = sum(abs(c - r) for c, r in zip(centres, row_centres, strict=True)) / len(row_centres)
+    return shift <= MAX_PATTERN_SHIFT
 
 
 def _column_pattern(
@@ -112,8 +120,10 @@ def _column_pattern(
     pixels = img.load()
 
     def inked(band: tuple[int, int], xr: tuple[int, int]) -> bool:
-        y0, y1 = band[0] * h // 1000, max(band[0] * h // 1000 + 1, band[1] * h // 1000)
-        x0, x1 = xr[0] * w // 1000, max(xr[0] * w // 1000 + 1, xr[1] * w // 1000)
+        y0 = min(h - 1, band[0] * h // 1000)
+        y1 = min(h, max(y0 + 1, band[1] * h // 1000))
+        x0 = min(w - 1, xr[0] * w // 1000)
+        x1 = min(w, max(x0 + 1, xr[1] * w // 1000))
         return any(pixels[x, y] < INK_THRESHOLD for y in range(y0, y1) for x in range(x0, x1, 2))
 
     def score(s: int) -> int:

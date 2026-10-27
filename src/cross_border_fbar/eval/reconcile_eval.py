@@ -148,10 +148,12 @@ def main() -> None:
     print(f"wrote {out}")
     s = result["summary"]
     perfect = all(
-        not (a["flags_missed"] or a["flags_extra"]) and a["max_ok"] and a["usd_ok"]
+        not (a["flags_missed"] or a["flags_extra"] or a["unscored_review_flags"])
+        and a["max_ok"]
+        and a["usd_ok"]
         for a in result["accounts"]
     )
-    if not perfect or s["aggregate_usd"]["got"] != s["aggregate_usd"]["want"]:
+    if not perfect or s["extra_accounts"] or s["aggregate_usd"]["got"] != s["aggregate_usd"]["want"]:
         raise SystemExit(1)  # a regression on the clean synthetic set fails CI
 
 
