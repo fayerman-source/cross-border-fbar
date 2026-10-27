@@ -15,7 +15,7 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pytest -q
+      - name: Generate the synthetic statements
+        run: uv run --locked python -m cross_border_fbar.synth --out out/synth --png
       - name: Accuracy eval, replayed from recorded model responses (no key, no network)
-        run: |
-          uv run python -m cross_border_fbar.synth --out out/synth --png
-          uv run python -m cross_border_fbar.eval --set out/synth --mode replay
+        run: uv run --locked python -m cross_border_fbar.eval --set out/synth --mode replay

@@ -30,7 +30,10 @@ _FIELD = {
 SCHEMA = {
     "type": "object",
     "properties": {
-        **dict.fromkeys(("account_number", "holder", "period", "opening_balance", "closing_balance"), _FIELD),
+        **{
+            f: {**_FIELD}
+            for f in ("account_number", "holder", "period", "opening_balance", "closing_balance")
+        },
         "rows": {
             "type": "array",
             "items": {

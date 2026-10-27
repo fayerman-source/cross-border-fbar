@@ -38,14 +38,18 @@ def _field_ok(name: str, got: dict, want) -> bool:
     return value is not None and value == Decimal(want)
 
 
-def score_page(statement: dict, reading: dict, snapped: dict | None) -> dict:
-    """Score a single-page statement. Rows are matched in printed order."""
-    year = int(statement["period"][:4])
-    fields = {}
+def _signed_amount(row: dict) -> Decimal | None:
+    amount = parse_amount(row["amount_text"])
+    if amount is None or row["amount_column"] == "signed":
+        return amount
+    return -abs(amount) if row["amount_column"] == "debit" else abs(amount)
+
+
+def _score_fields(statement: dict, reading: dict) -> dict:
+    out = {}
     for name in FIELDS:
-        want = statement["fields"][name]
-        got = reading[name]
-        fields[name] = {
+        want, got = statement["fields"][name], reading[name]
+        out[name] = {
             "want": want["value"],
             "got": got["text"],
             "status": got["status"],
@@ -53,45 +57,51 @@ def score_page(statement: dict, reading: dict, snapped: dict | None) -> dict:
             "centre_in_cell": centre_in(got["bbox"], want["bbox"]),
             "iou_text": round(iou(got["bbox"], want["text_bbox"]), 3),
         }
+    return out
 
-    rows = []
+
+def _boxes(prefix: str, got: dict, want: dict, balance_printed: bool) -> dict:
+    out = {
+        f"{prefix}row_centre_in_row": centre_in(got["row_bbox"], want["row_bbox"]),
+        f"{prefix}amount_iou_text": round(iou(got["amount_bbox"], want["amount_text_bbox"]), 3),
+    }
+    if balance_printed:
+        out[f"{prefix}balance_iou_text"] = round(iou(got["balance_bbox"], want["balance_text_bbox"]), 3)
+    return out
+
+
+def _score_row(want: dict, got: dict, snapped: dict | None, year: int) -> dict:
+    balance_printed = want["balance_bbox"] is not None
+    balance = parse_amount(got["balance_text"])
+    when = parse_date(got["date_text"], year)
+    row = {
+        "txn_id": want["txn_id"],
+        "returned": True,
+        "date_ok": when is not None and when.isoformat() == want["date"],
+        "amount_ok": _signed_amount(got) == Decimal(want["amount"]),
+        "balance_ok": balance == Decimal(want["balance_after"]) if balance_printed else balance is None,
+        **_boxes("", got, want, balance_printed),
+    }
+    if snapped:
+        row.update(_boxes("snapped_", snapped, want, balance_printed))
+    return row
+
+
+def score_page(statement: dict, reading: dict, snapped: dict | None) -> dict:
+    """Score a single-page statement. Rows are matched in printed order."""
+    year = int(statement["period"][:4])
     want_rows, got_rows = statement["transactions"], reading["rows"]
-    snap_rows = snapped["rows"] if snapped else None
-    for i, t in enumerate(want_rows):
-        if i >= len(got_rows):
-            rows.append({"txn_id": t["txn_id"], "returned": False})
-            continue
-        g = got_rows[i]
-        amount = parse_amount(g["amount_text"])
-        if amount is not None and g["amount_column"] == "debit":
-            amount = -abs(amount)
-        elif amount is not None and g["amount_column"] == "credit":
-            amount = abs(amount)
-        balance_printed = t["balance_bbox"] is not None
-        balance = parse_amount(g["balance_text"])
-        row = {
-            "txn_id": t["txn_id"],
-            "returned": True,
-            "date_ok": parse_date(g["date_text"], year) is not None
-            and parse_date(g["date_text"], year).isoformat() == t["date"],
-            "amount_ok": amount == Decimal(t["amount"]),
-            "balance_ok": (balance == Decimal(t["balance_after"])) if balance_printed else balance is None,
-            "row_centre_in_row": centre_in(g["row_bbox"], t["row_bbox"]),
-            "amount_iou_text": round(iou(g["amount_bbox"], t["amount_text_bbox"]), 3),
-        }
-        if balance_printed:
-            row["balance_iou_text"] = round(iou(g["balance_bbox"], t["balance_text_bbox"]), 3)
-        if snap_rows:
-            s = snap_rows[i]
-            row["snapped_row_centre_in_row"] = centre_in(s["row_bbox"], t["row_bbox"])
-            row["snapped_amount_iou_text"] = round(iou(s["amount_bbox"], t["amount_text_bbox"]), 3)
-            if balance_printed:
-                row["snapped_balance_iou_text"] = round(iou(s["balance_bbox"], t["balance_text_bbox"]), 3)
-        rows.append(row)
+    snap_rows = snapped["rows"] if snapped else [None] * len(got_rows)
+    rows = [
+        _score_row(t, got_rows[i], snap_rows[i], year)
+        if i < len(got_rows)
+        else {"txn_id": t["txn_id"], "returned": False}
+        for i, t in enumerate(want_rows)
+    ]
     return {
         "statement_id": statement["statement_id"],
         "layout": statement["layout"],
-        "fields": fields,
+        "fields": _score_fields(statement, reading),
         "rows": rows,
         "rows_expected": len(want_rows),
         "rows_returned": len(got_rows),
