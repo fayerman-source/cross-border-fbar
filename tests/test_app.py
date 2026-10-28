@@ -353,3 +353,34 @@ def test_a_phrase_table_path_takes_only_a_listed_language(language):
     """SonarCloud on #5: the language from the command line reached a file path."""
     with pytest.raises(ValueError, match="no client language"):
         phrase_tables.table_path(language)
+
+
+def test_only_this_apps_own_page_can_act_or_read(inputs, tmp_path):
+    """Codex on #5: another site open in the CPA's browser could POST a sign-off to localhost, and a
+    rebound DNS name could read the state. Requests must name this app's host; POSTs must be JSON from
+    this origin."""
+    review = Review(inputs, tmp_path / "r", root=tmp_path)
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(review, inputs.set_dir))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+
+    def status(path, body=None, headers=()):
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(base + path, data=data, headers=dict(headers))
+        try:
+            return urllib.request.urlopen(req).status
+        except urllib.error.HTTPError as e:
+            return e.code
+
+    fid = review.open_review_flags()[0]
+    ack = {"flag": fid, "note": "checked", "reviewer": "A. Rivera"}
+    json_ct = ("Content-Type", "application/json")
+    try:
+        assert status("/api/state", headers=[("Host", "evil.example:80")]) == 403
+        assert status("/api/ack", ack, [json_ct, ("Origin", "https://evil.example")]) == 403
+        assert status("/api/ack", ack, [("Content-Type", "text/plain")]) == 403  # a form or simple request
+        assert fid in review.open_review_flags()
+        assert status("/api/ack", ack, [json_ct, ("Origin", base)]) == 200
+        assert fid not in review.open_review_flags()
+    finally:
+        srv.shutdown()

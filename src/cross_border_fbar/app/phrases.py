@@ -14,13 +14,15 @@ from pathlib import Path
 
 PHRASES_DIR = Path(__file__).parent / "translations"
 LANGUAGES = {"ko": "Korean"}  # code -> name the model is asked to translate into
+TABLE_FILES = {code: f"{code}.json" for code in LANGUAGES}
 
 
 def table_path(language: str) -> Path:
-    """Only a listed language names a table, so no input can point the path anywhere else."""
-    if language not in LANGUAGES:
+    """The file name comes from TABLE_FILES, never from the input, so no input can point it elsewhere."""
+    name = TABLE_FILES.get(language)
+    if name is None:
         raise ValueError(f"no client language {language!r}; known: {sorted(LANGUAGES)}")
-    return PHRASES_DIR / f"{language}.json"
+    return PHRASES_DIR / name
 
 
 def reviewed(language: str, phrases: dict[str, str]) -> dict[str, str]:

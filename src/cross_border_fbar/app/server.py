@@ -110,6 +110,23 @@ class Handler(BaseHTTPRequestHandler):
         body = json.dumps(obj, ensure_ascii=False).encode()
         self._send(status, body, "application/json; charset=utf-8")
 
+    def _own_origins(self) -> set[str]:
+        port = self.server.server_address[1]
+        return {f"http://127.0.0.1:{port}", f"http://localhost:{port}"}
+
+    def _from_this_app(self, post: bool) -> bool:
+        """Only this app's own page may use it. The Host must be the app's own address, which stops a
+        rebound DNS name from reading it; a POST must be JSON (other sites can't send that without a
+        preflight this server never answers) and carry this origin when the browser sends one."""
+        if f"http://{self.headers.get('Host', '')}" not in self._own_origins():
+            return False
+        if not post:
+            return True
+        origin = self.headers.get("Origin")
+        if origin is not None and origin not in self._own_origins():
+            return False
+        return self.headers.get("Content-Type", "").split(";")[0].strip().lower() == "application/json"
+
     def _api_get(self, path: str):
         if path == "/api/state":
             return self.review.view()
@@ -118,6 +135,8 @@ class Handler(BaseHTTPRequestHandler):
         return None
 
     def do_GET(self):
+        if not self._from_this_app(post=False):
+            return self._json({"error": "requests must come from this app's own page"}, HTTPStatus.FORBIDDEN)
         path = self.path.split("?", 1)[0]
         asset = self.assets.get(path)
         if asset is not None:
@@ -147,6 +166,8 @@ class Handler(BaseHTTPRequestHandler):
         return actions.get(self.path)
 
     def do_POST(self):
+        if not self._from_this_app(post=True):
+            return self._json({"error": "requests must come from this app's own page"}, HTTPStatus.FORBIDDEN)
         length = int(self.headers.get("Content-Length") or 0)
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
