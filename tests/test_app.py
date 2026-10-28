@@ -294,7 +294,7 @@ def test_failed_pages_and_accounts_without_statements_block_sign_off(inputs, tmp
     path.write_text(json.dumps(readings))
     ws = build(Inputs(inputs.set_dir, path, inputs.intake))
     codes = {(f["code"], f["account"]) for f in ws["flags"]}
-    assert ("page_not_read", "") in codes
+    assert ("page_not_read", "unread:pages/kr-checking_2025-03-p1.png") in codes
     (page_flag,) = [f for f in ws["flags"] if f["code"] == "page_not_read"]
     assert page_flag["severity"] == "review" and "HTTP 503" in page_flag["message"]
     assert page_flag["sources"][0]["upload"] == "pages/kr-checking_2025-03-p1.png"
@@ -384,3 +384,43 @@ def test_only_this_apps_own_page_can_act_or_read(inputs, tmp_path):
         assert fid not in review.open_review_flags()
     finally:
         srv.shutdown()
+
+
+def test_every_row_and_review_item_has_its_own_id(inputs, tmp_path):
+    """Codex on #5: rows without an account number shared an empty key, so two of them missing the same
+    month got one review ID and one acknowledgement covered both."""
+    readings = json.loads(READINGS.read_text())
+    blanked = 0
+    for page in readings["pages"]:
+        if page["statement_id"].startswith("th-savings") and "reading" in page and blanked < 2:
+            page["reading"]["account_number"] = {
+                **page["reading"]["account_number"],
+                "text": "",
+                "status": "unreadable",
+            }
+            blanked += 1
+    readings["pages"].append({"statement_id": "de-joint_2025-01", "page": 1, "error": "timeout"})
+    path = tmp_path / "readings.json"
+    path.write_text(json.dumps(readings))
+    for ws in (build(inputs), build(Inputs(inputs.set_dir, path, inputs.intake))):
+        keys = [a["key"] for a in ws["accounts"]]
+        ids = [f["id"] for f in ws["flags"]]
+        assert len(keys) == len(set(keys))
+        assert len(ids) == len(set(ids))
+    assert sum(1 for a in ws["accounts"] if a["key"].startswith("unidentified:")) == 2
+
+
+def test_the_eval_does_not_count_intake_rows_as_found(inputs, tmp_path, monkeypatch):
+    """Codex on #5: a row for every intake account made accounts_found perfect even with no page read."""
+    from cross_border_fbar.eval import reconcile_eval
+
+    readings = json.loads(READINGS.read_text())
+    readings["pages"] = [
+        {"statement_id": p["statement_id"], "page": p.get("page", 1), "error": "x"} for p in readings["pages"]
+    ]
+    results = tmp_path / "results"
+    results.mkdir()
+    (results / f"muse-spark-1.3_{inputs.set_dir.name}.json").write_text(json.dumps(readings))
+    monkeypatch.setattr(reconcile_eval, "RESULTS", results)
+    out = reconcile_eval.evaluate(inputs.set_dir, "muse-spark-1.3")
+    assert out["summary"]["accounts_found"].startswith("0/")

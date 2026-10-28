@@ -1,6 +1,6 @@
 """Reviewed translations of the client summary's fixed phrases, one file per language.
 
-    python -m cross_border_fbar.app.phrases ko    # translate every phrase into translations/ko.json
+    python -m cross_border_fbar.app.phrases    # translate the phrases for each listed language with no table
 
 A table counts as reviewed only once a person has read it and set "reviewed_by". Each entry keeps the
 English it translates, so a phrase whose English changed is treated as untranslated.
@@ -9,7 +9,6 @@ English it translates, so a phrase whose English changed is treated as untransla
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 PHRASES_DIR = Path(__file__).parent / "translations"
@@ -59,5 +58,11 @@ def build(language: str) -> Path:
     return path
 
 
+def build_missing() -> list[Path]:
+    """Tables only for listed languages that have none, so a reviewed table is never overwritten.
+    To translate a language again, delete its table first."""
+    return [build(code) for code in LANGUAGES if not table_path(code).is_file()]
+
+
 if __name__ == "__main__":
-    print(build(sys.argv[1] if len(sys.argv) > 1 else "ko"))
+    print(build_missing() or "every listed language has a table; delete one to translate it again")

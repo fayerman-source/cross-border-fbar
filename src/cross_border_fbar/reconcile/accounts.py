@@ -504,7 +504,8 @@ def reconcile(
     identified (unreadable or partly masked) stay apart and are not counted in totals.
 
     Nothing given drops out unseen: an account stated at intake with no statement read, and each
-    page that couldn't be read at all (upload -> reason), come back as results with a review flag."""
+    page that couldn't be read at all (upload -> reason), come back as results with a review flag.
+    Every result has its own account_key: results without an account number are keyed by their page."""
     groups: dict[str, list[Observation]] = defaultdict(list)
     unidentified = []
     for o in (part for page in observations for part in split_by_row_account(page)):
@@ -525,7 +526,8 @@ def reconcile(
         )
     for o in unidentified:
         rate = _rate_for(o.currency, rates, tax_year)
-        results.append(reconcile_account([o], None, rate, tax_year, threshold_usd, identified=False))
+        r = reconcile_account([o], None, rate, tax_year, threshold_usd, identified=False)
+        results.append(replace(r, account_key=f"unidentified:{o.upload}"))
     for key in sorted(set(intake) - set(groups)):
         flag = Flag("no_statements", "review", "stated at intake; no statement for this account was read")
         results.append(_empty_result(key, intake[key].account_number or key, True, intake[key], [], flag))
@@ -533,5 +535,5 @@ def reconcile(
         flag = Flag(
             "page_not_read", "review", f"page couldn't be read: {reason}", [Source(upload, "page", None)]
         )
-        results.append(_empty_result("", "", False, None, [upload], flag))
+        results.append(_empty_result(f"unread:{upload}", "", False, None, [upload], flag))
     return results

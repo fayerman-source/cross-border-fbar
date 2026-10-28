@@ -93,6 +93,8 @@ def evaluate(set_dir: Path, model: str) -> dict:
     accounts, tp, fp, fn = [], 0, 0, 0
     for acct in truth["accounts"]:
         r = by_key.get(account_key(acct["account_number"]))
+        if r is not None and not r.uploads:
+            r = None  # a row for an intake account with no page read: the documents didn't find it
         want_max = acct["max_value"]
         want_flags = _expected_flags(acct)
         from_misreads = {
