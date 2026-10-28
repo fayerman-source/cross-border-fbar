@@ -56,103 +56,96 @@ SECURITY_HEADERS = {
 }
 
 
-def contained(root: Path, relative: str, flat: bool = False) -> Path | None:
-    """The file under root that relative names, or None if it escapes root or isn't a servable type."""
-    root = root.resolve()
-    target = (root / relative).resolve()
-    inside = target.parent == root if flat else root in target.parents
-    if inside and target.is_file() and target.suffix in CONTENT_TYPES:
-        return target
-    return None
+def asset_index(set_dir: Path) -> dict[str, Path]:
+    """Every file the app may serve, by URL, built once at startup. Requests only look paths up here;
+    nothing in a request is ever turned into a filesystem path."""
+    index = {"/": STATIC / "index.html", "/index.html": STATIC / "index.html"}
+    roots = {"/static/": STATIC, "/fonts/": FONTS_DIR, "/doc/pages/": set_dir / "pages"}
+    for prefix, root in roots.items():
+        for f in sorted(root.rglob("*") if prefix == "/static/" else root.glob("*")):
+            if f.is_file() and f.suffix in CONTENT_TYPES:
+                index[prefix + f.relative_to(root).as_posix()] = f.resolve()
+    return index
 
 
-def make_handler(review: Review, set_dir: Path):
-    # URL prefix -> (folder, flat): flat folders serve direct children only.
-    file_roots = {
-        "/static/": (STATIC, False),
-        "/fonts/": (FONTS_DIR, True),  # the repo's Korean font, for the client summary
-        "/doc/pages/": (set_dir / "pages", True),
-    }
+class Handler(BaseHTTPRequestHandler):
+    """Bound to a review and its asset index by make_handler()."""
 
-    class Handler(BaseHTTPRequestHandler):
-        def log_message(self, fmt, *args):  # quiet console
-            pass
+    review: Review
+    assets: dict[str, Path]
 
-        def _send(self, status: int, body: bytes, ctype: str) -> None:
-            self.send_response(status)
-            self.send_header("Content-Type", ctype)
-            self.send_header("Content-Length", str(len(body)))
-            for k, v in SECURITY_HEADERS.items():
-                self.send_header(k, v)
-            self.end_headers()
-            self.wfile.write(body)
+    def log_message(self, fmt, *args):  # quiet console
+        pass
 
-        def _json(self, obj, status: int = 200) -> None:
-            body = json.dumps(obj, ensure_ascii=False).encode()
-            self._send(status, body, "application/json; charset=utf-8")
+    def _send(self, status: int, body: bytes, ctype: str) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        for k, v in SECURITY_HEADERS.items():
+            self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(body)
 
-        def _file(self, path: Path) -> None:
-            self._send(200, path.read_bytes(), CONTENT_TYPES[path.suffix])
+    def _json(self, obj, status: int = 200) -> None:
+        body = json.dumps(obj, ensure_ascii=False).encode()
+        self._send(status, body, "application/json; charset=utf-8")
 
-        def _static_target(self, path: str) -> Path | None:
-            if path in ("/", "/index.html"):
-                return STATIC / "index.html"
-            for prefix, (root, flat) in file_roots.items():
-                if path.startswith(prefix):
-                    return contained(root, path.removeprefix(prefix), flat)
-            return None
+    def _api_get(self, path: str):
+        if path == "/api/state":
+            return self.review.view()
+        if path == "/api/export":
+            return self.review.export()
+        return None
 
-        def _api_get(self, path: str):
-            if path == "/api/state":
-                return review.view()
-            if path == "/api/export":
-                return review.export()
-            return None
+    def do_GET(self):
+        path = self.path.split("?", 1)[0]
+        asset = self.assets.get(path)
+        if asset is not None:
+            return self._send(200, asset.read_bytes(), CONTENT_TYPES[asset.suffix])
+        try:
+            payload = self._api_get(path)
+        except ReviewError as e:
+            return self._json({"error": str(e)}, HTTPStatus.CONFLICT)
+        if payload is None:
+            return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+        self._json(payload)
 
-        def do_GET(self):
-            path = self.path.split("?", 1)[0]
-            target = self._static_target(path)
-            if target is not None:
-                return self._file(target)
-            try:
-                payload = self._api_get(path)
-            except ReviewError as e:
-                return self._json({"error": str(e)}, HTTPStatus.CONFLICT)
-            if payload is None:
-                return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
-            self._json(payload)
+    def _post_action(self, body: dict):
+        review, who = self.review, str(body.get("reviewer", "")).strip() or "reviewer"
+        actions = {
+            "/api/ack": lambda: review.acknowledge(body["flag"], str(body.get("note", "")), who),
+            "/api/reopen": lambda: review.reopen(body["flag"], who),
+            "/api/ownership": lambda: review.set_ownership(
+                body["account"], body["ownership"], str(body.get("note", "")), who
+            ),
+            "/api/signoff": lambda: review.sign_off(who, str(body.get("initials", ""))),
+            "/api/summary/draft": lambda: review.draft_summary(generate_summary),
+            "/api/summary/approve": lambda: review.approve_summary(who),
+        }
+        return actions.get(self.path)
 
-        def do_POST(self):
-            length = int(self.headers.get("Content-Length") or 0)
-            try:
-                body = json.loads(self.rfile.read(length) or b"{}")
-            except json.JSONDecodeError:
-                return self._json({"error": "invalid JSON"}, HTTPStatus.BAD_REQUEST)
-            who = str(body.get("reviewer", "")).strip() or "reviewer"
-            actions = {
-                "/api/ack": lambda: review.acknowledge(body["flag"], str(body.get("note", "")), who),
-                "/api/reopen": lambda: review.reopen(body["flag"], who),
-                "/api/ownership": lambda: review.set_ownership(
-                    body["account"], body["ownership"], str(body.get("note", "")), who
-                ),
-                "/api/signoff": lambda: review.sign_off(who, str(body.get("initials", ""))),
-                "/api/summary/draft": lambda: review.draft_summary(generate_summary),
-                "/api/summary/approve": lambda: review.approve_summary(who),
-            }
-            action = actions.get(self.path)
-            if action is None:
-                return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
-            try:
-                action()
-            except ReviewError as e:
-                return self._json({"error": str(e)}, HTTPStatus.CONFLICT)
-            except KeyError as e:
-                return self._json({"error": f"missing field {e}"}, HTTPStatus.BAD_REQUEST)
-            except RuntimeError as e:  # model call failed
-                return self._json({"error": f"The summary couldn't be drafted: {e}"}, HTTPStatus.BAD_GATEWAY)
-            self._json(review.view())
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except json.JSONDecodeError:
+            return self._json({"error": "invalid JSON"}, HTTPStatus.BAD_REQUEST)
+        action = self._post_action(body)
+        if action is None:
+            return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+        try:
+            action()
+        except ReviewError as e:
+            return self._json({"error": str(e)}, HTTPStatus.CONFLICT)
+        except KeyError as e:
+            return self._json({"error": f"missing field {e}"}, HTTPStatus.BAD_REQUEST)
+        except RuntimeError as e:  # model call failed
+            return self._json({"error": f"The summary couldn't be drafted: {e}"}, HTTPStatus.BAD_GATEWAY)
+        self._json(self.review.view())
 
-    return Handler
+
+def make_handler(review: Review, set_dir: Path) -> type[Handler]:
+    return type("BoundHandler", (Handler,), {"review": review, "assets": asset_index(set_dir)})
 
 
 def main() -> None:

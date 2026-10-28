@@ -153,3 +153,11 @@ def test_scope_guard_catches_obligation_wording_in_any_inflection(text):
 def test_review_folder_must_stay_inside_the_working_directory(inputs, tmp_path):
     with pytest.raises(ValueError):
         Review(inputs, tmp_path / ".." / "elsewhere", root=tmp_path)
+
+
+@pytest.mark.parametrize("statement_id", ["../truth", "..", "a/b", "/etc/passwd", "x\x00y"])
+def test_a_crafted_readings_file_cannot_reach_outside_the_pages_folder(inputs, statement_id):
+    from cross_border_fbar.app.worksheet import page_image
+
+    with pytest.raises(ValueError):
+        page_image(inputs.set_dir, statement_id, 1)

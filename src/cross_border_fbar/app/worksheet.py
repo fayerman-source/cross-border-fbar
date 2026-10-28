@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -47,19 +48,30 @@ def flag_id(account: str, f: Flag) -> str:
     return hashlib.sha1(raw.encode()).hexdigest()[:10]
 
 
+SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
+
+
+def page_image(set_dir: Path, statement_id: str, page: int) -> Path:
+    """The page image for a reading, which must be a file directly inside the set's pages/ folder."""
+    if not SAFE_ID.fullmatch(statement_id) or page < 1:
+        raise ValueError(f"unexpected statement id {statement_id!r} in the readings file")
+    pages = (set_dir / "pages").resolve()
+    image = (pages / f"{statement_id}-p{page}.png").resolve()
+    if image.parent != pages or not image.is_file():
+        raise ValueError(f"no page image for {statement_id} page {page}")
+    return image
+
+
 def load_observations(inp: Inputs) -> list:
     readings = json.loads(inp.readings.read_text())
-    images = {}
-    truth_free_pages = []
+    observations = []
     for page in readings["pages"]:
         if "reading" not in page:
             continue
-        # The page image the model read; its file name is the upload name.
-        upload = f"pages/{page['statement_id']}-p{page.get('page', 1)}.png"
-        image = inp.set_dir / upload
-        images[upload] = image
-        truth_free_pages.append(observe(page["reading"], upload, snap_rows(page["reading"], image)))
-    return truth_free_pages
+        image = page_image(inp.set_dir, page["statement_id"], int(page.get("page", 1)))
+        upload = f"pages/{image.name}"  # the upload name the UI shows; never parsed for meaning
+        observations.append(observe(page["reading"], upload, snap_rows(page["reading"], image)))
+    return observations
 
 
 def build(inp: Inputs, ownership_overrides: dict[str, str] | None = None, threshold_usd: int = 1000) -> dict:
