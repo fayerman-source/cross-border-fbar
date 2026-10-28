@@ -15,7 +15,6 @@ Rules (FinCEN "Reporting Maximum Account Value"; IRS IRM 4.26.16):
 
 from __future__ import annotations
 
-import unicodedata
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
@@ -86,53 +85,31 @@ def _adjacent(prev: Observation, cur: Observation) -> bool:
     return (cur.period_start - prev.period_end).days <= 1
 
 
-def _script(ch: str) -> str:
-    """A letter's Unicode script from its character name: LATIN (incl. Vietnamese ệ), THAI, HANGUL..."""
-    return unicodedata.name(ch, "UNKNOWN").split()[0]
-
-
-def _script_runs(name: str) -> list[str]:
-    """Split a bank-name reading into runs of one script: 'ธนาคารสยามโลตัส Siam Lotus Bank' -> two names."""
-    runs, current, script = [], [], None
-    for ch in name:
-        if ch.isalpha():
-            s = _script(ch)
-            if script is not None and s != script and current:
-                runs.append("".join(current))
-                current = []
-            script = s
-        current.append(ch)
-    runs.append("".join(current))
-    return [normalize_name(r) for r in runs if normalize_name(r)]
-
-
 def _distinct_institutions(names: list[str]) -> list[str]:
-    """Distinct banks in order. Two names are one bank when one contains the other, or when some page
-    prints them together (a bilingual header): the only evidence of an alias. A different script alone
-    is not evidence, so a real change of bank is still reported."""
-    parent: dict[str, str] = {}
+    """Distinct banks in order, first reading of each kept.
 
-    def find(x: str) -> str:
-        parent.setdefault(x, x)
-        while parent[x] != x:
-            x = parent[x]
-        return x
+    Two readings are one bank only when one whole name contains the other, linked transitively. A
+    bilingual header read as 'ธนาคารสยามโลตัส Siam Lotus Bank' contains both single-language readings and
+    so links them; that's the evidence. Names are never split into fragments, so a shared word like
+    銀行 or Bank can't merge two different banks."""
+    norms = [normalize_name(n) for n in names]
+    parent = list(range(len(names)))
 
-    for name in names:  # a page printing several runs links them
-        runs = _script_runs(name)
-        for r in runs[1:]:
-            parent[find(r)] = find(runs[0])
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
 
-    out: list[str] = []
-    for name in names:
-        norm, roots = normalize_name(name), {find(r) for r in _script_runs(name)}
-        seen_same = any(
-            normalize_name(s) in norm
-            or norm in normalize_name(s)
-            or roots & {find(r) for r in _script_runs(s)}
-            for s in out
-        )
-        if not seen_same:
+    for i, a in enumerate(norms):
+        for j in range(i):
+            b = norms[j]
+            if a == b or (min(len(a), len(b)) >= 4 and (a in b or b in a)):
+                parent[find(i)] = find(j)
+    out, seen = [], set()
+    for i, name in enumerate(names):
+        if find(i) not in seen:
+            seen.add(find(i))
             out.append(name)
     return out
 

@@ -294,10 +294,19 @@ def test_a_bank_name_in_two_scripts_is_one_bank_only_with_evidence():
 
 def test_extended_latin_names_are_not_split_into_aliases():
     """Codex review on #6: Vietnamese ệ was treated as another script, merging two different banks."""
-    from cross_border_fbar.reconcile.accounts import _distinct_institutions, _script_runs
+    from cross_border_fbar.reconcile.accounts import _distinct_institutions
 
-    assert _script_runs("Ngân hàng Việt Nam") == ["ngân hàng việt nam"]
     assert _distinct_institutions(["Ngân hàng Việt Nam", "Ngân hàng Việt Á"]) == [
         "Ngân hàng Việt Nam",
         "Ngân hàng Việt Á",
     ]
+
+
+def test_names_mixing_scripts_inside_one_name_stay_distinct():
+    """Codex review on #6: みずほ銀行 and りそな銀行 share 銀行 ('bank') and were merged."""
+    from cross_border_fbar.reconcile.accounts import _distinct_institutions
+
+    assert _distinct_institutions(["みずほ銀行", "りそな銀行"]) == ["みずほ銀行", "りそな銀行"]
+    # A space-joined bilingual reading (as Glimmer returned it) still links the two single-language ones.
+    bilingual = "ธนาคารสยามโลตัส Siam Lotus Bank"
+    assert _distinct_institutions(["ธนาคารสยามโลตัส", bilingual, "Siam Lotus Bank"]) == ["ธนาคารสยามโลตัส"]
