@@ -32,6 +32,7 @@ class Intake:
     ownership: str  # sole | joint | signature_authority | unknown
     financial_interest: bool | None = None
     account_number: str = ""  # as the client gave it; shown when no statement for the account was read
+    joint_with_spouse: bool | None = None  # Form 8938 only: halves the value for some separate filers
 
 
 @dataclass
@@ -67,6 +68,7 @@ class AccountResult:
     max_value: Balance | None
     max_value_usd: int | None
     year_end_balance: Decimal | None
+    year_end_usd: int | None
     flags: list[Flag]
 
 
@@ -415,6 +417,7 @@ def reconcile_account(
         flags.append(Flag("ownership_unknown", "review", "ownership not stated at intake"))
 
     dec = [o for o in obs if o.period_end == date(tax_year, 12, 31)]
+    year_end = dec[-1].closing if dec else None
     return AccountResult(
         account_key=obs[0].account_key if obs else "",
         account_number=most_common(o.account_number for o in obs) or "",
@@ -428,7 +431,8 @@ def reconcile_account(
         duplicate_uploads=dupes,
         max_value=best,
         max_value_usd=best_usd,
-        year_end_balance=dec[-1].closing if dec else None,
+        year_end_balance=year_end,
+        year_end_usd=usd_ceiling(year_end, rate) if year_end is not None and rate else None,
         flags=flags,
     )
 
@@ -488,6 +492,7 @@ def _empty_result(key: str, number: str, identified: bool, intake: Intake | None
         max_value=None,
         max_value_usd=None,
         year_end_balance=None,
+        year_end_usd=None,
         flags=[flag],
     )
 
