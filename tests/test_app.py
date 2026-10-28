@@ -196,3 +196,45 @@ def test_every_review_flag_has_a_client_label_and_a_worksheet_title():
     app_js = (pkg / "app" / "static" / "app.js").read_text()
     titled = set(re.findall(r"^\s+([a-z_]+): \(", app_js, re.M))
     assert review_codes - titled == set()
+
+
+def test_failed_pages_and_accounts_without_statements_block_sign_off(inputs, tmp_path):
+    """Codex on #5: pages whose extraction failed were dropped, so a readings file of failures signed off
+    as an empty $0 worksheet. Each failed page and each intake account with nothing read is a review item."""
+    readings = json.loads(READINGS.read_text())
+    failed = {"statement_id": "kr-checking_2025-03", "page": 1, "error": "HTTP 503 from the model API"}
+    readings["pages"] = [failed] + [
+        p for p in readings["pages"] if not p["statement_id"].startswith("kr-checking")
+    ]
+    path = tmp_path / "readings.json"
+    path.write_text(json.dumps(readings))
+    ws = build(Inputs(inputs.set_dir, path, inputs.intake))
+    codes = {(f["code"], f["account"]) for f in ws["flags"]}
+    assert ("page_not_read", "") in codes
+    (page_flag,) = [f for f in ws["flags"] if f["code"] == "page_not_read"]
+    assert page_flag["severity"] == "review" and "HTTP 503" in page_flag["message"]
+    assert page_flag["sources"][0]["upload"] == "pages/kr-checking_2025-03-p1.png"
+    (kr,) = [a for a in ws["accounts"] if a["account_number"] == "110-482-913746"]
+    assert kr["max"] is None and kr["identified"]
+    assert [f["code"] for f in ws["flags"] if f["account"] == kr["key"]] == ["no_statements"]
+    assert "110-482-913746" in ws["totals"]["accounts_without_value"]
+    assert "pages/kr-checking_2025-03-p1.png" in ws["totals"]["unidentified_uploads"]
+
+    review = Review(Inputs(inputs.set_dir, path, inputs.intake), tmp_path / "review", root=tmp_path)
+    with pytest.raises(ReviewError, match="still need"):
+        review.sign_off("A. Rivera", "AR")
+
+
+def test_only_failed_pages_still_show_every_intake_account(inputs, tmp_path):
+    readings = json.loads(READINGS.read_text())
+    readings["pages"] = [
+        {"statement_id": p["statement_id"], "page": p.get("page", 1), "error": "timeout"}
+        for p in readings["pages"]
+    ]
+    path = tmp_path / "readings.json"
+    path.write_text(json.dumps(readings))
+    ws = build(Inputs(inputs.set_dir, path, inputs.intake))
+    intake_numbers = {a["account_number"] for a in json.loads(inputs.intake.read_text())["accounts"]}
+    assert {a["account_number"] for a in ws["accounts"] if a["identified"]} == intake_numbers
+    assert sum(f["code"] == "page_not_read" for f in ws["flags"]) == len(readings["pages"])
+    assert ws["totals"]["aggregate_usd"] == 0

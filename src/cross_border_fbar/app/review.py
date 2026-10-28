@@ -43,6 +43,8 @@ CLIENT_LABELS = {
     "currency_unknown": "the account's currency was checked against the Treasury exchange rates",
     "ownership_unknown": "who owns the account was confirmed with the client",
     "field_unreadable": "a part of a statement that couldn't be read was checked",
+    "no_statements": "no statement was received for this account; statements were requested",
+    "page_not_read": "a page that couldn't be read was checked",
 }
 
 

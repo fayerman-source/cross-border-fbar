@@ -64,18 +64,20 @@ def evaluate(set_dir: Path, model: str) -> dict:
         for name, f in page.get("fields", {}).items()
         if not f.get("value_ok", True)
     }
+    unread = {}
     for page in extraction["pages"]:
-        if "reading" not in page:
-            continue
         st = next(s for s in truth["statements"] if s["statement_id"] == page["statement_id"])
         page_image = st["page_images"][page.get("page", 1) - 1]
         image = set_dir / page_image["file"]
         upload = page_image["file"]  # an upload name per page; reconciliation never parses it
         upload_to_statement[upload] = st["statement_id"]
+        if "reading" not in page:
+            unread[upload] = str(page.get("error") or "no reading for this page")
+            continue
         observations.append(observe(page["reading"], upload, snap_rows(page["reading"], image)))
 
     intake = {
-        account_key(a["account_number"]): Intake(a["ownership"], a["financial_interest"])
+        account_key(a["account_number"]): Intake(a["ownership"], a["financial_interest"], a["account_number"])
         for a in truth["accounts"]
     }
     results = reconcile(
@@ -84,6 +86,7 @@ def evaluate(set_dir: Path, model: str) -> dict:
         rates.load(truth["tax_year"]),
         truth["tax_year"],
         truth["household"]["flag_threshold_usd"],
+        unread,
     )
     by_key = {r.account_key: r for r in results}
 

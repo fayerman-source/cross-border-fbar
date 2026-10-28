@@ -66,28 +66,34 @@ def page_image(set_dir: Path, statement_id: str, page: int) -> Path:
     return image
 
 
-def load_observations(inp: Inputs) -> list:
+def load_observations(inp: Inputs) -> tuple[list, dict[str, str]]:
+    """Observations from the pages that were read, and each page that wasn't (upload -> reason)."""
     readings = json.loads(inp.readings.read_text())
-    observations = []
+    observations, unread = [], {}
     for page in readings["pages"]:
-        if "reading" not in page:
-            continue
         image = page_image(inp.set_dir, page["statement_id"], int(page.get("page", 1)))
         upload = f"pages/{image.name}"  # the upload name the UI shows; never parsed for meaning
+        if "reading" not in page:
+            unread[upload] = str(page.get("error") or "no reading for this page")
+            continue
         observations.append(observe(page["reading"], upload, snap_rows(page["reading"], image)))
-    return observations
+    return observations, unread
 
 
 def build(inp: Inputs, ownership_overrides: dict[str, str] | None = None, threshold_usd: int = 1000) -> dict:
     intake_doc = json.loads(inp.intake.read_text())
     intake = {
-        account_key(a["account_number"]): Intake(a["ownership"], a.get("financial_interest"))
+        account_key(a["account_number"]): Intake(
+            a["ownership"], a.get("financial_interest"), a["account_number"]
+        )
         for a in intake_doc["accounts"]
     }
     for key, ownership in (ownership_overrides or {}).items():
-        intake[key] = Intake(ownership, ownership != "signature_authority")
+        number = intake[key].account_number if key in intake else ""
+        intake[key] = Intake(ownership, ownership != "signature_authority", number)
     year_rates = rates.load(inp.tax_year)
-    results = reconcile(load_observations(inp), intake, year_rates, inp.tax_year, threshold_usd)
+    observations, unread = load_observations(inp)
+    results = reconcile(observations, intake, year_rates, inp.tax_year, threshold_usd, unread)
     totals = fbar_totals(results)
     readings_meta = json.loads(inp.readings.read_text())
     accounts, flags = [], []

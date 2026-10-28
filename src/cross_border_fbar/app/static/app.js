@@ -26,17 +26,21 @@ const FLAG = {
   currency_unknown: () => "Currency unknown: no Treasury rate",
   currency_conflict: () => "Statements show different currencies",
   ownership_unknown: () => "Ownership not stated at intake",
+  no_statements: () => "Listed at intake, but no statement was read",
+  page_not_read: () => "Page couldn't be read",
 };
 
 // Show the reconciler's message only where it adds facts the title doesn't carry.
 const DETAIL = new Set(["possible_intraday_peak", "arithmetic_mismatch", "continuity_break", "coverage_gap",
-  "field_unreadable", "institution_names_differ", "out_of_year_statement", "currency_conflict", "duplicate_upload"]);
+  "field_unreadable", "page_not_read", "institution_names_differ", "out_of_year_statement", "currency_conflict", "duplicate_upload"]);
 const ACTION = {
   no_balance_anchor: "Request statements showing balances for this account.",
   missing_statement: "Request the missing statement, or confirm none exists.",
   account_number_masked: "Match these rows to a known account, or request the full account number.",
   signature_authority_only: "Confirm the client has signature authority but no financial interest.",
   possible_intraday_peak: "Check whether the same-day deposit cleared before the withdrawal.",
+  no_statements: "Request the statements for this account, or confirm it had none this year.",
+  page_not_read: "Re-read the page or request a clearer copy; nothing on it is counted.",
   institution_names_differ: "Confirm whether the bank changed (merger or rename) or one bank is printed two ways.",
 };
 
