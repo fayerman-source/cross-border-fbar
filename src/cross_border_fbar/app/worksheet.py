@@ -166,9 +166,9 @@ def _account(r: AccountResult, year_rates: dict, intake: dict, flag_ids: list[st
 
 
 def worksheet_hash(ws: dict) -> str:
-    """Fingerprint of what the CPA signs: accounts, totals and flags (not UI state)."""
-    core = {k: ws[k] for k in ("tax_year", "accounts", "flags", "totals", "rates")}
-    return hashlib.sha256(json.dumps(core, sort_keys=True, default=str).encode()).hexdigest()
+    """Fingerprint of what the CPA signs: the whole worksheet. Review state lives outside it, so no field
+    is left out of the signature by a list someone has to keep current."""
+    return hashlib.sha256(json.dumps(ws, sort_keys=True, default=str).encode()).hexdigest()
 
 
 def decimal_str(value: Decimal | None) -> str | None:

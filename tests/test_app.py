@@ -238,3 +238,27 @@ def test_only_failed_pages_still_show_every_intake_account(inputs, tmp_path):
     assert {a["account_number"] for a in ws["accounts"] if a["identified"]} == intake_numbers
     assert sum(f["code"] == "page_not_read" for f in ws["flags"]) == len(readings["pages"])
     assert ws["totals"]["aggregate_usd"] == 0
+
+
+def test_every_worksheet_field_is_in_the_signed_fingerprint(inputs):
+    """Codex on #5: the fingerprint listed its fields, so the client's name could change under a sign-off.
+    Changing any top-level field must change the fingerprint."""
+    ws = build(inputs)
+    for key in ws:
+        changed = {**ws, key: {"changed": key}}
+        assert worksheet_hash(changed) != worksheet_hash(ws), key
+
+
+def test_a_sign_off_is_invalidated_when_the_client_changes(inputs, tmp_path):
+    first = Review(inputs, tmp_path / "rv", root=tmp_path)
+    for fid in first.open_review_flags():
+        first.acknowledge(fid, "checked", "A. Rivera")
+    first.sign_off("A. Rivera", "AR")
+    intake = json.loads(inputs.intake.read_text())
+    intake["client"] = "Another Client"
+    changed = tmp_path / "intake-client.json"
+    changed.write_text(json.dumps(intake))
+    again = Review(Inputs(inputs.set_dir, inputs.readings, changed), tmp_path / "rv", root=tmp_path)
+    assert again.state["signoff"] is None and again.state["summary"] is None
+    with pytest.raises(ReviewError):
+        again.export()
