@@ -204,7 +204,11 @@ function renderSummary(s) {
   if (!s) return;
   $("summary-text").textContent = s.text;
   $("summary-blocked").hidden = !s.blocked;
-  $("summary-blocked").textContent = s.blocked ? `Held back: the draft ${s.blocked}, which is outside the scope line. Draft it again.` : "";
+  $("summary-blocked").textContent = s.blocked ? `Held back: the translation ${s.blocked}. Draft it again.` : "";
+  const fresh = Object.entries(s.unreviewed || {});
+  $("summary-unreviewed").hidden = !fresh.length || Boolean(s.blocked || s.approved);
+  $("summary-unreviewed-list").replaceChildren(...fresh.map(([k, v]) => el("li", {}, v, el("span", { class: "sub" }, ` (${k})`))));
+  $("approve-summary").textContent = fresh.length ? `Approve, including ${fresh.length} new phrases` : "Approve for release";
   $("approve-summary").hidden = Boolean(s.approved || s.blocked);
   $("summary-approved").hidden = !s.approved;
   if (s.approved) $("summary-approved").textContent = `Approved for release by ${s.approved.reviewer}, ${s.approved.ts}.`;
@@ -303,7 +307,8 @@ $("draft-summary").addEventListener("click", async () => {
   finally { $("draft-summary").disabled = false; $("draft-summary").textContent = "Draft again"; }
 });
 $("approve-summary").addEventListener("click", async () => {
-  try { state = await api("/api/summary/approve", { reviewer: reviewer() || state.review.signoff.reviewer }); render(); toast("Approved for release"); }
+  try { state = await api("/api/summary/approve", { reviewer: reviewer() || state.review.signoff.reviewer,
+    confirm_unreviewed: Object.keys(state.review.summary?.unreviewed || {}).length > 0 }); render(); toast("Approved for release"); }
   catch (e) { toast(e.message); }
 });
 $("reviewer").value = (() => { try { return localStorage.getItem("reviewer") || ""; } catch { return ""; } })();

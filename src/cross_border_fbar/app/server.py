@@ -19,23 +19,42 @@ from .worksheet import Inputs
 
 STATIC = Path(__file__).parent / "static"
 FONTS_DIR = (Path(__file__).resolve().parents[3] / "fonts").resolve()
-SUMMARY_PROMPT = (Path(__file__).parent / "prompts" / "client_summary_ko_v1.md").read_text()
+PHRASES_PROMPT = (Path(__file__).parent / "prompts" / "client_phrases_v2.md").read_text()
 SUMMARY_MODEL = "muse-spark-1.3"
 
 
-def generate_summary(facts: dict, fresh: bool = False) -> tuple[str, dict]:
-    """The first draft may replay a recorded response (offline demo); a redraft always asks the model."""
+def translate_phrases(phrases: dict, language: str, fresh: bool = False) -> tuple[dict | None, dict]:
+    """Translate the summary's fixed phrases. The first draft may replay a recorded response (offline
+    demo); a redraft always asks the model. Returns None for a response that isn't the JSON asked for."""
     client = Client(mode="live" if fresh else "auto")
-    prompt = SUMMARY_PROMPT + json.dumps(facts, ensure_ascii=False, indent=1)
-    r = client.chat(
-        SUMMARY_MODEL, [{"role": "user", "content": prompt}], max_tokens=6000, label="client-summary"
+    prompt = PHRASES_PROMPT.replace("{language}", language) + json.dumps(
+        phrases, ensure_ascii=False, indent=1
     )
-    return r.content.strip(), {
+    schema = {
+        "type": "object",
+        "properties": {k: {"type": "string"} for k in phrases},
+        "required": list(phrases),
+        "additionalProperties": False,
+    }
+    fmt = {"type": "json_schema", "json_schema": {"name": "Phrases", "schema": schema}}
+    r = client.chat(
+        SUMMARY_MODEL,
+        [{"role": "user", "content": prompt}],
+        max_tokens=6000,
+        response_format=fmt,
+        label="client-phrases",
+    )
+    try:
+        translations = json.loads(r.content)
+    except json.JSONDecodeError:
+        translations = None
+    meta = {
         "model": SUMMARY_MODEL,
-        "prompt": "client_summary_ko_v1",
+        "prompt": "client_phrases_v2",
         "cost_usd": r.cost_usd,
         "replayed": r.replayed,
     }
+    return translations, meta
 
 
 # Only these file types are ever served, each with a fixed content type.
@@ -120,8 +139,10 @@ class Handler(BaseHTTPRequestHandler):
                 body["account"], body["ownership"], str(body.get("note", "")), who
             ),
             "/api/signoff": lambda: review.sign_off(who, str(body.get("initials", ""))),
-            "/api/summary/draft": lambda: review.draft_summary(generate_summary),
-            "/api/summary/approve": lambda: review.approve_summary(who),
+            "/api/summary/draft": lambda: review.draft_summary(translate_phrases),
+            "/api/summary/approve": lambda: review.approve_summary(
+                who, body.get("confirm_unreviewed") is True
+            ),
         }
         return actions.get(self.path)
 

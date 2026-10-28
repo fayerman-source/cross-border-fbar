@@ -16,17 +16,31 @@ import threading
 import time
 from pathlib import Path
 
+from . import phrases as phrase_tables
 from .worksheet import Inputs, build, worksheet_hash
 
 OWNERSHIPS = ("sole", "joint", "signature_authority")
-# A client summary describes what was reviewed; it never talks about filing, obligations or penalties.
-# Korean is matched by stem so polite inflections (신고하셔야 합니다, 신고 대상입니다) can't slip through.
+# The client summary is assembled from a fixed table of phrases, translated, plus the signed figures; the
+# model writes no sentence of its own, so it can't add filing advice. OUT_OF_SCOPE is a second check on
+# each translated phrase. Korean is matched by stem so polite inflections (신고하셔야 합니다) can't slip.
 OUT_OF_SCOPE = re.compile(
     r"신고|제출\s*(?:하|해|의무|대상|필요)|의무|대상자|벌금|과태료|가산세|처벌|면제|납부|"
     r"\b(?:must|required to|need to|obligat\w*)\s+(?:file|report|submit)|\bpenalt|\bfines?\b|\bexempt",
     re.I,
 )
 
+
+# The summary's own words. Every line of the note is built from these and CLIENT_LABELS.
+SUMMARY_PHRASES = {
+    "heading": "What your CPA reviewed",
+    "account_ending": "account ending",
+    "highest_balance": "highest balance",
+    "reviewed": "Items reviewed",
+    "nothing_further": "nothing further to review",
+    "balance_not_confirmed": "the balance couldn't be confirmed from the documents",
+    "bank_not_named": "bank not named",
+}
+LANGUAGES = {"ko": "Korean"}
 
 # Client-facing descriptions of review items; the model translates these, never the CPA's notes.
 CLIENT_LABELS = {
@@ -46,6 +60,35 @@ CLIENT_LABELS = {
     "no_statements": "no statement was received for this account; statements were requested",
     "page_not_read": "a page that couldn't be read was checked",
 }
+
+
+def _translation_problem(phrases: dict, got) -> str | None:
+    """Why a translation can't be used, or None. Phrases carry no numbers, so a translation has none."""
+    if not isinstance(got, dict) or set(got) != set(phrases):
+        return "doesn't cover exactly the phrases asked for"
+    for key, text in got.items():
+        if not isinstance(text, str) or not text.strip() or "\n" in text or re.search(r"\d", text):
+            return f"has an unusable translation for '{key}'"
+        if len(text) > 3 * len(phrases[key]) + 20:
+            return f"has a translation for '{key}' far longer than the phrase"
+        hit = OUT_OF_SCOPE.search(text)
+        if hit:
+            return f"contains '{hit.group(0)}'"
+    return None
+
+
+def _assemble(facts: dict, t: dict) -> str:
+    lines = [t["heading"]]
+    for a in facts["accounts"]:
+        head = f"{a['bank'] or t['bank_not_named']} · {t['account_ending']} {a['account_ending']}"
+        if a["highest_balance"]:
+            usd = f" ({a['highest_balance_usd']})" if a["highest_balance_usd"] else ""
+            head += f" · {t['highest_balance']} {a['highest_balance']}{usd}"
+        else:
+            head += f" · {t['balance_not_confirmed']}"
+        items = [t[c] for c in a["review_items"]] or [t["nothing_further"]]
+        lines += [head, f"  {t['reviewed']}: " + "; ".join(items)]
+    return "\n".join(lines)
 
 
 def _fmt(amount: str | None, currency: str | None) -> str | None:
@@ -219,38 +262,63 @@ class Review:
                     "currency": a["currency"],
                     "highest_balance": _fmt(amount, a["currency"]),
                     "highest_balance_usd": f"${a['max_usd']:,}" if a["max_usd"] is not None else None,
-                    "what_your_cpa_reviewed": [CLIENT_LABELS.get(f["code"], f["code"]) for f in reviews],
+                    "review_items": list(dict.fromkeys(f["code"] for f in reviews)),
                 }
             )
         return {"client": ws["client"], "tax_year": ws["tax_year"], "accounts": facts}
 
-    def draft_summary(self, generate) -> dict:
-        """generate(facts, fresh) -> (text, meta). Runs only after sign-off; blocked if it leaves the scope.
-        A redraft asks for a fresh generation, so a held draft can't be replayed forever."""
+    def draft_summary(self, translate, language: str = "ko") -> dict:
+        """translate(phrases, language, fresh) -> (translations, meta). Runs only after sign-off.
+
+        The note is assembled from fixed phrases and the signed figures. Phrases come from the language's
+        reviewed table; only phrases missing from it are sent to the model, and the draft lists them as
+        unreviewed. A translation that adds keys, digits, line breaks or out-of-scope words holds the draft
+        back. A redraft asks for a fresh translation, so a held draft can't be replayed."""
         if not self.state["signoff"]:
             raise ReviewError("Sign off before drafting the client summary.")
-        text, meta = generate(self.summary_facts(), fresh=self.state["summary"] is not None)
-        hit = OUT_OF_SCOPE.search(text)
+        if language not in LANGUAGES:
+            raise ReviewError(f"No client language {language!r}.")
+        facts = self.summary_facts()
+        codes = {c for a in facts["accounts"] for c in a["review_items"]}
+        if codes - set(CLIENT_LABELS):
+            raise ReviewError(f"No client wording for {sorted(codes - set(CLIENT_LABELS))}.")
+        phrases = {**SUMMARY_PHRASES, **{c: CLIENT_LABELS[c] for c in sorted(codes)}}
+        known = phrase_tables.reviewed(language, phrases)
+        missing = {k: v for k, v in phrases.items() if k not in known}
+        meta, problem, new = {"model": None, "source": f"reviewed table ({language})"}, None, {}
+        if missing:
+            new, meta = translate(missing, LANGUAGES[language], fresh=self.state["summary"] is not None)
+            problem = _translation_problem(missing, new)
         self.state["summary"] = {
-            "text": text,
+            "text": None if problem else _assemble(facts, {**known, **new}),
+            "language": language,
+            "unreviewed": {k: new[k] for k in missing} if not problem else {},
             "meta": meta,
             "approved": None,
-            "blocked": f"contains '{hit.group(0)}'" if hit else None,
+            "blocked": problem,
         }
         self._audit(
             "draft_summary",
             self.state["signoff"]["reviewer"],
             model=meta.get("model"),
-            blocked=self.state["summary"]["blocked"],
+            unreviewed=sorted(missing),
+            blocked=problem,
         )
         return self.state["summary"]
 
-    def approve_summary(self, reviewer: str) -> None:
+    def approve_summary(self, reviewer: str, confirm_unreviewed: bool = False) -> None:
+        """Phrases translated for this draft, not taken from a reviewed table, are approved only when the
+        CPA confirms them; they are listed in the draft and recorded with the approval."""
         with self.lock:
             s = self.state["summary"]
             if not s:
                 raise ReviewError("Draft the summary first.")
             if s["blocked"]:
                 raise ReviewError(f"This draft can't be released: it {s['blocked']}. Draft it again.")
+            if s["unreviewed"] and not confirm_unreviewed:
+                raise ReviewError(
+                    f"{len(s['unreviewed'])} phrases were translated for this draft and haven't been "
+                    "reviewed. Read them and confirm to approve."
+                )
             s["approved"] = {"reviewer": reviewer, "ts": time.strftime("%Y-%m-%d %H:%M")}
-            self._audit("approve_summary", reviewer)
+            self._audit("approve_summary", reviewer, confirmed_unreviewed=sorted(s["unreviewed"]))

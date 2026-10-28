@@ -1,6 +1,7 @@
 """The review app: worksheet build from recorded readings, review rules, scope guard, server routes."""
 
 import json
+import re
 import threading
 import urllib.error
 import urllib.request
@@ -9,7 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from cross_border_fbar.app.review import Review, ReviewError
+from cross_border_fbar.app import phrases as phrase_tables
+from cross_border_fbar.app.review import CLIENT_LABELS, SUMMARY_PHRASES, Review, ReviewError
 from cross_border_fbar.app.server import make_handler
 from cross_border_fbar.app.worksheet import Inputs, build, worksheet_hash
 from cross_border_fbar.synth.__main__ import generate
@@ -73,32 +75,114 @@ def test_ownership_correction_recomputes_and_adds_its_review_item(review):
     assert review.audit_tail(1)[0]["after"] == "signature_authority"
 
 
-def test_summary_only_after_sign_off_and_out_of_scope_drafts_are_held(review):
-    with pytest.raises(ReviewError, match="Sign off"):
-        review.draft_summary(lambda facts, fresh: ("x", {}))
+@pytest.fixture
+def signed(review, tmp_path, monkeypatch):
+    """A signed review with no reviewed phrase table, so every phrase goes to the translator."""
+    monkeypatch.setattr(phrase_tables, "PHRASES_DIR", tmp_path / "no-tables")
     for fid in review.open_review_flags():
         review.acknowledge(fid, "INTERNAL-NOTE-7731", "A. Rivera")
     review.sign_off("A. Rivera", "AR")
-    facts_seen = {}
+    return review
 
-    def bad(facts, fresh):
-        facts_seen.update(facts)
-        return "CPA가 검토한 내용\n이 계좌는 신고해야 합니다.", {"model": "fake"}
 
-    review.draft_summary(bad)
-    assert review.state["summary"]["blocked"]
+def tokens(phrases, language, fresh):
+    return {k: f"«{k}»" for k in phrases}, {"model": "fake", "fresh": fresh}
+
+
+def test_summary_is_assembled_only_from_fixed_phrases_and_signed_figures(review, signed):
+    with pytest.raises(ReviewError, match="Sign off"):
+        Review(review.inputs, review.dir.parent / "other", root=review.dir.parent).draft_summary(tokens)
+    seen = {}
+
+    def spy(phrases, language, fresh):
+        seen.update(phrases)
+        return tokens(phrases, language, fresh)
+
+    s = signed.draft_summary(spy)
+    assert set(seen) - set(CLIENT_LABELS) == set(SUMMARY_PHRASES)
+    assert all(seen[k] == {**SUMMARY_PHRASES, **CLIENT_LABELS}[k] for k in seen)  # English from the tables
+    assert "INTERNAL-NOTE-7731" not in json.dumps(seen)  # CPA notes stay internal
+    lines = s["text"].splitlines()
+    assert lines[0] == "«heading»"
+    assert "새별은행 · «account_ending» 3746 · «highest_balance» 287,450,200 KRW ($199,100)" in lines
+    assert "  «reviewed»: «nothing_further»" in lines
+    # Every word outside the figures and bank names is a fixed phrase.
+    words = set(re.findall(r"[A-Za-z가-힣]+", re.sub(r"«[a-z_]+»", "", s["text"])))
+    banks = {
+        w
+        for a in signed.worksheet["accounts"]
+        for n in a["institutions"]
+        for w in re.findall(r"[A-Za-z가-힣]+", n)
+    }
+    assert words - banks <= {"KRW", "EUR", "THB"}
+    assert set(s["unreviewed"]) == set(seen)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        lambda p: {**{k: "x" for k in p}, "extra": "y"},
+        lambda p: {k: "x" for k in list(p)[1:]},
+        lambda p: {**{k: "x" for k in p}, "heading": "2026년 4월 15일까지"},
+        lambda p: {**{k: "x" for k in p}, "heading": "a\nb"},
+        lambda p: {**{k: "x" for k in p}, "reviewed": "신고하셔야 합니다"},
+        lambda p: {**{k: "x" for k in p}, "reviewed": "x" * 200},
+        lambda p: None,
+    ],
+)
+def test_a_translation_that_adds_anything_is_held_back(signed, bad):
+    s = signed.draft_summary(lambda phrases, language, fresh: (bad(phrases), {"model": "fake"}))
+    assert s["blocked"] and s["text"] is None
     with pytest.raises(ReviewError, match="can't be released"):
-        review.approve_summary("A. Rivera")
-    assert "INTERNAL-NOTE-7731" not in json.dumps(facts_seen, ensure_ascii=False)  # CPA notes stay internal
-    review.draft_summary(
-        lambda facts, fresh: (
-            "CPA가 검토한 내용\n새별은행 끝자리 3746 계좌.",
-            {"model": "fake", "fresh": fresh},
-        )
-    )
-    assert review.state["summary"]["meta"]["fresh"] is True  # a redraft never replays the held draft
-    review.approve_summary("A. Rivera")
-    assert review.state["summary"]["approved"]["reviewer"] == "A. Rivera"
+        signed.approve_summary("A. Rivera", confirm_unreviewed=True)
+
+
+def test_unreviewed_phrases_are_approved_only_when_confirmed(signed):
+    """Codex on #5: 'you should file an FBAR' passed the word check. A phrase no one has reviewed is shown
+    to the CPA and needs explicit confirmation; the reviewed table is the normal path."""
+
+    def stray(phrases, language, fresh):
+        out, meta = tokens(phrases, language, fresh)
+        return {**out, "reviewed": "you should file an FBAR"}, meta
+
+    s = signed.draft_summary(stray)
+    assert s["unreviewed"]["reviewed"] == "you should file an FBAR"
+    with pytest.raises(ReviewError, match="haven't been reviewed"):
+        signed.approve_summary("A. Rivera")
+    s = signed.draft_summary(tokens)
+    assert s["meta"]["fresh"] is True  # a redraft never replays the held draft
+    signed.approve_summary("A. Rivera", confirm_unreviewed=True)
+    assert signed.audit_tail(1)[0]["confirmed_unreviewed"] == sorted(s["unreviewed"])
+
+
+def test_a_reviewed_table_needs_no_model_call_and_stale_entries_are_retranslated(
+    signed, tmp_path, monkeypatch
+):
+    table = {k: {"en": en, "text": f"[{k}]"} for k, en in {**SUMMARY_PHRASES, **CLIENT_LABELS}.items()}
+    d = tmp_path / "tables"
+    d.mkdir()
+    (d / "ko.json").write_text(json.dumps({"reviewed_by": "A. Reviewer", "phrases": table}))
+    monkeypatch.setattr(phrase_tables, "PHRASES_DIR", d)
+
+    def no_call(*a, **k):
+        raise AssertionError("a reviewed table needs no translation")
+
+    s = signed.draft_summary(no_call)
+    assert s["unreviewed"] == {} and s["text"].startswith("[heading]")
+    signed.approve_summary("A. Rivera")
+    table["heading"]["en"] = "an older English heading"
+    (d / "ko.json").write_text(json.dumps({"reviewed_by": "A. Reviewer", "phrases": table}))
+    s = signed.draft_summary(tokens)
+    assert list(s["unreviewed"]) == ["heading"]
+
+
+def test_the_committed_korean_table_covers_every_phrase_with_current_english():
+    """Changing an English phrase or adding a review flag makes the table stale; this fails until it is
+    translated and reviewed again."""
+    doc = json.loads(phrase_tables.table_path("ko").read_text())
+    entries = doc["phrases"]
+    current = {**SUMMARY_PHRASES, **CLIENT_LABELS}
+    assert {k for k in current if k not in entries or entries[k]["en"] != current[k]} == set()
 
 
 def test_server_serves_pages_but_not_files_outside_them(inputs, tmp_path):
