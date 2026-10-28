@@ -95,7 +95,7 @@
 
   <dialog id="note-dialog">
     <form method="dialog" class="note-form">
-      <h3 id="note-title"></h3>
+      <h3 id="note-title">Add a note</h3>
       <label>Note for the audit trail <textarea id="note-text" rows="3" required></textarea></label>
       <menu>
         <button value="cancel" type="button" id="note-cancel">Cancel</button>
@@ -103,7 +103,7 @@
       </menu>
     </form>
   </dialog>
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="/static/app.js"></script>
+  <output class="toast" id="toast" aria-live="polite"></output>
+  <script type="module" src="/static/app.js"></script>
 </body>
 </html>

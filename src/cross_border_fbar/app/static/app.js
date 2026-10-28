@@ -1,4 +1,3 @@
-"use strict";
 // FBAR worksheet review: render the worksheet, trace any figure to its source line, record the CPA's review.
 
 const $ = (id) => document.getElementById(id);
@@ -124,64 +123,96 @@ function show(sources, key, caption) {
 }
 
 // --- rendering ---------------------------------------------------------------------------------
+const flagTitle = (f) => (FLAG[f.code] ? FLAG[f.code](f) : f.code);
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
 function render() {
+  const signed = !!state.review.signoff;
+  renderHeader(signed);
+  renderAccounts(signed);
+  renderItems(signed);
+  renderSignoff(signed);
+  renderAudit();
+}
+
+function renderHeader(signed) {
   const ws = state.worksheet;
-  const rv = state.review;
-  const signed = !!rv.signoff;
   $("meta").textContent = `Tax year ${ws.tax_year} · Client: ${ws.client} · synthetic data, fictional person`;
   $("scope").textContent = ws.scope;
   $("prepared").textContent = `Read by ${ws.reader.model} (${ws.reader.prompt})`;
-  $("reviewed").replaceChildren(
-    signed ? el("span", {}, el("span", { class: "initials" }, rv.signoff.initials), rv.signoff.ts) : el("span", { class: "pending" }, "not yet"),
-  );
+  const so = state.review.signoff;
+  const reviewed = signed
+    ? el("span", {}, el("span", { class: "initials" }, so.initials), so.ts)
+    : el("span", { class: "pending" }, "not yet");
+  $("reviewed").replaceChildren(reviewed);
+}
 
-  const flagById = Object.fromEntries(ws.flags.map((f) => [f.id, f]));
-  // Schedule A
-  $("accounts").replaceChildren(...ws.accounts.map((a) => accountRow(a, signed, flagById)));
+function renderAccounts(signed) {
+  const ws = state.worksheet;
+  $("accounts").replaceChildren(...ws.accounts.map((a) => accountRow(a, signed)));
   const t = ws.totals;
-  const over = t.above_threshold ? "above" : "not above";
+  const notes = [`${t.above_threshold ? "above" : "not above"} the $${t.threshold_usd.toLocaleString("en-US")} FBAR aggregate threshold — review`];
+  if (t.accounts_without_value.length) notes.push(`${plural(t.accounts_without_value.length, "account")} without a determinable balance not included`);
+  if (t.unidentified_uploads.length) notes.push("unidentified rows not counted");
   $("aggregate").replaceChildren(
-    el("td", { colspan: 4 }, el("span", { class: "label" }, "Aggregate of highest balances"),
-      el("span", { class: "threshold" },
-        `${over} the $${t.threshold_usd.toLocaleString("en-US")} FBAR aggregate threshold — review`,
-        t.accounts_without_value.length ? ` · ${t.accounts_without_value.length} account without a determinable balance not included` : "",
-        t.unidentified_uploads.length ? ` · unidentified rows not counted` : "")),
+    el("td", { colspan: 4 }, el("span", { class: "label" }, "Aggregate of highest balances"), el("span", { class: "threshold" }, notes.join(" · "))),
     el("td", { class: "num" }, el("span", { class: "amount" }, usd(t.aggregate_usd))),
   );
-  const r0 = Object.values(ws.rates)[0];
-  $("rate-note").replaceChildren("Treasury Reporting Rates of Exchange, ", r0 ? r0.record_date : "", ", foreign units per USD; USD rounded up. ",
-    el("a", { href: r0 ? r0.source : "#", target: "_blank", rel: "noopener" }, "Source query"));
+  const r0 = Object.values(ws.rates)[0] || { record_date: "", source: "#" };
+  $("rate-note").replaceChildren(`Treasury Reporting Rates of Exchange, ${r0.record_date}, foreign units per USD; USD rounded up. `,
+    el("a", { href: r0.source, target: "_blank", rel: "noopener" }, "Source query"));
+}
 
-  // Schedule B
-  const reviewFlags = ws.flags.filter((f) => f.severity === "review");
+function renderItems(signed) {
+  const ws = state.worksheet;
   const open = state.open_review_flags;
   $("open-count").textContent = open.length ? `${open.length} open` : "all reviewed";
   $("open-count").classList.toggle("clear", open.length === 0);
-  $("items").replaceChildren(...reviewFlags.map((f) => itemRow(f, rv.acks[f.id], signed, ws)));
+  const reviewFlags = ws.flags.filter((f) => f.severity === "review");
+  $("items").replaceChildren(...reviewFlags.map((f) => itemRow(f, state.review.acks[f.id], signed, ws)));
   const info = ws.flags.filter((f) => f.severity === "info");
   $("info-summary").textContent = `Notes (${info.length})`;
-  $("info-items").replaceChildren(...info.map((f) => el("li", {}, `${FLAG[f.code] ? FLAG[f.code](f) : f.code} · ${acctLabel(ws, f.account)} `, chips(f))));
+  $("info-items").replaceChildren(...info.map((f) => el("li", {}, `${flagTitle(f)} · ${acctLabel(ws, f.account)} `, chips(f))));
+}
 
-  // Sign-off
+function signoffHint(open) {
+  if (!open.length) return "All review items acknowledged.";
+  return `Acknowledge the ${plural(open.length, "open review item")} to sign off.`;
+}
+
+function renderSignoff(signed) {
+  const open = state.open_review_flags;
   $("signoff-btn").disabled = signed || open.length > 0;
   $("signoff-form").hidden = signed;
-  $("signoff-hint").textContent = signed ? "" : open.length ? `Acknowledge the ${open.length} open review item${open.length > 1 ? "s" : ""} to sign off.` : "All review items acknowledged.";
+  $("signoff-hint").textContent = signed ? "" : signoffHint(open);
   $("after-signoff").hidden = !signed;
-  if (signed) {
-    $("signed-line").replaceChildren(el("span", { class: "initials" }, rv.signoff.initials), ` Signed off by ${rv.signoff.reviewer}, ${rv.signoff.ts}. Fingerprint ${rv.signoff.hash.slice(0, 12)}.`);
-    const s = rv.summary;
-    $("summary-box").hidden = !s;
-    $("draft-summary").hidden = !!(s && s.approved);
-    if (s) {
-      $("summary-text").textContent = s.text;
-      $("summary-blocked").hidden = !s.blocked;
-      $("summary-blocked").textContent = s.blocked ? `Held back: the draft ${s.blocked}, which is outside the scope line. Draft it again.` : "";
-      $("approve-summary").hidden = !!s.approved || !!s.blocked;
-      $("summary-approved").hidden = !s.approved;
-      if (s.approved) $("summary-approved").textContent = `Approved for release by ${s.approved.reviewer}, ${s.approved.ts}.`;
-    }
-  }
-  $("audit").replaceChildren(...state.audit.slice().reverse().map((e) => el("li", {}, `${e.ts}  ${e.reviewer}  ${e.action}${e.note ? " — " + e.note : ""}${e.after ? ` (${e.before} → ${e.after})` : ""}`)));
+  if (!signed) return;
+  const so = state.review.signoff;
+  $("signed-line").replaceChildren(el("span", { class: "initials" }, so.initials),
+    ` Signed off by ${so.reviewer}, ${so.ts}. Fingerprint ${so.hash.slice(0, 12)}.`);
+  renderSummary(state.review.summary);
+}
+
+function renderSummary(s) {
+  $("summary-box").hidden = !s;
+  $("draft-summary").hidden = Boolean(s?.approved);
+  if (!s) return;
+  $("summary-text").textContent = s.text;
+  $("summary-blocked").hidden = !s.blocked;
+  $("summary-blocked").textContent = s.blocked ? `Held back: the draft ${s.blocked}, which is outside the scope line. Draft it again.` : "";
+  $("approve-summary").hidden = Boolean(s.approved || s.blocked);
+  $("summary-approved").hidden = !s.approved;
+  if (s.approved) $("summary-approved").textContent = `Approved for release by ${s.approved.reviewer}, ${s.approved.ts}.`;
+}
+
+function auditLine(e) {
+  const note = e.note ? ` — ${e.note}` : "";
+  const change = e.after ? ` (${e.before} → ${e.after})` : "";
+  return `${e.ts}  ${e.reviewer}  ${e.action}${note}${change}`;
+}
+
+function renderAudit() {
+  $("audit").replaceChildren(...state.audit.slice().reverse().map((e) => el("li", {}, auditLine(e))));
 }
 
 function acctLabel(ws, key) {
@@ -189,7 +220,7 @@ function acctLabel(ws, key) {
   return a ? `${(a.institutions[a.institutions.length - 1] || "Bank not named")} · ${a.account_number}` : key;
 }
 
-function accountRow(a, signed, flagById) {
+function accountRow(a, signed) {
   const m = a.max;
   const corrected = a.key in state.review.overrides;
   const select = el("select", { "aria-label": `Ownership of ${a.account_number}`, disabled: signed || !a.identified,
@@ -227,12 +258,12 @@ function chips(f) {
   return el("span", { class: "sources" }, ...f.sources.filter((s) => s.upload).map((s, i) => {
     const key = `flag:${f.id}:${i}`;
     return el("button", { class: "source-chip", "data-key": key, "aria-pressed": "false",
-      onclick: () => show(f.sources.slice(i).concat(f.sources.slice(0, i)), key, FLAG[f.code] ? FLAG[f.code](f) : f.code) }, s.wp);
+      onclick: () => show(f.sources.slice(i).concat(f.sources.slice(0, i)), key, flagTitle(f)) }, s.wp);
   }));
 }
 
 function itemRow(f, ack, signed, ws) {
-  const title = FLAG[f.code] ? FLAG[f.code](f) : f.code;
+  const title = flagTitle(f);
   const actions = ack
     ? (signed ? null : el("button", { class: "link", onclick: async () => { state = await api("/api/reopen", { flag: f.id, reviewer: reviewer() || "reviewer" }); render(); } }, "Reopen"))
     : el("button", { class: "ack", disabled: signed, onclick: async () => {
@@ -273,4 +304,9 @@ $("approve-summary").addEventListener("click", async () => {
 $("reviewer").value = (() => { try { return localStorage.getItem("reviewer") || ""; } catch { return ""; } })();
 $("reviewer").addEventListener("change", () => { try { localStorage.setItem("reviewer", reviewer()); } catch { /* private mode */ } });
 
-api("/api/state").then((s) => { state = s; render(); }).catch((e) => { $("meta").textContent = `Couldn't load the worksheet: ${e.message}`; });
+try {
+  state = await api("/api/state");
+  render();
+} catch (e) {
+  $("meta").textContent = `Couldn't load the worksheet: ${e.message}`;
+}

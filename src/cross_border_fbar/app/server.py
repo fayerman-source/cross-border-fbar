@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import mimetypes
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -38,8 +37,42 @@ def generate_summary(facts: dict) -> tuple[str, dict]:
     }
 
 
+# Only these file types are ever served, each with a fixed content type.
+CONTENT_TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".png": "image/png",
+    ".woff2": "font/woff2",
+    ".ttf": "font/ttf",
+    ".txt": "text/plain; charset=utf-8",
+}
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'; "
+    "font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+    "Referrer-Policy": "no-referrer",
+    "Cache-Control": "no-store",
+}
+
+
+def contained(root: Path, relative: str, flat: bool = False) -> Path | None:
+    """The file under root that relative names, or None if it escapes root or isn't a servable type."""
+    root = root.resolve()
+    target = (root / relative).resolve()
+    inside = target.parent == root if flat else root in target.parents
+    if inside and target.is_file() and target.suffix in CONTENT_TYPES:
+        return target
+    return None
+
+
 def make_handler(review: Review, set_dir: Path):
-    pages_dir = (set_dir / "pages").resolve()
+    # URL prefix -> (folder, flat): flat folders serve direct children only.
+    file_roots = {
+        "/static/": (STATIC, False),
+        "/fonts/": (FONTS_DIR, True),  # the repo's Korean font, for the client summary
+        "/doc/pages/": (set_dir / "pages", True),
+    }
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):  # quiet console
@@ -49,43 +82,45 @@ def make_handler(review: Review, set_dir: Path):
             self.send_response(status)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
+            for k, v in SECURITY_HEADERS.items():
+                self.send_header(k, v)
             self.end_headers()
             self.wfile.write(body)
 
         def _json(self, obj, status: int = 200) -> None:
-            self._send(
-                status, json.dumps(obj, ensure_ascii=False).encode(), "application/json; charset=utf-8"
-            )
+            body = json.dumps(obj, ensure_ascii=False).encode()
+            self._send(status, body, "application/json; charset=utf-8")
 
         def _file(self, path: Path) -> None:
-            ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-            self._send(200, path.read_bytes(), ctype)
+            self._send(200, path.read_bytes(), CONTENT_TYPES[path.suffix])
+
+        def _static_target(self, path: str) -> Path | None:
+            if path in ("/", "/index.html"):
+                return STATIC / "index.html"
+            for prefix, (root, flat) in file_roots.items():
+                if path.startswith(prefix):
+                    return contained(root, path.removeprefix(prefix), flat)
+            return None
+
+        def _api_get(self, path: str):
+            if path == "/api/state":
+                return review.view()
+            if path == "/api/export":
+                return review.export()
+            return None
 
         def do_GET(self):
             path = self.path.split("?", 1)[0]
-            if path in ("/", "/index.html"):
-                return self._file(STATIC / "index.html")
-            if path.startswith("/static/"):
-                target = (STATIC / path.removeprefix("/static/")).resolve()
-                if target.is_file() and STATIC.resolve() in target.parents:
-                    return self._file(target)
-            if path.startswith("/fonts/"):  # the repo's Korean font, for the client summary
-                target = (FONTS_DIR / path.removeprefix("/fonts/")).resolve()
-                if target.is_file() and target.parent == FONTS_DIR:
-                    return self._file(target)
-            if path.startswith("/doc/pages/"):
-                target = (pages_dir / path.removeprefix("/doc/pages/")).resolve()
-                if target.is_file() and target.parent == pages_dir:
-                    return self._file(target)
-            if path == "/api/state":
-                return self._json(review.view())
-            if path == "/api/export":
-                try:
-                    return self._json(review.export())
-                except ReviewError as e:
-                    return self._json({"error": str(e)}, HTTPStatus.CONFLICT)
-            self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+            target = self._static_target(path)
+            if target is not None:
+                return self._file(target)
+            try:
+                payload = self._api_get(path)
+            except ReviewError as e:
+                return self._json({"error": str(e)}, HTTPStatus.CONFLICT)
+            if payload is None:
+                return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+            self._json(payload)
 
         def do_POST(self):
             length = int(self.headers.get("Content-Length") or 0)

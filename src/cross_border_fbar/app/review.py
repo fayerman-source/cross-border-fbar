@@ -19,8 +19,13 @@ from pathlib import Path
 from .worksheet import Inputs, build, worksheet_hash
 
 OWNERSHIPS = ("sole", "joint", "signature_authority")
-# Words that would turn a summary into advice or an obligation; the scope line forbids them.
-OUT_OF_SCOPE = re.compile(r"신고해야|신고 의무|벌금|과태료|처벌|면제|must file|required to file|penalt", re.I)
+# A client summary describes what was reviewed; it never talks about filing, obligations or penalties.
+# Korean is matched by stem so polite inflections (신고하셔야 합니다, 신고 대상입니다) can't slip through.
+OUT_OF_SCOPE = re.compile(
+    r"신고|제출\s*(?:하|해|의무|대상|필요)|의무|대상자|벌금|과태료|가산세|처벌|면제|납부|"
+    r"\b(?:must|required to|need to|obligat\w*)\s+(?:file|report|submit)|\bpenalt|\bfines?\b|\bexempt",
+    re.I,
+)
 
 
 # Client-facing descriptions of review items; the model translates these, never the CPA's notes.
@@ -43,14 +48,22 @@ def _fmt(amount: str | None, currency: str | None) -> str | None:
     return f"{float(amount):,.{digits}f} {currency or ''}".strip()
 
 
+def confined(path: Path, root: Path) -> Path:
+    """The review folder must sit inside root (the working directory by default)."""
+    root, target = root.resolve(), (root / path).resolve()
+    if target != root and root not in target.parents:
+        raise ValueError(f"review folder {path} is outside {root}")
+    return target
+
+
 class ReviewError(Exception):
     pass
 
 
 class Review:
-    def __init__(self, inputs: Inputs, review_dir: Path):
+    def __init__(self, inputs: Inputs, review_dir: Path, root: Path | None = None):
         self.inputs = inputs
-        self.dir = review_dir
+        self.dir = confined(review_dir, root or Path.cwd())
         self.dir.mkdir(parents=True, exist_ok=True)
         self.state_path = self.dir / "state.json"
         self.audit_path = self.dir / "audit.jsonl"
@@ -61,6 +74,23 @@ class Review:
             else {"acks": {}, "overrides": {}, "signoff": None, "summary": None}
         )
         self.worksheet = build(inputs, self.state["overrides"])
+        self._revalidate_signoff()
+
+    def _revalidate_signoff(self) -> None:
+        """A sign-off covers the figures it fingerprinted. If the readings or intake changed since,
+        the old sign-off no longer applies: keep it on record, clear it, and require a new review."""
+        signed = self.state["signoff"]
+        if signed and signed["hash"] != worksheet_hash(self.worksheet):
+            self.state.setdefault("invalidated_signoffs", []).append(signed)
+            self.state["signoff"] = None
+            self.state["summary"] = None
+            self._audit(
+                "signoff_invalidated",
+                "system",
+                reason="the worksheet changed after sign-off",
+                signed_hash=signed["hash"],
+                current_hash=worksheet_hash(self.worksheet),
+            )
 
     # -- views ---------------------------------------------------------------------------------
     def open_review_flags(self) -> list[str]:
@@ -150,6 +180,8 @@ class Review:
     def export(self) -> dict:
         if not self.state["signoff"]:
             raise ReviewError("Sign off before exporting.")
+        if self.state["signoff"]["hash"] != worksheet_hash(self.worksheet):
+            raise ReviewError("The worksheet changed after sign-off; review and sign off again.")
         return {
             "worksheet": self.worksheet,
             "signoff": self.state["signoff"],

@@ -27,7 +27,7 @@ def inputs(tmp_path_factory) -> Inputs:
 
 @pytest.fixture
 def review(inputs, tmp_path) -> Review:
-    return Review(inputs, tmp_path / "review")
+    return Review(inputs, tmp_path / "review", root=tmp_path)
 
 
 def test_worksheet_traces_every_figure_and_never_reads_the_answer_key(inputs, monkeypatch):
@@ -95,7 +95,9 @@ def test_summary_only_after_sign_off_and_out_of_scope_drafts_are_held(review):
 
 
 def test_server_serves_pages_but_not_files_outside_them(inputs, tmp_path):
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(Review(inputs, tmp_path / "r"), inputs.set_dir))
+    srv = ThreadingHTTPServer(
+        ("127.0.0.1", 0), make_handler(Review(inputs, tmp_path / "r", root=tmp_path), inputs.set_dir)
+    )
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{srv.server_address[1]}"
     try:
@@ -110,3 +112,44 @@ def test_server_serves_pages_but_not_files_outside_them(inputs, tmp_path):
         assert e.value.code == 409
     finally:
         srv.shutdown()
+
+
+def test_a_sign_off_is_invalidated_when_the_figures_change(inputs, tmp_path):
+    """Codex review on #5: a restart with changed readings or intake kept the old sign-off."""
+    first = Review(inputs, tmp_path / "rv", root=tmp_path)
+    for fid in first.open_review_flags():
+        first.acknowledge(fid, "checked", "A. Rivera")
+    first.sign_off("A. Rivera", "AR")
+    intake = json.loads(inputs.intake.read_text())
+    intake["accounts"][0]["ownership"] = "joint"  # the figures that were signed no longer match
+    changed = tmp_path / "intake-changed.json"
+    changed.write_text(json.dumps(intake))
+    again = Review(Inputs(inputs.set_dir, inputs.readings, changed), tmp_path / "rv", root=tmp_path)
+    assert again.state["signoff"] is None
+    assert again.state["invalidated_signoffs"][0]["initials"] == "AR"
+    assert again.audit_tail(1)[0]["action"] == "signoff_invalidated"
+    with pytest.raises(ReviewError):
+        again.export()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "신고하셔야 합니다",
+        "신고 대상입니다",
+        "서류를 제출하셔야 합니다",
+        "가산세가 부과될 수 있습니다",
+        "You must file an FBAR.",
+        "Penalties may apply.",
+    ],
+)
+def test_scope_guard_catches_obligation_wording_in_any_inflection(text):
+    """Codex review on #5: polite Korean inflections slipped past the literal patterns."""
+    from cross_border_fbar.app.review import OUT_OF_SCOPE
+
+    assert OUT_OF_SCOPE.search(text)
+
+
+def test_review_folder_must_stay_inside_the_working_directory(inputs, tmp_path):
+    with pytest.raises(ValueError):
+        Review(inputs, tmp_path / ".." / "elsewhere", root=tmp_path)
