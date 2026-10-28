@@ -13,7 +13,7 @@ const FLAG = {
   missing_statement: (f) => `No statement for ${f.month}`,
   coverage_gap: () => "Days in the year no statement covers",
   signature_authority_only: () => "Signature authority only, no financial interest",
-  institution_changed: () => "Bank changed during the year",
+  institution_names_differ: () => "Statements print different bank names",
   max_from_computed_balance: () => "Highest balance computed from the lines; not printed",
   no_balance_anchor: () => "No balance on any document: the maximum can't be determined",
   account_number_masked: () => "Account number partly masked: can't be matched to an account",
@@ -30,13 +30,14 @@ const FLAG = {
 
 // Show the reconciler's message only where it adds facts the title doesn't carry.
 const DETAIL = new Set(["possible_intraday_peak", "arithmetic_mismatch", "continuity_break", "coverage_gap",
-  "field_unreadable", "institution_changed", "out_of_year_statement", "currency_conflict", "duplicate_upload"]);
+  "field_unreadable", "institution_names_differ", "out_of_year_statement", "currency_conflict", "duplicate_upload"]);
 const ACTION = {
   no_balance_anchor: "Request statements showing balances for this account.",
   missing_statement: "Request the missing statement, or confirm none exists.",
   account_number_masked: "Match these rows to a known account, or request the full account number.",
   signature_authority_only: "Confirm the client has signature authority but no financial interest.",
   possible_intraday_peak: "Check whether the same-day deposit cleared before the withdrawal.",
+  institution_names_differ: "Confirm whether the bank changed (merger or rename) or one bank is printed two ways.",
 };
 
 function money(amount, ccy) {
@@ -244,7 +245,7 @@ function accountRow(a, signed) {
   const banks = a.institutions;
   return el("tr", { class: a.identified ? "" : "unidentified" },
     el("td", { class: "bank" }, banks.length ? banks[banks.length - 1] : "—",
-      banks.length > 1 ? el("span", { class: "sub" }, `formerly ${banks.slice(0, -1).join(", ")}`) : null,
+      banks.length > 1 ? el("span", { class: "sub" }, `also printed as ${banks.slice(0, -1).join(", ")}`) : null,
       a.holders[0] ? el("span", { class: "sub holder", title: a.holders.join("; ") }, a.holders[0]) : null),
     el("td", {}, el("span", { class: "acct" }, a.account_number)),
     el("td", { class: "ownership" }, select, corrected ? el("span", { class: "corrected" }, "corrected by reviewer") : null),

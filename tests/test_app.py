@@ -51,14 +51,15 @@ def test_sign_off_needs_every_review_item_and_then_freezes(review):
         review.sign_off("A. Rivera", "AR")
     with pytest.raises(ReviewError, match="note"):
         review.acknowledge(review.open_review_flags()[0], "  ", "A. Rivera")
-    for fid in review.open_review_flags():
+    open_items = review.open_review_flags()
+    for fid in open_items:
         review.acknowledge(fid, "checked", "A. Rivera")
     review.sign_off("A. Rivera", "AR")
     assert review.state["signoff"]["hash"] == worksheet_hash(review.worksheet)
     with pytest.raises(ReviewError, match="signed off"):
         review.set_ownership(review.worksheet["accounts"][0]["key"], "joint", "late", "A. Rivera")
     actions = [e["action"] for e in review.audit_tail(100)]
-    assert actions.count("acknowledge") == 5
+    assert actions.count("acknowledge") == len(open_items) > 0
     assert actions[-1] == "sign_off"
 
 
@@ -177,3 +178,21 @@ def test_two_coverage_gaps_on_one_account_need_separate_acknowledgements():
     a = Flag("coverage_gap", "review", "no statement covers 2025-01-01 to 2025-01-14")
     b = Flag("coverage_gap", "review", "no statement covers 2025-12-16 to 2025-12-31")
     assert flag_id("ACC1", a) != flag_id("ACC1", b)
+
+
+def test_every_review_flag_has_a_client_label_and_a_worksheet_title():
+    """A review flag without a label reached the client summary as its raw code. Read the codes from the
+    reconciler's source so a new flag can't be added without both."""
+    import re
+    from pathlib import Path
+
+    from cross_border_fbar.app.review import CLIENT_LABELS
+
+    pkg = Path(__file__).resolve().parents[1] / "src" / "cross_border_fbar"
+    source = "".join(p.read_text() for p in (pkg / "reconcile").glob("*.py"))
+    review_codes = set(re.findall(r'Flag\(\s*"([a-z_]+)",\s*"review"', source))
+    assert {"institution_names_differ", "possible_intraday_peak", "ownership_unknown"} <= review_codes
+    assert review_codes - set(CLIENT_LABELS) == set()
+    app_js = (pkg / "app" / "static" / "app.js").read_text()
+    titled = set(re.findall(r"^\s+([a-z_]+): \(", app_js, re.M))
+    assert review_codes - titled == set()

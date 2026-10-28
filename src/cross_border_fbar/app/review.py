@@ -38,6 +38,11 @@ CLIENT_LABELS = {
     "arithmetic_mismatch": "a printed balance was checked against the transactions",
     "continuity_break": "the balances between two statements were checked",
     "coverage_gap": "some days of the year are not covered by a statement",
+    "institution_names_differ": "the bank name differs between statements and was checked",
+    "currency_conflict": "the currency shown on the statements was checked",
+    "currency_unknown": "the account's currency was checked against the Treasury exchange rates",
+    "ownership_unknown": "who owns the account was confirmed with the client",
+    "field_unreadable": "a part of a statement that couldn't be read was checked",
 }
 
 
