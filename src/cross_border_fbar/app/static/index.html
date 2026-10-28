@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FBAR worksheet · review</title>
+  <link rel="stylesheet" href="/static/fonts.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="wp-header">
+    <div class="wp-title">
+      <p class="eyebrow">Working paper · FinCEN 114</p>
+      <h1>FBAR worksheet</h1>
+      <p class="wp-meta" id="meta">Loading…</p>
+    </div>
+    <dl class="wp-boxes">
+      <div class="wp-box"><dt>Prepared</dt><dd id="prepared">—</dd></div>
+      <div class="wp-box wp-box--review"><dt>Reviewed</dt><dd id="reviewed"><span class="pending">not yet</span></dd></div>
+    </dl>
+  </header>
+  <p class="scope" id="scope"></p>
+
+  <main class="layout">
+    <section class="paper" aria-label="Worksheet">
+      <section class="schedule" aria-labelledby="sched-a">
+        <h2 id="sched-a"><span class="sched-letter">A</span> Foreign accounts</h2>
+        <div class="table-wrap">
+          <table class="accounts">
+            <colgroup><col class="c-bank"><col class="c-acct"><col class="c-own"><col class="c-max"><col class="c-usd"></colgroup>
+            <thead>
+              <tr>
+                <th scope="col">Bank</th>
+                <th scope="col">Account</th>
+                <th scope="col">Ownership</th>
+                <th scope="col" class="num">Highest balance</th>
+                <th scope="col" class="num">USD <span class="th-sub">at Treasury rate</span></th>
+              </tr>
+            </thead>
+            <tbody id="accounts"></tbody>
+            <tfoot><tr id="aggregate"></tr></tfoot>
+          </table>
+        </div>
+        <p class="rate-note" id="rate-note"></p>
+      </section>
+
+      <section class="schedule" aria-labelledby="sched-b">
+        <h2 id="sched-b"><span class="sched-letter">B</span> Review items <span class="count" id="open-count"></span></h2>
+        <ol class="items" id="items"></ol>
+        <details class="info-items">
+          <summary id="info-summary">Notes</summary>
+          <ul id="info-items"></ul>
+        </details>
+      </section>
+
+      <section class="schedule signoff" aria-labelledby="sched-c">
+        <h2 id="sched-c"><span class="sched-letter">C</span> Sign-off</h2>
+        <form id="signoff-form" class="signoff-form">
+          <label>Your name <input id="reviewer" autocomplete="name" required></label>
+          <label>Initials <input id="initials" maxlength="4" required></label>
+          <button type="submit" id="signoff-btn">Sign off worksheet</button>
+        </form>
+        <p class="hint" id="signoff-hint"></p>
+        <div id="after-signoff" hidden>
+          <p class="signed" id="signed-line"></p>
+          <p><a href="/api/export" id="export" download="fbar-worksheet-signed.json">Download signed worksheet (JSON)</a></p>
+          <div class="client-summary">
+            <h3>Client summary in Korean</h3>
+            <p class="hint">Drafted from the signed figures only, checked against the scope line, released only when you approve it.</p>
+            <button type="button" id="draft-summary">Draft summary</button>
+            <div id="summary-box" hidden>
+              <pre class="ko" id="summary-text" lang="ko"></pre>
+              <p class="blocked" id="summary-blocked" hidden></p>
+              <button type="button" id="approve-summary">Approve for release</button>
+              <p class="signed" id="summary-approved" hidden></p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <details class="audit">
+        <summary>Audit trail</summary>
+        <ol id="audit"></ol>
+      </details>
+    </section>
+
+    <aside class="viewer" aria-label="Source document">
+      <p class="viewer-caption" id="viewer-caption">Select a figure or a review item to see the line it comes from.</p>
+      <div class="sheet" id="sheet">
+        <img id="page" alt="">
+        <svg id="marks" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true"></svg>
+      </div>
+    </aside>
+  </main>
+
+  <dialog id="note-dialog">
+    <form method="dialog" class="note-form">
+      <h3 id="note-title"></h3>
+      <label>Note for the audit trail <textarea id="note-text" rows="3" required></textarea></label>
+      <menu>
+        <button value="cancel" type="button" id="note-cancel">Cancel</button>
+        <button value="ok" id="note-ok">Save</button>
+      </menu>
+    </form>
+  </dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

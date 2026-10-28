@@ -25,3 +25,19 @@ This generates a year of monthly statements for one fictional household (Korean,
 | Thai savings | Buddhist-era dates; a same-day pair posted debit-first hides a possible intraday peak |
 
 The answer key follows FinCEN's and the IRS's rules: the maximum is the largest balance appearing on any statement, converted at the Treasury Dec 31 rate and rounded up. Every field and line also carries its position on the page (0-1000 grid), so extracted locations can be scored.
+
+## The review worksheet
+
+```bash
+uv run python -m cross_border_fbar.app --set out/synth --readings results/muse-spark-1.3_synth.json
+# open http://127.0.0.1:8765
+```
+
+A local app for the preparer. It runs offline, binds to localhost, and needs no build step.
+
+- **Schedule A** lists each account's highest balance with a tickmark and a workpaper reference. Click a figure to see the source page with the line circled.
+- **Schedule B** lists the review items. Each must be acknowledged with a note; ownership (owner, joint, signature authority) can be corrected, and the worksheet recomputes.
+- **Sign-off** is allowed only when every review item is acknowledged. It freezes the worksheet and records a fingerprint; export exists only after it.
+- **Client summary in Korean** is drafted by `muse-spark-1.3` from the signed figures only (last four digits, no statement contents, none of the preparer's notes). It is checked against the scope line, and released only when the preparer approves it.
+
+Every action goes to an audit trail (`out/review/audit.jsonl`). The app reads the model's recorded page readings and the intake facts, never the answer key.
