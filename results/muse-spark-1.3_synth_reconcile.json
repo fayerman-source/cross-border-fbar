@@ -1,12 +1,12 @@
 {
  "model": "muse-spark-1.3",
  "summary": {
-  "accounts_found": "4/4",
-  "max_value_ok": "4/4",
-  "max_source_ok": "4/4",
-  "usd_ok": "4/4",
+  "accounts_found": "6/6",
+  "max_value_ok": "6/6",
+  "max_source_ok": "6/6",
+  "usd_ok": "6/6",
   "flags": {
-   "true_positive": 7,
+   "true_positive": 9,
    "false_positive": 0,
    "missed": 0
   },
@@ -84,6 +84,42 @@
    "got": {
     "max": "412350.25",
     "usd": 13025
+   },
+   "flags_missed": [],
+   "flags_extra": [],
+   "unscored_review_flags": []
+  },
+  {
+   "account_id": "kr-mmda",
+   "found": true,
+   "max_ok": true,
+   "max_source_ok": true,
+   "usd_ok": true,
+   "want": {
+    "max": null,
+    "usd": null
+   },
+   "got": {
+    "max": null,
+    "usd": null
+   },
+   "flags_missed": [],
+   "flags_extra": [],
+   "unscored_review_flags": []
+  },
+  {
+   "account_id": "masked-checking",
+   "found": true,
+   "max_ok": true,
+   "max_source_ok": true,
+   "usd_ok": true,
+   "want": {
+    "max": null,
+    "usd": null
+   },
+   "got": {
+    "max": null,
+    "usd": null
    },
    "flags_missed": [],
    "flags_extra": [],

@@ -29,21 +29,36 @@ def evaluate(set_dir: Path, model: str, mode: str, workers: int, limit: int | No
         statements = statements[:limit]
     client = Client(mode=mode)
 
-    def one(st: dict) -> dict:
-        if not st.get("page_images"):
-            return {"statement_id": st["statement_id"], "error": "no page image (generate with --png)"}
-        if st["pages"] != 1:
-            return {"statement_id": st["statement_id"], "error": "multi-page statements not scored yet"}
-        image = set_dir / st["page_images"][0]["file"]
-        try:
-            reading, meta = read_page(client, model, image, label=f"eval:{st['statement_id']}")
-        except NotRecorded as e:
-            return {"statement_id": st["statement_id"], "error": str(e)}
-        snapped = snap_rows(reading, image)
-        return {**score_page(st, reading, snapped), "call": meta, "reading": reading}
+    def page_view(st: dict, page: int) -> dict:
+        """The fields and rows printed on one page of a document."""
+        return {
+            **st,
+            "fields": {k: v for k, v in st["fields"].items() if v["page"] == page},
+            "transactions": [t for t in st["transactions"] if t["page"] == page],
+            "doc_currency": (st["fields"].get("currency") or {}).get("value"),
+        }
 
+    def one(task: tuple[dict, int]) -> dict:
+        st, page = task
+        ident = {"statement_id": st["statement_id"], "page": page}
+        if not st.get("page_images"):
+            return {**ident, "error": "no page image (generate with --png)"}
+        image = set_dir / st["page_images"][page - 1]["file"]
+        try:
+            reading, meta = read_page(client, model, image, label=f"eval:{st['statement_id']}:p{page}")
+        except (NotRecorded, RuntimeError) as e:  # an API error fails this page, not the whole run
+            return {**ident, "error": str(e)}
+        snapped = snap_rows(reading, image)
+        return {
+            **score_page(page_view(st, page), reading, snapped),
+            **ident,
+            "call": meta,
+            "reading": reading,
+        }
+
+    tasks = [(st, p) for st in statements for p in range(1, (st.get("pages") or 1) + 1)]
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        pages = list(pool.map(one, statements))
+        pages = list(pool.map(one, tasks))
     scored = [p for p in pages if "error" not in p]
     return {
         "model": model,

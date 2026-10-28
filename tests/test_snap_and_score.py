@@ -121,3 +121,22 @@ def test_eval_reports_statements_without_page_images(tmp_path):
     assert result["summary"] == {}
     assert [e["statement_id"] for e in result["errors"]] == ["x_2025-01"]
     assert "--png" in result["errors"][0]["error"]
+
+
+def test_shared_amount_column_gives_no_column_pattern():
+    from PIL import Image
+
+    from cross_border_fbar.extract.snap import _column_pattern
+
+    box = {"x_min": 600, "y_min": 0, "x_max": 700, "y_max": 10}
+    rows = [{"amount_bbox": box, "amount_column": "debit"}, {"amount_bbox": box, "amount_column": "credit"}]
+    assert _column_pattern(rows, [(0, 10), (20, 30)], Image.new("L", (100, 100), 255)) is None
+
+
+def test_fallback_alignment_accepts_strong_compression():
+    """Run 3 on Oct 27: rows compressed 16%; a +/-15% scale guard excluded the right run."""
+    bands = [(i * 22, i * 22 + 10) for i in range(20)]
+    true_start = 11
+    model = [bands[true_start][0] + 5 + i * 18.4 for i in range(6)]  # 16% tighter spacing
+    idx, _ = align_rows(model, bands)
+    assert idx[0] == true_start

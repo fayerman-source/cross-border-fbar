@@ -17,7 +17,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from .. import rates
-from ..extract.parse import normalize_account_number
+from ..extract.parse import account_key
 from ..extract.snap import snap_rows
 from ..reconcile.accounts import Intake, reconcile
 from ..reconcile.fbar import fbar_totals
@@ -31,6 +31,8 @@ SCORED_CODES = {
     "missing_statement",
     "signature_authority_only",
     "institution_changed",
+    "no_balance_anchor",
+    "account_number_masked",
 }
 
 
@@ -55,13 +57,14 @@ def evaluate(set_dir: Path, model: str) -> dict:
         if "reading" not in page:
             continue
         st = next(s for s in truth["statements"] if s["statement_id"] == page["statement_id"])
-        image = set_dir / st["page_images"][0]["file"]
-        upload = st["page_images"][0]["file"]  # an upload name; reconciliation never parses it
+        page_image = st["page_images"][page.get("page", 1) - 1]
+        image = set_dir / page_image["file"]
+        upload = page_image["file"]  # an upload name per page; reconciliation never parses it
         upload_to_statement[upload] = st["statement_id"]
         observations.append(observe(page["reading"], upload, snap_rows(page["reading"], image)))
 
     intake = {
-        normalize_account_number(a["account_number"]): Intake(a["ownership"], a["financial_interest"])
+        account_key(a["account_number"]): Intake(a["ownership"], a["financial_interest"])
         for a in truth["accounts"]
     }
     results = reconcile(
@@ -75,7 +78,8 @@ def evaluate(set_dir: Path, model: str) -> dict:
 
     accounts, tp, fp, fn = [], 0, 0, 0
     for acct in truth["accounts"]:
-        r = by_key.get(normalize_account_number(acct["account_number"]))
+        r = by_key.get(account_key(acct["account_number"]))
+        want_max = acct["max_value"]
         want_flags = _expected_flags(acct)
         got_flags = {f for f in _got_flags(r) if f[0] in SCORED_CODES} if r else set()
         extra_review = (
@@ -90,17 +94,24 @@ def evaluate(set_dir: Path, model: str) -> dict:
             {
                 "account_id": acct["account_id"],
                 "found": r is not None,
-                "max_ok": bool(
-                    r and r.max_value and r.max_value.amount == Decimal(acct["max_value"]["amount"])
+                # An unknowable maximum is right only when the tool also reports none.
+                "max_ok": bool(r)
+                and (
+                    r.max_value is None
+                    if want_max is None
+                    else bool(r.max_value and r.max_value.amount == Decimal(want_max["amount"]))
                 ),
-                "max_source_ok": bool(
-                    r
-                    and r.max_value
-                    and upload_to_statement.get(r.max_value.source.upload)
-                    == acct["max_value"]["statement_id"]
+                "max_source_ok": bool(r)
+                and (
+                    r.max_value is None
+                    if want_max is None
+                    else bool(
+                        r.max_value
+                        and upload_to_statement.get(r.max_value.source.upload) == want_max["statement_id"]
+                    )
                 ),
                 "usd_ok": bool(r and r.max_value_usd == acct["max_value_usd"]),
-                "want": {"max": acct["max_value"]["amount"], "usd": acct["max_value_usd"]},
+                "want": {"max": want_max["amount"] if want_max else None, "usd": acct["max_value_usd"]},
                 "got": {
                     "max": str(r.max_value.amount) if r and r.max_value else None,
                     "usd": r.max_value_usd if r else None,
@@ -126,7 +137,7 @@ def evaluate(set_dir: Path, model: str) -> dict:
                 "want": truth["household"]["aggregate_max_usd"],
             },
             "extra_accounts": sorted(
-                set(by_key) - {normalize_account_number(a["account_number"]) for a in truth["accounts"]}
+                set(by_key) - {account_key(a["account_number"]) for a in truth["accounts"]}
             ),
         },
         "accounts": accounts,

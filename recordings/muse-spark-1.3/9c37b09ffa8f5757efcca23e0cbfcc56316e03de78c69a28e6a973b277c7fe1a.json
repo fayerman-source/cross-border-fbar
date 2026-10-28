@@ -1,0 +1,19 @@
+{
+ "label": "eval:compiled-ledger:p2",
+ "model": "muse-spark-1.3",
+ "content": "{\"account_number\": {\"bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"status\": \"absent\", \"text\": \"\"}, \"closing_balance\": {\"bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"status\": \"absent\", \"text\": \"\"}, \"currency\": {\"bbox\": {\"x_max\": 594, \"x_min\": 575, \"y_max\": 82, \"y_min\": 68}, \"status\": \"read\", \"text\": \"원\"}, \"holder\": {\"bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"status\": \"absent\", \"text\": \"\"}, \"institution\": {\"bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"status\": \"absent\", \"text\": \"\"}, \"opening_balance\": {\"bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"status\": \"absent\", \"text\": \"\"}, \"period\": {\"bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"status\": \"absent\", \"text\": \"\"}, \"rows\": [{\"account_text\": \"110-731-552904\", \"amount_bbox\": {\"x_max\": 617, \"x_min\": 545, \"y_max\": 106, \"y_min\": 92}, \"amount_column\": \"credit\", \"amount_text\": \"7,092,000\", \"balance_bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"balance_text\": \"\", \"date_text\": \"2025-12-08\", \"description\": \"정슬기\", \"row_bbox\": {\"x_max\": 932, \"x_min\": 69, \"y_max\": 112, \"y_min\": 88}}, {\"account_text\": \"110-731-552904\", \"amount_bbox\": {\"x_max\": 619, \"x_min\": 542, \"y_max\": 128, \"y_min\": 114}, \"amount_column\": \"credit\", \"amount_text\": \"10,190,000\", \"balance_bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"balance_text\": \"\", \"date_text\": \"2025-12-12\", \"description\": \"정슬기\", \"row_bbox\": {\"x_max\": 932, \"x_min\": 69, \"y_max\": 132, \"y_min\": 111}}, {\"account_text\": \"110-731-552904\", \"amount_bbox\": {\"x_max\": 617, \"x_min\": 547, \"y_max\": 149, \"y_min\": 135}, \"amount_column\": \"debit\", \"amount_text\": \"5,868,190\", \"balance_bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"balance_text\": \"\", \"date_text\": \"2026-01-14\", \"description\": \"\", \"row_bbox\": {\"x_max\": 932, \"x_min\": 69, \"y_max\": 154, \"y_min\": 132}}, {\"account_text\": \"110-731-552904\", \"amount_bbox\": {\"x_max\": 617, \"x_min\": 547, \"y_max\": 170, \"y_min\": 157}, \"amount_column\": \"debit\", \"amount_text\": \"6,021,000\", \"balance_bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"balance_text\": \"\", \"date_text\": \"2026-01-25\", \"description\": \"\", \"row_bbox\": {\"x_max\": 932, \"x_min\": 69, \"y_max\": 175, \"y_min\": 154}}, {\"account_text\": \"110-731-552904\", \"amount_bbox\": {\"x_max\": 617, \"x_min\": 547, \"y_max\": 191, \"y_min\": 178}, \"amount_column\": \"debit\", \"amount_text\": \"4,178,000\", \"balance_bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"balance_text\": \"\", \"date_text\": \"2026-01-26\", \"description\": \"\", \"row_bbox\": {\"x_max\": 932, \"x_min\": 69, \"y_max\": 196, \"y_min\": 175}}]}",
+ "usage": {
+  "completion_tokens": 4910,
+  "prompt_tokens": 3237,
+  "total_tokens": 8147,
+  "completion_tokens_details": {
+   "reasoning_tokens": 3826
+  },
+  "prompt_tokens_details": {
+   "cached_tokens": 478
+  }
+ },
+ "cost_usd": 0.024388,
+ "latency_s": 14.71,
+ "finish_reason": "stop"
+}

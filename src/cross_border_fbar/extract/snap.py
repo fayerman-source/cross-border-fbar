@@ -28,7 +28,7 @@ from pathlib import Path
 from PIL import Image
 
 INK_THRESHOLD = 160  # 0-255; the light grey row rules (225) don't count as ink
-MAX_SCALE_DEVIATION = 0.15
+MAX_SCALE_DEVIATION = 0.35  # observed row-spacing compression: 8% (Oct 27 run 1), 16% (run 3)
 MAX_PATTERN_SHIFT = 45.0  # grid units; about two printed lines
 MIN_MARGIN = 3.0  # grid units between best and runner-up alignment cost
 
@@ -92,7 +92,7 @@ def align_rows(
         return None
     costs.sort()
     margin = costs[1][0] - costs[0][0] if len(costs) > 1 else float("inf")
-    if margin < MIN_MARGIN:
+    if margin < MIN_MARGIN or not _near(row_centres, bands, costs[0][1]):
         return None
     return [costs[0][1] + i for i in range(k)], margin
 
@@ -116,6 +116,9 @@ def _column_pattern(
             cols[c] = (min(lo, b["x_min"]), max(hi, b["x_max"]))
     if len(cols) < 2:
         return None  # one column only: the pattern can't tell the header from a row
+    (d0, d1), (c0, c1) = cols["debit"], cols["credit"]
+    if d0 < c1 and c0 < d1:
+        return None  # in and out share one amount column (direction printed elsewhere): no pattern
     w, h = img.size
     pixels = img.load()
 

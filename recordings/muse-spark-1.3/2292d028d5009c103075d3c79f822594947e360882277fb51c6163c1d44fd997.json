@@ -1,0 +1,19 @@
+{
+ "label": "eval:th-savings_2025-11:p1",
+ "model": "muse-spark-1.3",
+ "content": "{\"account_number\":{\"bbox\":{\"x_max\":321,\"x_min\":227,\"y_max\":156,\"y_min\":141},\"status\":\"read\",\"text\":\"714-2-38065-9\"},\"closing_balance\":{\"bbox\":{\"x_max\":533,\"x_min\":443,\"y_max\":302,\"y_min\":287},\"status\":\"read\",\"text\":\"402,689.96\"},\"currency\":{\"bbox\":{\"x_max\":256,\"x_min\":227,\"y_max\":226,\"y_min\":212},\"status\":\"read\",\"text\":\"THB\"},\"holder\":{\"bbox\":{\"x_max\":387,\"x_min\":227,\"y_max\":136,\"y_min\":119},\"status\":\"read\",\"text\":\"MS. JUNG SEULGI JOY\"},\"institution\":{\"bbox\":{\"x_max\":253,\"x_min\":73,\"y_max\":74,\"y_min\":53},\"status\":\"read\",\"text\":\"ธนาคารสยามโลตัส\"},\"opening_balance\":{\"bbox\":{\"x_max\":927,\"x_min\":849,\"y_max\":263,\"y_min\":249},\"status\":\"read\",\"text\":\"402,689.96\"},\"period\":{\"bbox\":{\"x_max\":412,\"x_min\":227,\"y_max\":207,\"y_min\":192},\"status\":\"read\",\"text\":\"01/11/2568 - 30/11/2568\"},\"rows\":[]}",
+ "usage": {
+  "completion_tokens": 1919,
+  "prompt_tokens": 3237,
+  "total_tokens": 5156,
+  "completion_tokens_details": {
+   "reasoning_tokens": 1636
+  },
+  "prompt_tokens_details": {
+   "cached_tokens": 478
+  }
+ },
+ "cost_usd": 0.011676,
+ "latency_s": 9.23,
+ "finish_reason": "stop"
+}

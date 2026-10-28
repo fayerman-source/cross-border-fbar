@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from ..extract.parse import normalize_account_number, normalize_name, parse_amount, parse_date
+from ..extract.parse import normalize_account_number, normalize_name, parse_amount, parse_currency, parse_date
 
 FIELDS = ("institution", "currency", "account_number", "holder", "opening_balance", "closing_balance")
 
@@ -36,8 +36,8 @@ def _field_ok(name: str, got: dict, want) -> bool:
         return normalize_name(got["text"]) == normalize_name(want)
     if name == "institution":  # bilingual headers: the printed name plus a translation is still right
         return normalize_name(want) in normalize_name(got["text"])
-    if name == "currency":
-        return got["text"].strip().upper() == want
+    if name == "currency":  # "KRW", "₩" and "원" all mean won
+        return parse_currency(got["text"]) == want
     value = parse_amount(got["text"])
     return value is not None and value == Decimal(want)
 
@@ -50,9 +50,23 @@ def _signed_amount(row: dict) -> Decimal | None:
 
 
 def _score_fields(statement: dict, reading: dict) -> dict:
+    """Printed fields are scored on value and position; unprinted ones must be reported absent."""
     out = {}
     for name in FIELDS:
-        want, got = statement["fields"][name], reading[name]
+        want, got = statement["fields"].get(name), reading[name]
+        if want is None:
+            # Not printed in the header of this page. A unit repeated in a column header (금액(원)) is still
+            # a correct currency reading for the document.
+            repeated = name == "currency" and parse_currency(got["text"]) == statement.get("doc_currency")
+            out[name] = {
+                "want": None,
+                "got": got["text"],
+                "status": got["status"],
+                "value_ok": got["status"] == "absent" or not got["text"].strip() or repeated,
+                "centre_in_cell": None,
+                "iou_text": None,
+            }
+            continue
         out[name] = {
             "want": want["value"],
             "got": got["text"],
@@ -84,6 +98,8 @@ def _score_row(want: dict, got: dict, snapped: dict | None, year: int) -> dict:
         "date_ok": when is not None and when.isoformat() == want["date"],
         "amount_ok": _signed_amount(got) == Decimal(want["amount"]),
         "balance_ok": balance == Decimal(want["balance_after"]) if balance_printed else balance is None,
+        "account_ok": normalize_account_number(got.get("account_text", ""))
+        == normalize_account_number(want.get("account_printed", "")),
         **_boxes("", got, want, balance_printed),
     }
     if snapped:
@@ -128,12 +144,16 @@ def summarize(pages: list[dict], iou_ok: float = 0.5) -> dict:
         out = {
             "pages": len(ps),
             "fields_value_ok": frac(sum(x["value_ok"] for x in f), len(f)),
-            "fields_centre_in_cell": frac(sum(x["centre_in_cell"] for x in f), len(f)),
+            "fields_centre_in_cell": frac(
+                sum(bool(x["centre_in_cell"]) for x in f if x["centre_in_cell"] is not None),
+                sum(x["centre_in_cell"] is not None for x in f),
+            ),
             "rows_returned": frac(len(ret), len(r)),
             "extra_rows": sum(max(0, p["rows_returned"] - p["rows_expected"]) for p in ps),
             "date_ok": frac(sum(x["date_ok"] for x in ret), len(r)),
             "amount_ok": frac(sum(x["amount_ok"] for x in ret), len(r)),
             "balance_ok": frac(sum(x["balance_ok"] for x in ret), len(r)),
+            "row_account_ok": frac(sum(x["account_ok"] for x in ret), len(r)),
             "row_centre_in_row": frac(sum(x["row_centre_in_row"] for x in ret), len(r)),
             f"balance_iou_text>={iou_ok}": frac(sum(x["balance_iou_text"] >= iou_ok for x in bal), len(bal)),
         }

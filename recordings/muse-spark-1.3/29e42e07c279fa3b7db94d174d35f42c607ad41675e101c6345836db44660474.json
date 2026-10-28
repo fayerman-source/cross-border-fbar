@@ -1,0 +1,19 @@
+{
+ "label": "eval:de-joint_2025-01:p1",
+ "model": "muse-spark-1.3",
+ "content": "{\"account_number\": {\"bbox\": {\"x_max\": 455, \"x_min\": 225, \"y_max\": 164, \"y_min\": 144}, \"status\": \"read\", \"text\": \"DE36 9901 2345 0481 5273 60\"}, \"closing_balance\": {\"bbox\": {\"x_max\": 617, \"x_min\": 475, \"y_max\": 420, \"y_min\": 400}, \"status\": \"read\", \"text\": \"18.939,02 EUR\"}, \"currency\": {\"bbox\": {\"x_max\": 263, \"x_min\": 226, \"y_max\": 229, \"y_min\": 213}, \"status\": \"read\", \"text\": \"EUR\"}, \"holder\": {\"bbox\": {\"x_max\": 528, \"x_min\": 225, \"y_max\": 141, \"y_min\": 122}, \"status\": \"read\", \"text\": \"JUNG SEULGI JOY und Jonas Albrecht\"}, \"institution\": {\"bbox\": {\"x_max\": 373, \"x_min\": 73, \"y_max\": 77, \"y_min\": 55}, \"status\": \"read\", \"text\": \"Rheinauen Privatbank\"}, \"opening_balance\": {\"bbox\": {\"x_max\": 616, \"x_min\": 474, \"y_max\": 273, \"y_min\": 254}, \"status\": \"read\", \"text\": \"18.400,00 EUR\"}, \"period\": {\"bbox\": {\"x_max\": 407, \"x_min\": 226, \"y_max\": 208, \"y_min\": 191}, \"status\": \"read\", \"text\": \"01.01.2025 - 31.01.2025\"}, \"rows\": [{\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 930, \"x_min\": 859, \"y_max\": 324, \"y_min\": 311}, \"amount_column\": \"signed\", \"amount_text\": \"-310,00\", \"balance_bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"balance_text\": \"\", \"date_text\": \"01.01.\", \"description\": \"Hausgeld WEG Lindenstr. 12\", \"row_bbox\": {\"x_max\": 931, \"x_min\": 69, \"y_max\": 325, \"y_min\": 308}}, {\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 930, \"x_min\": 882, \"y_max\": 345, \"y_min\": 330}, \"amount_column\": \"signed\", \"amount_text\": \"950,00\", \"balance_bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"balance_text\": \"\", \"date_text\": \"03.01.\", \"description\": \"Mieteingang Wohnung Leipzig\", \"row_bbox\": {\"x_max\": 931, \"x_min\": 69, \"y_max\": 348, \"y_min\": 327}}, {\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 930, \"x_min\": 873, \"y_max\": 365, \"y_min\": 351}, \"amount_column\": \"signed\", \"amount_text\": \"-45,90\", \"balance_bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"balance_text\": \"\", \"date_text\": \"05.01.\", \"description\": \"Haftpflichtversicherung\", \"row_bbox\": {\"x_max\": 931, \"x_min\": 69, \"y_max\": 368, \"y_min\": 348}}, {\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 930, \"x_min\": 873, \"y_max\": 386, \"y_min\": 372}, \"amount_column\": \"signed\", \"amount_text\": \"-55,08\", \"balance_bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"balance_text\": \"\", \"date_text\": \"15.01.\", \"description\": \"Rundfunkbeitrag\", \"row_bbox\": {\"x_max\": 931, \"x_min\": 69, \"y_max\": 390, \"y_min\": 369}}]}",
+ "usage": {
+  "completion_tokens": 2902,
+  "prompt_tokens": 3237,
+  "total_tokens": 6139,
+  "completion_tokens_details": {
+   "reasoning_tokens": 1944
+  },
+  "prompt_tokens_details": {
+   "cached_tokens": 478
+  }
+ },
+ "cost_usd": 0.015854,
+ "latency_s": 7.56,
+ "finish_reason": "stop"
+}

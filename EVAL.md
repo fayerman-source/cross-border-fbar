@@ -26,33 +26,50 @@ Replay uses the model responses recorded in `recordings/`, keyed by a hash of th
   - Review and info flags are scored as true positives, false positives and misses.
   - Intake facts (owner vs signature authority) come from the answer key here. In the product they come from the client call or the CPA.
 
-## Results: muse-spark-1.3, prompt v2, clean renders (Oct 27, 2026)
+## Results: muse-spark-1.3, prompt v3, clean renders (Oct 27, 2026)
 
-47 pages: Korean 23, German 12 (two layouts), Thai 12. One run. Cost $0.76; median latency about 10 s per page.
+**The set:** 49 pages.
+- 47 monthly statements: Korean 23, German 12 in two layouts, Thai 12.
+- One 2-page compiled transaction list covering several accounts, with no balances. Its layout is modeled on a real Korean compiled list; its content is entirely synthetic.
+
+One run. Recording cost $0.45 for the 26 pages not already recorded; median latency is about 10 s per page.
 
 ### Extraction
 
 | Measure | Raw counts |
 |---|---|
-| Fields: bank, currency, account number, holder, opening, closing | 282/282 |
-| Transaction rows returned | 240/240 (0 extra) |
-| Dates / amounts / running balances | 240/240 / 240/240 / 240/240 |
-| Row box in the right row: raw → snapped | 187/240 → 240/240 |
-| Balance box IoU ≥ 0.5: raw → snapped | 43/212 → 203/212 |
-| Field box centred in its cell (fields aren't snapped) | 249/282 |
+| Fields: bank, currency, account number, holder, opening, closing (or correctly reported absent) | 294/294 |
+| Transaction rows returned | 280/280 (0 extra) |
+| Dates / amounts / running balances | 280/280 / 280/280 / 280/280 |
+| Per-row account numbers (compiled list, including a masked one) | 280/280 |
+| Row box in the right row: raw → snapped | 177/280 → 278/280 |
+| Balance box IoU ≥ 0.5: raw → snapped | 33/212 → 182/212 |
+
+Two of the 280 rows don't count as snapped:
+- **One is a single-row Thai page.** One row gives no pattern to align, so snapping abstains, and the raw box was off.
+- **The other is a row on an abstaining page,** which counts as not snapped even when its raw box was right.
 
 ### Reconciliation: model readings → FBAR worksheet
 
 | Measure | Result |
 |---|---|
-| Accounts found | 4/4 |
-| Maximum value / source statement / USD value | 4/4 / 4/4 / 4/4 |
-| Flags | 7 correct, 0 false, 0 missed |
+| Accounts found | 6/6 |
+| Maximum / source / USD, including two whose correct answer is "unknown" | 6/6 / 6/6 / 6/6 |
+| Flags | 9 correct, 0 false, 0 missed |
 | Household aggregate | $373,618 (answer key: $373,618) |
+
+The two "unknown" accounts are the point of the compiled list:
+- **An account that appears only as transactions** gets no maximum and a `no_balance_anchor` review flag asking for statements with balances.
+- **Rows under a partly masked account number** are flagged `account_number_masked` and kept out of the totals.
 
 ## Run-to-run variance in boxes
 
-An earlier run (prompt v1, before pages printed a currency line) placed 209/240 raw row boxes in the right row; this run placed 187/240. The direction and size of the drift differed between runs. The first snapping rule assumed the first row drifts least. It reached 239/240 on run 1 but snapped one page confidently onto the wrong lines on run 2 (218/240). The column-pattern rule above reaches 240/240 on run 2. Treat box placement as variable, and judge snapping on data it wasn't tuned on. The photographed and scanned copies are that test.
+Box placement changes from run to run, and snapping has had to change with it:
+- **Run 1 (prompt v1):** the first-row-anchor rule. 209/240 raw rows in the right row.
+- **Run 2:** 187/240 raw. The anchor rule snapped one page confidently onto the wrong lines; the column-pattern rule replaced it.
+- **Run 3 (prompt v3):** the model compressed row spacing on one German page by 16%. The fallback path's ±15% scale guard excluded the right alignment, so it snapped confidently wrong again. The guard is now ±35%, and the fallback must also sit near the model's rows.
+
+Earlier detail: an earlier run (prompt v1, before pages printed a currency line) placed 209/240 raw row boxes in the right row; this run placed 187/240. The direction and size of the drift differed between runs. The first snapping rule assumed the first row drifts least. It reached 239/240 on run 1 but snapped one page confidently onto the wrong lines on run 2 (218/240). The column-pattern rule above reaches 240/240 on run 2. Treat box placement as variable, and judge snapping on data it wasn't tuned on. The photographed and scanned copies are that test.
 
 ## What these numbers do not show
 
