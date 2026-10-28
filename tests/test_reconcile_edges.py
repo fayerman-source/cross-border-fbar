@@ -270,11 +270,22 @@ def test_text_labelled_absent_is_still_used():
     assert o.problems == []
 
 
-def test_a_bank_name_in_two_scripts_is_not_a_bank_change():
+def test_a_bank_name_in_two_scripts_is_one_bank_only_with_evidence():
+    """Codex review on #6: a different script alone must not hide a real change of bank."""
     from cross_border_fbar.reconcile.accounts import _distinct_institutions
 
-    assert _distinct_institutions(["ธนาคารสยามโลตัส", "Siam Lotus Bank"]) == ["ธนาคารสยามโลตัส"]
-    assert _distinct_institutions(["새별은행", "Saebyeol Bank"]) == ["새별은행"]
+    bilingual = "ธนาคารสยามโลตัส\nSiam Lotus Bank"  # one page prints both: evidence they're one bank
+    assert _distinct_institutions(["ธนาคารสยามโลตัส", bilingual, "Siam Lotus Bank"]) == ["ธนาคารสยามโลตัส"]
+    # Without that evidence, names in two scripts stay distinct, and a real change is still reported.
+    assert _distinct_institutions(["ธนาคารสยามโลตัส", "Siam Lotus Bank", "Bergwald Bank AG"]) == [
+        "ธนาคารสยามโลตัส",
+        "Siam Lotus Bank",
+        "Bergwald Bank AG",
+    ]
+    assert _distinct_institutions(["ธนาคารสยามโลตัส", bilingual, "Bergwald Bank AG"]) == [
+        "ธนาคารสยามโลตัส",
+        "Bergwald Bank AG",
+    ]
     assert _distinct_institutions(["Rheinauen Privatbank", "Bergwald Bank AG"]) == [
         "Rheinauen Privatbank",
         "Bergwald Bank AG",

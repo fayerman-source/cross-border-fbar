@@ -85,21 +85,49 @@ def _adjacent(prev: Observation, cur: Observation) -> bool:
     return (cur.period_start - prev.period_end).days <= 1
 
 
-def _script(name: str) -> str:
-    return "latin" if all(ord(c) < 0x250 for c in name if c.isalpha()) else "other"
+def _script_runs(name: str) -> list[str]:
+    """Split a bank-name reading into runs of one script: 'ธนาคารสยามโลตัส Siam Lotus Bank' -> two names."""
+    runs, current, latin = [], [], None
+    for ch in name:
+        if ch.isalpha():
+            is_latin = ord(ch) < 0x250
+            if latin is not None and is_latin != latin and current:
+                runs.append("".join(current))
+                current = []
+            latin = is_latin
+        current.append(ch)
+    runs.append("".join(current))
+    return [normalize_name(r) for r in runs if normalize_name(r)]
 
 
 def _distinct_institutions(names: list[str]) -> list[str]:
-    """Distinct banks in order. A bilingual header matches its single-language form, and a name in
-    another script (ธนาคาร..., 새별은행) next to a Latin name is the same bank written twice, not a change."""
+    """Distinct banks in order. Two names are one bank when one contains the other, or when some page
+    prints them together (a bilingual header): the only evidence of an alias. A different script alone
+    is not evidence, so a real change of bank is still reported."""
+    parent: dict[str, str] = {}
+
+    def find(x: str) -> str:
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            x = parent[x]
+        return x
+
+    for name in names:  # a page printing several runs links them
+        runs = _script_runs(name)
+        for r in runs[1:]:
+            parent[find(r)] = find(runs[0])
+
     out: list[str] = []
     for name in names:
-        norm = normalize_name(name)
-        if any(normalize_name(seen) in norm or norm in normalize_name(seen) for seen in out):
-            continue
-        if out and all(_script(seen) != _script(name) for seen in out):
-            continue
-        out.append(name)
+        norm, roots = normalize_name(name), {find(r) for r in _script_runs(name)}
+        seen_same = any(
+            normalize_name(s) in norm
+            or norm in normalize_name(s)
+            or roots & {find(r) for r in _script_runs(s)}
+            for s in out
+        )
+        if not seen_same:
+            out.append(name)
     return out
 
 
