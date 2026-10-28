@@ -62,6 +62,35 @@ The two "unknown" accounts are the point of the compiled list:
 - **An account that appears only as transactions** gets no maximum and a `no_balance_anchor` review flag asking for statements with balances.
 - **Rows under a partly masked account number** are flagged `account_number_masked` and kept out of the totals.
 
+## Open weights: Muse Glimmer on a consumer GPU (Oct 28, 2026)
+
+The same 49 pages and the same prompt v3, read by Meta's open-weights model on hardware we control. No statement leaves the machine and there is no per-token cost.
+
+**Runtime:**
+- llama.cpp b11941 (commit 19ff817fb), CUDA build.
+- Model `meta-models/Muse-Glimmer-30B-GGUF`, file `Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf`.
+- Vision projector `mmproj-Muse-Glimmer-30B-Q4_K_M.gguf`.
+- Hardware: an NVIDIA RTX 5070 (12 GB) laptop GPU under WSL2.
+- Settings: partial GPU offload (`--fit on --fit-target 5500`, 14 CPU threads), 16k context, `reasoning_strength` low.
+- Reached through an SSH tunnel; recorded responses are in `recordings/muse-glimmer/`.
+
+| Measure | Muse Glimmer (self-hosted) | muse-spark-1.3 (hosted) |
+|---|---|---|
+| Dates / amounts / balances / row accounts | 280/280 each | 280/280 each |
+| Header fields (strict: status must be "read") | 243/294 | 294/294 |
+| Row box in the right row, raw | 211/280 | 177/280 |
+| Row box in the right row, snapped | 244/280 | 278/280 |
+| Reconciliation: maximum / USD | 6/6 / 6/6 | 6/6 / 6/6 |
+| Reconciliation: flags | 9 correct, 0 false, 0 missed | 9 correct, 0 false, 0 missed |
+| Household aggregate | $373,618 (key: $373,618) | $373,618 |
+| Median time per page | 344 s | ~10 s |
+| Cost | $0 (4.9 h on the GPU) | $0.76 |
+
+What the gaps are:
+- **Header fields:** on 8 pages Glimmer returned the right header text but labeled every field `absent`. The strict field score counts those as misses. The reconciliation now uses text that is present whatever its label, which recovered the end-to-end result.
+- **Thai bank name:** twice it read the English name instead of the Thai one; both are printed. A bank name in two scripts is now treated as one bank.
+- **Boxes on the compiled list:** only 5/40 rows, raw and snapped. The single in/out column gives no column pattern, and the fallback's anchor rule doesn't fit Glimmer's drift on that layout. Values on those rows are all correct; only the highlighted line would be off. This is open work.
+
 ## Run-to-run variance in boxes
 
 Box placement changes from run to run, and snapping has had to change with it:

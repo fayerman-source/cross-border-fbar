@@ -1,0 +1,16 @@
+{
+ "label": "eval:th-savings_2025-11:p1",
+ "model": "muse-glimmer",
+ "content": "{\n  \"institution\": {\n    \"text\": \"Siam Lotus Bank\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 74, \"y_min\": 67, \"x_max\": 203, \"y_max\": 80}\n  },\n  \"currency\": {\n    \"text\": \"THB\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 220, \"y_min\": 205, \"x_max\": 250, \"y_max\": 220}\n  },\n  \"account_number\": {\n    \"text\": \"714-2-38065-9\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 220, \"y_min\": 142, \"x_max\": 360, \"y_max\": 158}\n  },\n  \"holder\": {\n    \"text\": \"MS. JUNG SEULGI JOY\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 220, \"y_min\": 121, \"x_max\": 390, \"y_max\": 135}\n  },\n  \"period\": {\n    \"text\": \"01/11/2568 - 30/11/2568\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 220, \"y_min\": 182, \"x_max\": 412, \"y_max\": 197}\n  },\n  \"opening_balance\": {\n    \"text\": \"402,689.96\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 845, \"y_min\": 258, \"x_max\": 925, \"y_max\": 272}\n  },\n  \"closing_balance\": {\n    \"text\": \"402,689.96\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 452, \"y_min\": 288, \"x_max\": 545, \"y_max\": 304}\n  },\n  \"rows\": []\n}",
+ "usage": {
+  "completion_tokens": 819,
+  "prompt_tokens": 3285,
+  "total_tokens": 4104,
+  "prompt_tokens_details": {
+   "cached_tokens": 49
+  }
+ },
+ "cost_usd": 0.0,
+ "latency_s": 194.01,
+ "finish_reason": "stop"
+}

@@ -23,3 +23,7 @@ jobs:
         run: .venv/bin/python -m cross_border_fbar.eval --set out/synth --mode replay
       - name: Reconciliation eval on the replayed readings
         run: .venv/bin/python -m cross_border_fbar.eval.reconcile_eval --set out/synth
+      - name: Open-weights extraction eval (Muse Glimmer), replayed
+        run: .venv/bin/python -m cross_border_fbar.eval --set out/synth --model muse-glimmer --mode replay
+      - name: Open-weights reconciliation eval (Muse Glimmer)
+        run: .venv/bin/python -m cross_border_fbar.eval.reconcile_eval --set out/synth --model muse-glimmer

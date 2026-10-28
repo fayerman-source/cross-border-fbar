@@ -1,0 +1,16 @@
+{
+ "label": "eval:th-savings_2025-01:p1",
+ "model": "muse-glimmer",
+ "content": "{\n  \"institution\": {\n    \"text\": \"ธนาคารสยามโลตัส\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 77, \"y_min\": 47, \"x_max\": 270, \"y_max\": 66}\n  },\n  \"currency\": {\n    \"text\": \"THB\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 225, \"y_min\": 206, \"x_max\": 250, \"y_max\": 217}\n  },\n  \"account_number\": {\n    \"text\": \"714-2-38065-9\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 226, \"y_min\": 146, \"x_max\": 360, \"y_max\": 158}\n  },\n  \"holder\": {\n    \"text\": \"MS. JUNG SEULGI JOY\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 226, \"y_min\": 124, \"x_max\": 390, \"y_max\": 136}\n  },\n  \"period\": {\n    \"text\": \"01/01/2568 - 31/01/2568\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 225, \"y_min\": 182, \"x_max\": 412, \"y_max\": 195}\n  },\n  \"opening_balance\": {\n    \"text\": \"412,350.25\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 837, \"y_min\": 258, \"x_max\": 925, \"y_max\": 269}\n  },\n  \"closing_balance\": {\n    \"text\": \"412,150.25\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 454, \"y_min\": 311, \"x_max\": 542, \"y_max\": 323}\n  },\n  \"rows\": [\n    {\n      \"date_text\": \"08/01/2568\",\n      \"account_text\": \"\",\n      \"description\": \"ค่าธรรมเนียมบัตรเดบิต\",\n      \"amount_text\": \"200.00\",\n      \"amount_column\": \"debit\",\n      \"balance_text\": \"412,150.25\",\n      \"row_bbox\": {\"x_min\": 72, \"y_min\": 278, \"x_max\": 928, \"y_max\": 295},\n      \"amount_bbox\": {\"x_min\": 603, \"y_min\": 279, \"x_max\": 641, \"y_max\": 290},\n      \"balance_bbox\": {\"x_min\": 837, \"y_min\": 278, \"x_max\": 925, \"y_max\": 290}\n    }\n  ]\n}",
+ "usage": {
+  "completion_tokens": 900,
+  "prompt_tokens": 3285,
+  "total_tokens": 4185,
+  "prompt_tokens_details": {
+   "cached_tokens": 49
+  }
+ },
+ "cost_usd": 0.0,
+ "latency_s": 213.26,
+ "finish_reason": "stop"
+}
