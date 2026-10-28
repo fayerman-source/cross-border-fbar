@@ -34,7 +34,12 @@ RECORDINGS = Path(__file__).resolve().parents[2] / "recordings"
 PRICES = {
     "muse-spark-1.3": {"input": 1.25, "cached": 0.15, "output": 4.25},
     "muse-wonder-1.0": {"input": 4.00, "cached": 0.20, "output": 20.00},
+    # Meta's open-weights model on hardware we control: no per-token cost, nothing leaves the machine.
+    "muse-glimmer": {"input": 0.0, "cached": 0.0, "output": 0.0},
 }
+# Self-hosted models are served by llama.cpp (OpenAI-compatible); reached through an SSH tunnel by default.
+SELF_HOSTED = {"muse-glimmer"}
+SELF_HOSTED_URL = os.environ.get("FBAR_SELF_HOSTED_URL", "http://127.0.0.1:8080/v1")
 
 
 class SpendCapExceeded(RuntimeError):
@@ -191,13 +196,14 @@ class Client:
         return Result(content, usage, cost, latency, False, key)
 
     def _post(self, body: dict) -> dict:
-        req = urllib.request.Request(
-            f"{BASE_URL}/chat/completions",
-            data=json.dumps(body).encode(),
-            headers={"Authorization": f"Bearer {_api_key()}", "Content-Type": "application/json"},
-        )
+        if body["model"] in SELF_HOSTED:  # the Meta API key never goes to the self-hosted server
+            url, headers = f"{SELF_HOSTED_URL}/chat/completions", {"Content-Type": "application/json"}
+        else:
+            url = f"{BASE_URL}/chat/completions"
+            headers = {"Authorization": f"Bearer {_api_key()}", "Content-Type": "application/json"}
+        req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=600) as resp:
+            with urllib.request.urlopen(req, timeout=3600) as resp:  # partial GPU offload is slow
                 return json.loads(resp.read())
         except urllib.error.HTTPError as e:
             # The response body is safe to surface; the request headers are not.

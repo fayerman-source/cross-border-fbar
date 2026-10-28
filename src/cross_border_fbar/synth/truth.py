@@ -141,7 +141,11 @@ def account_truth(
         flags.append({"code": "signature_authority_only", "severity": "review"})
     if len(spec.banks) > 1:
         flags.append(
-            {"code": "institution_changed", "severity": "info", "banks": [b.bank.name for b in spec.banks]}
+            {
+                "code": "institution_names_differ",
+                "severity": "review",
+                "banks": [b.bank.name for b in spec.banks],
+            }
         )
 
     dec = statements[-1]

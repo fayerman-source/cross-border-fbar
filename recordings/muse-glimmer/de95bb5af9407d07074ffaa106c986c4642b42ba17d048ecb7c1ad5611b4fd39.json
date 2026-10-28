@@ -1,0 +1,16 @@
+{
+ "label": "eval:th-savings_2025-05:p1",
+ "model": "muse-glimmer",
+ "content": "{\n  \"institution\": {\n    \"text\": \"ธนาคารสยามโลตัส\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 74, \"y_min\": 48, \"x_max\": 272, \"y_max\": 64}\n  },\n  \"currency\": {\n    \"text\": \"THB\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 225, \"y_min\": 203, \"x_max\": 256, \"y_max\": 212}\n  },\n  \"account_number\": {\n    \"text\": \"714-2-38065-9\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 224, \"y_min\": 142, \"x_max\": 355, \"y_max\": 152}\n  },\n  \"holder\": {\n    \"text\": \"MS. JUNG SEULGI JOY\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 225, \"y_min\": 121, \"x_max\": 390, \"y_max\": 131}\n  },\n  \"period\": {\n    \"text\": \"01/05/2568 - 31/05/2568\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 225, \"y_min\": 178, \"x_max\": 413, \"y_max\": 188}\n  },\n  \"opening_balance\": {\n    \"text\": \"407,150.25\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 820, \"y_min\": 252, \"x_max\": 925, \"y_max\": 262}\n  },\n  \"closing_balance\": {\n    \"text\": \"407,150.25\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 452, \"y_min\": 326, \"x_max\": 545, \"y_max\": 336}\n  },\n  \"rows\": [\n    {\n      \"date_text\": \"16/05/2568\",\n      \"account_text\": \"\",\n      \"description\": \"โอนเงินไปต่างประเทศ\",\n      \"amount_text\": \"300,000.00\",\n      \"amount_column\": \"debit\",\n      \"balance_text\": \"107,150.25\",\n      \"row_bbox\": {\"x_min\": 70, \"y_min\": 270, \"x_max\": 926, \"y_max\": 285},\n      \"amount_bbox\": {\"x_min\": 595, \"y_min\": 273, \"x_max\": 650, \"y_max\": 283},\n      \"balance_bbox\": {\"x_min\": 820, \"y_min\": 273, \"x_max\": 925, \"y_max\": 283}\n    },\n    {\n      \"date_text\": \"16/05/2568\",\n      \"account_text\": \"\",\n      \"description\": \"รับโอนเงิน ค่ายรถยนต์\",\n      \"amount_text\": \"300,000.00\",\n      \"amount_column\": \"credit\",\n      \"balance_text\": \"407,150.25\",\n      \"row_bbox\": {\"x_min\": 70, \"y_min\": 293, \"x_max\": 926, \"y_max\": 308},\n      \"amount_bbox\": {\"x_min\": 722, \"y_min\": 296, \"x_max\": 788, \"y_max\": 306},\n      \"balance_bbox\": {\"x_min\": 820, \"y_min\": 296, \"x_max\": 925, \"y_max\": 306}\n    }\n  ]\n}",
+ "usage": {
+  "completion_tokens": 884,
+  "prompt_tokens": 3285,
+  "total_tokens": 4169,
+  "prompt_tokens_details": {
+   "cached_tokens": 49
+  }
+ },
+ "cost_usd": 0.0,
+ "latency_s": 207.97,
+ "finish_reason": "stop"
+}

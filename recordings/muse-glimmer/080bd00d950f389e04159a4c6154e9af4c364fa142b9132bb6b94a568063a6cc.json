@@ -1,0 +1,16 @@
+{
+ "label": "eval:th-savings_2025-04:p1",
+ "model": "muse-glimmer",
+ "content": "{\n  \"institution\": {\n    \"text\": \"ธนาคารสยามโลตัส\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 73, \"y_min\": 50, \"x_max\": 272, \"y_max\": 65}\n  },\n  \"currency\": {\n    \"text\": \"THB\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 220, \"y_min\": 205, \"x_max\": 250, \"y_max\": 215}\n  },\n  \"account_number\": {\n    \"text\": \"714-2-38065-9\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 220, \"y_min\": 145, \"x_max\": 360, \"y_max\": 155}\n  },\n  \"holder\": {\n    \"text\": \"MS. JUNG SEULGI JOY\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 220, \"y_min\": 125, \"x_max\": 390, \"y_max\": 135}\n  },\n  \"period\": {\n    \"text\": \"01/04/2568 - 30/04/2568\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 220, \"y_min\": 185, \"x_max\": 410, \"y_max\": 195}\n  },\n  \"opening_balance\": {\n    \"text\": \"412,150.25\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 845, \"y_min\": 260, \"x_max\": 920, \"y_max\": 270}\n  },\n  \"closing_balance\": {\n    \"text\": \"407,150.25\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 445, \"y_min\": 315, \"x_max\": 520, \"y_max\": 325}\n  },\n  \"rows\": [\n    {\n      \"date_text\": \"21/04/2568\",\n      \"account_text\": \"\",\n      \"description\": \"ถอนเงิน ATM\",\n      \"amount_text\": \"5,000.00\",\n      \"amount_column\": \"debit\",\n      \"balance_text\": \"407,150.25\",\n      \"row_bbox\": {\"x_min\": 70, \"y_min\": 275, \"x_max\": 930, \"y_max\": 295},\n      \"amount_bbox\": {\"x_min\": 580, \"y_min\": 280, \"x_max\": 640, \"y_max\": 290},\n      \"balance_bbox\": {\"x_min\": 840, \"y_min\": 280, \"x_max\": 920, \"y_max\": 290}\n    }\n  ]\n}",
+ "usage": {
+  "completion_tokens": 965,
+  "prompt_tokens": 3285,
+  "total_tokens": 4250,
+  "prompt_tokens_details": {
+   "cached_tokens": 49
+  }
+ },
+ "cost_usd": 0.0,
+ "latency_s": 225.12,
+ "finish_reason": "stop"
+}
