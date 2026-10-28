@@ -23,8 +23,9 @@ SUMMARY_PROMPT = (Path(__file__).parent / "prompts" / "client_summary_ko_v1.md")
 SUMMARY_MODEL = "muse-spark-1.3"
 
 
-def generate_summary(facts: dict) -> tuple[str, dict]:
-    client = Client(mode="auto")
+def generate_summary(facts: dict, fresh: bool = False) -> tuple[str, dict]:
+    """The first draft may replay a recorded response (offline demo); a redraft always asks the model."""
+    client = Client(mode="live" if fresh else "auto")
     prompt = SUMMARY_PROMPT + json.dumps(facts, ensure_ascii=False, indent=1)
     r = client.chat(
         SUMMARY_MODEL, [{"role": "user", "content": prompt}], max_tokens=6000, label="client-summary"

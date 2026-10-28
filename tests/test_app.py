@@ -74,13 +74,13 @@ def test_ownership_correction_recomputes_and_adds_its_review_item(review):
 
 def test_summary_only_after_sign_off_and_out_of_scope_drafts_are_held(review):
     with pytest.raises(ReviewError, match="Sign off"):
-        review.draft_summary(lambda facts: ("x", {}))
+        review.draft_summary(lambda facts, fresh: ("x", {}))
     for fid in review.open_review_flags():
         review.acknowledge(fid, "INTERNAL-NOTE-7731", "A. Rivera")
     review.sign_off("A. Rivera", "AR")
     facts_seen = {}
 
-    def bad(facts):
+    def bad(facts, fresh):
         facts_seen.update(facts)
         return "CPA가 검토한 내용\n이 계좌는 신고해야 합니다.", {"model": "fake"}
 
@@ -89,7 +89,13 @@ def test_summary_only_after_sign_off_and_out_of_scope_drafts_are_held(review):
     with pytest.raises(ReviewError, match="can't be released"):
         review.approve_summary("A. Rivera")
     assert "INTERNAL-NOTE-7731" not in json.dumps(facts_seen, ensure_ascii=False)  # CPA notes stay internal
-    review.draft_summary(lambda facts: ("CPA가 검토한 내용\n새별은행 끝자리 3746 계좌.", {"model": "fake"}))
+    review.draft_summary(
+        lambda facts, fresh: (
+            "CPA가 검토한 내용\n새별은행 끝자리 3746 계좌.",
+            {"model": "fake", "fresh": fresh},
+        )
+    )
+    assert review.state["summary"]["meta"]["fresh"] is True  # a redraft never replays the held draft
     review.approve_summary("A. Rivera")
     assert review.state["summary"]["approved"]["reviewer"] == "A. Rivera"
 
@@ -161,3 +167,13 @@ def test_a_crafted_readings_file_cannot_reach_outside_the_pages_folder(inputs, s
 
     with pytest.raises(ValueError):
         page_image(inputs.set_dir, statement_id, 1)
+
+
+def test_two_coverage_gaps_on_one_account_need_separate_acknowledgements():
+    """Codex review on #5: same-code flags without month or sources shared one ID."""
+    from cross_border_fbar.app.worksheet import flag_id
+    from cross_border_fbar.reconcile.accounts import Flag
+
+    a = Flag("coverage_gap", "review", "no statement covers 2025-01-01 to 2025-01-14")
+    b = Flag("coverage_gap", "review", "no statement covers 2025-12-16 to 2025-12-31")
+    assert flag_id("ACC1", a) != flag_id("ACC1", b)

@@ -44,7 +44,11 @@ def wp_ref(src: Source) -> str:
 
 
 def flag_id(account: str, f: Flag) -> str:
-    raw = "|".join([account, f.code, f.month or "", *sorted(f"{s.upload}#{s.ref}" for s in f.sources)])
+    # The message carries what tells same-code flags apart when they have no month or sources
+    # (e.g. two coverage gaps name their own date ranges), so each gets its own acknowledgement.
+    raw = "|".join(
+        [account, f.code, f.month or "", f.message, *sorted(f"{s.upload}#{s.ref}" for s in f.sources)]
+    )
     return hashlib.sha1(raw.encode()).hexdigest()[:10]
 
 

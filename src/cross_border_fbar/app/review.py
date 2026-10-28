@@ -218,10 +218,11 @@ class Review:
         return {"client": ws["client"], "tax_year": ws["tax_year"], "accounts": facts}
 
     def draft_summary(self, generate) -> dict:
-        """generate(facts) -> (text, meta). Runs only after sign-off; blocked if it leaves the scope."""
+        """generate(facts, fresh) -> (text, meta). Runs only after sign-off; blocked if it leaves the scope.
+        A redraft asks for a fresh generation, so a held draft can't be replayed forever."""
         if not self.state["signoff"]:
             raise ReviewError("Sign off before drafting the client summary.")
-        text, meta = generate(self.summary_facts())
+        text, meta = generate(self.summary_facts(), fresh=self.state["summary"] is not None)
         hit = OUT_OF_SCOPE.search(text)
         self.state["summary"] = {
             "text": text,
