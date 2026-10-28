@@ -247,3 +247,35 @@ def test_a_statement_repeating_its_own_account_on_rows_keeps_its_balances():
     (r,) = reconcile([o], SOLE, RATES, 2025)
     assert r.max_value.amount == D(1000)
     assert "no_balance_anchor" not in codes(r)
+
+
+def test_text_labelled_absent_is_still_used():
+    """Glimmer sometimes returns the right header text with status 'absent' (Oct 28 run)."""
+    reading = {
+        n: {"text": t, "status": "absent", "bbox": None}
+        for n, t in [
+            ("institution", "Bank"),
+            ("currency", "EUR"),
+            ("account_number", "ACC1"),
+            ("holder", "H"),
+            ("period", "01.03.2025 - 31.03.2025"),
+            ("opening_balance", "1.000,00"),
+            ("closing_balance", "1.000,00"),
+        ]
+    }
+    reading["rows"] = []
+    o = observe(reading, "p")
+    assert o.account_key == "ACC1"
+    assert o.opening == D("1000.00")
+    assert o.problems == []
+
+
+def test_a_bank_name_in_two_scripts_is_not_a_bank_change():
+    from cross_border_fbar.reconcile.accounts import _distinct_institutions
+
+    assert _distinct_institutions(["ธนาคารสยามโลตัส", "Siam Lotus Bank"]) == ["ธนาคารสยามโลตัส"]
+    assert _distinct_institutions(["새별은행", "Saebyeol Bank"]) == ["새별은행"]
+    assert _distinct_institutions(["Rheinauen Privatbank", "Bergwald Bank AG"]) == [
+        "Rheinauen Privatbank",
+        "Bergwald Bank AG",
+    ]

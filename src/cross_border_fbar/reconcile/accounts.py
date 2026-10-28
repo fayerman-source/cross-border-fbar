@@ -85,12 +85,19 @@ def _adjacent(prev: Observation, cur: Observation) -> bool:
     return (cur.period_start - prev.period_end).days <= 1
 
 
+def _script(name: str) -> str:
+    return "latin" if all(ord(c) < 0x250 for c in name if c.isalpha()) else "other"
+
+
 def _distinct_institutions(names: list[str]) -> list[str]:
-    """Distinct banks in order; a bilingual header matches its single-language form."""
+    """Distinct banks in order. A bilingual header matches its single-language form, and a name in
+    another script (ธนาคาร..., 새별은행) next to a Latin name is the same bank written twice, not a change."""
     out: list[str] = []
     for name in names:
         norm = normalize_name(name)
         if any(normalize_name(seen) in norm or norm in normalize_name(seen) for seen in out):
+            continue
+        if out and all(_script(seen) != _script(name) for seen in out):
             continue
         out.append(name)
     return out
