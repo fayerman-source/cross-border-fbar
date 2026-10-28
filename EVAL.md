@@ -81,14 +81,14 @@ The same 49 pages and the same prompt v3, read by Meta's open-weights model on h
 | Row box in the right row, raw | 211/280 | 177/280 |
 | Row box in the right row, snapped | 244/280 | 278/280 |
 | Reconciliation: maximum / USD | 6/6 / 6/6 | 6/6 / 6/6 |
-| Reconciliation: flags | 9 correct, 0 false, 0 missed | 9 correct, 0 false, 0 missed |
+| Reconciliation: flags | 9 correct, 0 false, 0 missed, 1 raised by a misread | 9 correct, 0 false, 0 missed |
 | Household aggregate | $373,618 (key: $373,618) | $373,618 |
 | Median time per page | 344 s | ~10 s |
 | Cost | $0 (4.9 h on the GPU) | $0.76 |
 
 What the gaps are:
 - **Header fields:** on 8 pages Glimmer returned the right header text but labeled every field `absent`. The strict field score counts those as misses. The reconciliation now uses text that is present whatever its label, which recovered the end-to-end result.
-- **Thai bank name:** twice it read the English name instead of the Thai one; both are printed. A bank name in two scripts is now treated as one bank.
+- **Thai bank name:** on two statements it read the English name, or both names, instead of the Thai one; both are printed. The tool doesn't decide from the text whether two names are one bank, so it raises a review flag listing each name, its months and a page for it. The eval counts that flag as raised by a misread, not as a false positive, because its source pages are the misread ones. An earlier version matched names by script, then by containment; each rule either merged two different banks or split one bank in two.
 - **Boxes on the compiled list:** only 5/40 rows, raw and snapped. The single in/out column gives no column pattern, and the fallback's anchor rule doesn't fit Glimmer's drift on that layout. Values on those rows are all correct; only the highlighted line would be off. This is open work.
 
 ## Run-to-run variance in boxes

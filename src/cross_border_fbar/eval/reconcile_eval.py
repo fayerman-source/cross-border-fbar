@@ -30,10 +30,15 @@ SCORED_CODES = {
     "max_from_computed_balance",
     "missing_statement",
     "signature_authority_only",
-    "institution_changed",
+    "institution_names_differ",
     "no_balance_anchor",
     "account_number_masked",
 }
+
+# Review flags that follow from a field read differently on some pages. When one of the flag's own source
+# pages has that field scored as misread, the tool was right to raise it: it is counted as raised by a
+# misread, not as a false positive.
+FIELD_OF_FLAG = {"institution_names_differ": "institution", "currency_conflict": "currency"}
 
 
 def _expected_flags(acct: dict) -> set[tuple[str, str]]:
@@ -53,6 +58,12 @@ def evaluate(set_dir: Path, model: str) -> dict:
     extraction = json.loads((RESULTS / f"{model}_{set_dir.name}.json").read_text())
     upload_to_statement = {}
     observations = []
+    misread = {
+        (page["statement_id"], name)
+        for page in extraction["pages"]
+        for name, f in page.get("fields", {}).items()
+        if not f.get("value_ok", True)
+    }
     for page in extraction["pages"]:
         if "reading" not in page:
             continue
@@ -81,9 +92,22 @@ def evaluate(set_dir: Path, model: str) -> dict:
         r = by_key.get(account_key(acct["account_number"]))
         want_max = acct["max_value"]
         want_flags = _expected_flags(acct)
-        got_flags = {f for f in _got_flags(r) if f[0] in SCORED_CODES} if r else set()
+        from_misreads = {
+            f.code: sorted({upload_to_statement[src.upload] for src in f.sources})
+            for f in (r.flags if r else [])
+            if f.code in FIELD_OF_FLAG
+            and f.code not in {c for c, _ in want_flags}
+            and any((upload_to_statement[src.upload], FIELD_OF_FLAG[f.code]) in misread for src in f.sources)
+        }
+        got_flags = (
+            {f for f in _got_flags(r) if f[0] in SCORED_CODES and f[0] not in from_misreads} if r else set()
+        )
         extra_review = (
-            sorted({f.code for f in r.flags if f.severity == "review"} - {c for c, _ in want_flags})
+            sorted(
+                {f.code for f in r.flags if f.severity == "review"}
+                - {c for c, _ in want_flags}
+                - set(from_misreads)
+            )
             if r
             else []
         )
@@ -119,6 +143,7 @@ def evaluate(set_dir: Path, model: str) -> dict:
                 "flags_missed": sorted(want_flags - got_flags),
                 "flags_extra": sorted(got_flags - want_flags),
                 "unscored_review_flags": extra_review,
+                "flags_from_misreads": from_misreads,
             }
         )
 
@@ -131,7 +156,12 @@ def evaluate(set_dir: Path, model: str) -> dict:
             "max_value_ok": f"{sum(a['max_ok'] for a in accounts)}/{n}",
             "max_source_ok": f"{sum(a['max_source_ok'] for a in accounts)}/{n}",
             "usd_ok": f"{sum(a['usd_ok'] for a in accounts)}/{n}",
-            "flags": {"true_positive": tp, "false_positive": fp, "missed": fn},
+            "flags": {
+                "true_positive": tp,
+                "false_positive": fp,
+                "missed": fn,
+                "raised_by_misreads": sum(len(a["flags_from_misreads"]) for a in accounts),
+            },
             "aggregate_usd": {
                 "got": totals.aggregate_max_usd,
                 "want": truth["household"]["aggregate_max_usd"],

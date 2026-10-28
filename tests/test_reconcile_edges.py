@@ -270,52 +270,44 @@ def test_text_labelled_absent_is_still_used():
     assert o.problems == []
 
 
-def test_a_bank_name_in_two_scripts_is_one_bank_only_with_evidence():
-    """Codex review on #6: a different script alone must not hide a real change of bank."""
-    from cross_border_fbar.reconcile.accounts import _distinct_institutions
+def _named(observations, names):
+    from dataclasses import replace
 
-    bilingual = "ธนาคารสยามโลตัส\nSiam Lotus Bank"  # one page prints both: evidence they're one bank
-    assert _distinct_institutions(["ธนาคารสยามโลตัส", bilingual, "Siam Lotus Bank"]) == ["ธนาคารสยามโลตัส"]
-    # Without that evidence, names in two scripts stay distinct, and a real change is still reported.
-    assert _distinct_institutions(["ธนาคารสยามโลตัส", "Siam Lotus Bank", "Bergwald Bank AG"]) == [
-        "ธนาคารสยามโลตัส",
-        "Siam Lotus Bank",
-        "Bergwald Bank AG",
-    ]
-    assert _distinct_institutions(["ธนาคารสยามโลตัส", bilingual, "Bergwald Bank AG"]) == [
-        "ธนาคารสยามโลตัส",
-        "Bergwald Bank AG",
-    ]
-    assert _distinct_institutions(["Rheinauen Privatbank", "Bergwald Bank AG"]) == [
-        "Rheinauen Privatbank",
-        "Bergwald Bank AG",
-    ]
+    return [replace(o, institution=n) for o, n in zip(observations, names, strict=True)]
 
 
-def test_extended_latin_names_are_not_split_into_aliases():
-    """Codex review on #6: Vietnamese ệ was treated as another script, merging two different banks."""
-    from cross_border_fbar.reconcile.accounts import _distinct_institutions
-
-    assert _distinct_institutions(["Ngân hàng Việt Nam", "Ngân hàng Việt Á"]) == [
-        "Ngân hàng Việt Nam",
-        "Ngân hàng Việt Á",
-    ]
-
-
-def test_names_mixing_scripts_inside_one_name_stay_distinct():
-    """Codex review on #6: みずほ銀行 and りそな銀行 share 銀行 ('bank') and were merged."""
-    from cross_border_fbar.reconcile.accounts import _distinct_institutions
-
-    assert _distinct_institutions(["みずほ銀行", "りそな銀行"]) == ["みずほ銀行", "りそな銀行"]
-    # A space-joined bilingual reading (as Glimmer returned it) still links the two single-language ones.
-    bilingual = "ธนาคารสยามโลตัส Siam Lotus Bank"
-    assert _distinct_institutions(["ธนาคารสยามโลตัส", bilingual, "Siam Lotus Bank"]) == ["ธนาคารสยามโลตัส"]
+def test_different_printed_bank_names_go_to_review_with_a_page_for_each():
+    """Codex on #6, four rounds: every name-matching rule merged two banks or split one. Names are not
+    matched; the CPA sees each printed name, its months and a page where it was printed."""
+    names = ["Rheinauen Privatbank"] * 6 + ["Bergwald Bank AG"] * 6
+    (r,) = reconcile(_named(year_of(), names), SOLE, RATES, 2025)
+    (f,) = [f for f in r.flags if f.code == "institution_names_differ"]
+    assert f.severity == "review"
+    assert f.message == (
+        "statements print different bank names: Rheinauen Privatbank (6 statements, 2025-01 to 2025-06); "
+        "Bergwald Bank AG (6 statements, 2025-07 to 2025-12)"
+    )
+    assert [s.upload for s in f.sources] == ["ACC1-1", "ACC1-7"]
+    assert [s.ref for s in f.sources] == ["institution", "institution"]
+    assert r.institutions == ["Rheinauen Privatbank", "Bergwald Bank AG"]
 
 
-def test_short_complete_bank_names_match_their_expanded_header():
-    """Codex on PR #6: 'UBS' and 'UBS AG' are one bank; the 4-character floor must not split them."""
-    from cross_border_fbar.reconcile.accounts import _distinct_institutions
+@pytest.mark.parametrize(
+    "a, b",
+    [
+        ("UBS", "UBS AG"),
+        ("みずほ銀行", "りそな銀行"),
+        ("ธนาคารสยามโลตัส", "Siam Lotus Bank"),
+        ("Ngân hàng Việt Nam", "Ngân hàng Việt Á"),
+    ],
+)
+def test_names_that_differ_in_any_way_are_flagged_not_guessed(a, b):
+    (r,) = reconcile(_named(year_of(), [a] * 11 + [b]), SOLE, RATES, 2025)
+    assert [f.code for f in r.flags if f.code == "institution_names_differ"] == ["institution_names_differ"]
+    assert r.institutions == [a, b]
 
-    assert _distinct_institutions(["UBS", "UBS AG", "UBS"]) == ["UBS"]
-    assert _distinct_institutions(["UBS AG", "DBS Bank"]) == ["UBS AG", "DBS Bank"]
-    assert _distinct_institutions(["SBI", "SBIN Bank"]) == ["SBI", "SBIN Bank"]
+
+def test_spacing_and_case_alone_are_one_name():
+    (r,) = reconcile(_named(year_of(), ["Siam  Lotus Bank", "siam lotus bank"] * 6), SOLE, RATES, 2025)
+    assert "institution_names_differ" not in [f.code for f in r.flags]
+    assert r.institutions == ["Siam  Lotus Bank"]
