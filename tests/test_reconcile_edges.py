@@ -290,3 +290,14 @@ def test_a_bank_name_in_two_scripts_is_one_bank_only_with_evidence():
         "Rheinauen Privatbank",
         "Bergwald Bank AG",
     ]
+
+
+def test_extended_latin_names_are_not_split_into_aliases():
+    """Codex review on #6: Vietnamese ệ was treated as another script, merging two different banks."""
+    from cross_border_fbar.reconcile.accounts import _distinct_institutions, _script_runs
+
+    assert _script_runs("Ngân hàng Việt Nam") == ["ngân hàng việt nam"]
+    assert _distinct_institutions(["Ngân hàng Việt Nam", "Ngân hàng Việt Á"]) == [
+        "Ngân hàng Việt Nam",
+        "Ngân hàng Việt Á",
+    ]

@@ -15,6 +15,7 @@ Rules (FinCEN "Reporting Maximum Account Value"; IRS IRM 4.26.16):
 
 from __future__ import annotations
 
+import unicodedata
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
@@ -85,16 +86,21 @@ def _adjacent(prev: Observation, cur: Observation) -> bool:
     return (cur.period_start - prev.period_end).days <= 1
 
 
+def _script(ch: str) -> str:
+    """A letter's Unicode script from its character name: LATIN (incl. Vietnamese ệ), THAI, HANGUL..."""
+    return unicodedata.name(ch, "UNKNOWN").split()[0]
+
+
 def _script_runs(name: str) -> list[str]:
     """Split a bank-name reading into runs of one script: 'ธนาคารสยามโลตัส Siam Lotus Bank' -> two names."""
-    runs, current, latin = [], [], None
+    runs, current, script = [], [], None
     for ch in name:
         if ch.isalpha():
-            is_latin = ord(ch) < 0x250
-            if latin is not None and is_latin != latin and current:
+            s = _script(ch)
+            if script is not None and s != script and current:
                 runs.append("".join(current))
                 current = []
-            latin = is_latin
+            script = s
         current.append(ch)
     runs.append("".join(current))
     return [normalize_name(r) for r in runs if normalize_name(r)]
