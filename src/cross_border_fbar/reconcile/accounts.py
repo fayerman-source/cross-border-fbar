@@ -85,15 +85,34 @@ def _adjacent(prev: Observation, cur: Observation) -> bool:
     return (cur.period_start - prev.period_end).days <= 1
 
 
-def _distinct_institutions(names: list[str]) -> list[str]:
-    """Distinct banks in order; a bilingual header matches its single-language form."""
-    out: list[str] = []
-    for name in names:
-        norm = normalize_name(name)
-        if any(normalize_name(seen) in norm or norm in normalize_name(seen) for seen in out):
-            continue
-        out.append(name)
-    return out
+def _by_printed_name(obs: list[Observation]) -> dict[str, list[Observation]]:
+    """Statements grouped by bank name, in order. Names are the same only when equal after whitespace and
+    case are normalized: whether 'UBS' and 'UBS AG', or a Thai and an English name, are one bank, or a
+    merger happened, is not decided from the text."""
+    by_name: dict[str, list[Observation]] = {}
+    for o in obs:
+        if o.institution:
+            by_name.setdefault(normalize_name(o.institution), []).append(o)
+    return by_name
+
+
+def _institution_flag(by_name: dict[str, list[Observation]]) -> Flag | None:
+    """Different printed names go to the CPA for review, with the months and a page for each name."""
+    if len(by_name) < 2:
+        return None
+    parts, sources = [], []
+    for group in by_name.values():
+        months = sorted({f"{o.period_start:%Y-%m}" for o in group if o.period_start})
+        span = months[0] if len(months) == 1 else f"{months[0]} to {months[-1]}" if months else "undated"
+        count = f"{len(group)} statement" + ("s" if len(group) > 1 else "")
+        parts.append(f"{group[0].institution} ({count}, {span})")
+        sources.append(group[0].sources.get("institution", Source(group[0].upload, "institution", None)))
+    return Flag(
+        "institution_names_differ",
+        "review",
+        "statements print different bank names: " + "; ".join(parts),
+        sources,
+    )
 
 
 def _signature(o: Observation):
@@ -360,9 +379,11 @@ def reconcile_account(
                     )
                 )
 
-    institutions = _distinct_institutions([o.institution for o in obs if o.institution])
-    if len(institutions) > 1:
-        flags.append(Flag("institution_changed", "info", "statements come from " + " -> ".join(institutions)))
+    by_name = _by_printed_name(obs)
+    institutions = [group[0].institution for group in by_name.values()]
+    names_flag = _institution_flag(by_name)
+    if names_flag:
+        flags.append(names_flag)
     currencies = {o.currency for o in obs if o.currency}
     if len(currencies) > 1:
         flags.append(Flag("currency_conflict", "review", f"statements show {sorted(currencies)}"))

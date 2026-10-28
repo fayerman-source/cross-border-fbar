@@ -1,0 +1,16 @@
+{
+ "label": "eval:th-savings_2025-10:p1",
+ "model": "muse-glimmer",
+ "content": "{\n  \"institution\": {\n    \"text\": \"ธนาคารสยามโลตัส Siam Lotus Bank\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 73, \"y_min\": 46, \"x_max\": 272, \"y_max\": 80}\n  },\n  \"currency\": {\n    \"text\": \"THB\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 225, \"y_min\": 190, \"x_max\": 260, \"y_max\": 201}\n  },\n  \"account_number\": {\n    \"text\": \"714-2-38065-9\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 225, \"y_min\": 134, \"x_max\": 355, \"y_max\": 145}\n  },\n  \"holder\": {\n    \"text\": \"MS. JUNG SEULGI JOY\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 225, \"y_min\": 115, \"x_max\": 390, \"y_max\": 126}\n  },\n  \"period\": {\n    \"text\": \"01/10/2568 - 31/10/2568\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 225, \"y_min\": 169, \"x_max\": 410, \"y_max\": 180}\n  },\n  \"opening_balance\": {\n    \"text\": \"407,689.96\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 840, \"y_min\": 238, \"x_max\": 925, \"y_max\": 250}\n  },\n  \"closing_balance\": {\n    \"text\": \"402,689.96\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 455, \"y_min\": 287, \"x_max\": 540, \"y_max\": 298}\n  },\n  \"rows\": [\n    {\n      \"date_text\": \"07/10/2568\",\n      \"account_text\": \"\",\n      \"description\": \"ถอนเงิน ATM\",\n      \"amount_text\": \"5,000.00\",\n      \"amount_column\": \"debit\",\n      \"balance_text\": \"402,689.96\",\n      \"row_bbox\": {\"x_min\": 72, \"y_min\": 255, \"x_max\": 927, \"y_max\": 270},\n      \"amount_bbox\": {\"x_min\": 585, \"y_min\": 259, \"x_max\": 650, \"y_max\": 269},\n      \"balance_bbox\": {\"x_min\": 840, \"y_min\": 259, \"x_max\": 925, \"y_max\": 269}\n    }\n  ]\n}",
+ "usage": {
+  "completion_tokens": 902,
+  "prompt_tokens": 3285,
+  "total_tokens": 4187,
+  "prompt_tokens_details": {
+   "cached_tokens": 49
+  }
+ },
+ "cost_usd": 0.0,
+ "latency_s": 212.55,
+ "finish_reason": "stop"
+}

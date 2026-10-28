@@ -80,7 +80,9 @@ def observe(reading: dict, upload: str, snapped: dict | None = None) -> Observat
 
     def value(name: str) -> str:
         f = reading[name]
-        return f["text"] if f["status"] == "read" else ""
+        # Text on the page is the evidence: some models return the right text but label it "absent".
+        # "unreadable" stays empty, so it can't be mistaken for a reading.
+        return f["text"] if f["status"] != "unreadable" else ""
 
     start, end = parse_period(value("period"))
     lines = []
@@ -97,7 +99,7 @@ def observe(reading: dict, upload: str, snapped: dict | None = None) -> Observat
                 row.get("account_text", "").strip(),
             )
         )
-    sources = {n: Source(upload, n, reading[n]["bbox"]) for n in KEY_FIELDS}
+    sources = {n: Source(upload, n, reading[n]["bbox"]) for n in (*KEY_FIELDS, "institution")}
     parsed = {
         "account_number": value("account_number").strip() or None,
         "period": start and end,
@@ -106,7 +108,11 @@ def observe(reading: dict, upload: str, snapped: dict | None = None) -> Observat
         "closing_balance": parse_amount(value("closing_balance")),
     }
     # "absent" is legitimate (page 2 of a statement has no opening); "unreadable" or unparseable is not.
-    problems = [n for n in KEY_FIELDS if reading[n]["status"] != "absent" and parsed[n] is None]
+    problems = [
+        n
+        for n in KEY_FIELDS
+        if (reading[n]["status"] != "absent" or reading[n]["text"].strip()) and parsed[n] is None
+    ]
     return Observation(
         upload=upload,
         institution=value("institution").strip(),

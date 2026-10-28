@@ -113,3 +113,28 @@ def test_failed_call_releases_its_reservation(client, monkeypatch):
     with pytest.raises(RuntimeError):
         client.chat("muse-spark-1.3", [{"role": "user", "content": "x"}], max_tokens=100)
     assert client.spent_usd() == pytest.approx(0, abs=1e-9)
+
+
+def test_self_hosted_model_never_receives_the_api_key(client, monkeypatch):
+    sent = {}
+
+    class FakeResp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return json.dumps(fake_response()).encode()
+
+    def fake_urlopen(req, timeout):
+        sent["url"], sent["headers"] = req.full_url, dict(req.header_items())
+        return FakeResp()
+
+    monkeypatch.setenv("MODEL_API_KEY", "-".join(["should", "not", "leak"]))
+    monkeypatch.setattr(llm.urllib.request, "urlopen", fake_urlopen)
+    r = client.chat("muse-glimmer", [{"role": "user", "content": "x"}], max_tokens=10)
+    assert sent["url"].startswith(llm.SELF_HOSTED_URL)
+    assert "Authorization" not in sent["headers"]
+    assert r.cost_usd == 0

@@ -247,3 +247,67 @@ def test_a_statement_repeating_its_own_account_on_rows_keeps_its_balances():
     (r,) = reconcile([o], SOLE, RATES, 2025)
     assert r.max_value.amount == D(1000)
     assert "no_balance_anchor" not in codes(r)
+
+
+def test_text_labelled_absent_is_still_used():
+    """Glimmer sometimes returns the right header text with status 'absent' (Oct 28 run)."""
+    reading = {
+        n: {"text": t, "status": "absent", "bbox": None}
+        for n, t in [
+            ("institution", "Bank"),
+            ("currency", "EUR"),
+            ("account_number", "ACC1"),
+            ("holder", "H"),
+            ("period", "01.03.2025 - 31.03.2025"),
+            ("opening_balance", "1.000,00"),
+            ("closing_balance", "1.000,00"),
+        ]
+    }
+    reading["rows"] = []
+    o = observe(reading, "p")
+    assert o.account_key == "ACC1"
+    assert o.opening == D("1000.00")
+    assert o.problems == []
+
+
+def _named(observations, names):
+    from dataclasses import replace
+
+    return [replace(o, institution=n) for o, n in zip(observations, names, strict=True)]
+
+
+def test_different_printed_bank_names_go_to_review_with_a_page_for_each():
+    """Codex on #6, four rounds: every name-matching rule merged two banks or split one. Names are not
+    matched; the CPA sees each printed name, its months and a page where it was printed."""
+    names = ["Rheinauen Privatbank"] * 6 + ["Bergwald Bank AG"] * 6
+    (r,) = reconcile(_named(year_of(), names), SOLE, RATES, 2025)
+    (f,) = [f for f in r.flags if f.code == "institution_names_differ"]
+    assert f.severity == "review"
+    assert f.message == (
+        "statements print different bank names: Rheinauen Privatbank (6 statements, 2025-01 to 2025-06); "
+        "Bergwald Bank AG (6 statements, 2025-07 to 2025-12)"
+    )
+    assert [s.upload for s in f.sources] == ["ACC1-1", "ACC1-7"]
+    assert [s.ref for s in f.sources] == ["institution", "institution"]
+    assert r.institutions == ["Rheinauen Privatbank", "Bergwald Bank AG"]
+
+
+@pytest.mark.parametrize(
+    "a, b",
+    [
+        ("UBS", "UBS AG"),
+        ("みずほ銀行", "りそな銀行"),
+        ("ธนาคารสยามโลตัส", "Siam Lotus Bank"),
+        ("Ngân hàng Việt Nam", "Ngân hàng Việt Á"),
+    ],
+)
+def test_names_that_differ_in_any_way_are_flagged_not_guessed(a, b):
+    (r,) = reconcile(_named(year_of(), [a] * 11 + [b]), SOLE, RATES, 2025)
+    assert [f.code for f in r.flags if f.code == "institution_names_differ"] == ["institution_names_differ"]
+    assert r.institutions == [a, b]
+
+
+def test_spacing_and_case_alone_are_one_name():
+    (r,) = reconcile(_named(year_of(), ["Siam  Lotus Bank", "siam lotus bank"] * 6), SOLE, RATES, 2025)
+    assert "institution_names_differ" not in [f.code for f in r.flags]
+    assert r.institutions == ["Siam  Lotus Bank"]

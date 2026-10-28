@@ -1,0 +1,16 @@
+{
+ "label": "eval:th-savings_2025-07:p1",
+ "model": "muse-glimmer",
+ "content": "{\n  \"institution\": {\n    \"text\": \"ธนาคารสยามโลตัส\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 73, \"y_min\": 46, \"x_max\": 272, \"y_max\": 64}\n  },\n  \"currency\": {\n    \"text\": \"THB\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 221, \"y_min\": 205, \"x_max\": 248, \"y_max\": 217}\n  },\n  \"account_number\": {\n    \"text\": \"714-2-38065-9\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 221, \"y_min\": 142, \"x_max\": 362, \"y_max\": 155}\n  },\n  \"holder\": {\n    \"text\": \"MS. JUNG SEULGI JOY\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 221, \"y_min\": 124, \"x_max\": 390, \"y_max\": 137}\n  },\n  \"period\": {\n    \"text\": \"01/07/2568 - 31/07/2568\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 221, \"y_min\": 183, \"x_max\": 412, \"y_max\": 196}\n  },\n  \"opening_balance\": {\n    \"text\": \"407,689.96\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 840, \"y_min\": 258, \"x_max\": 923, \"y_max\": 271}\n  },\n  \"closing_balance\": {\n    \"text\": \"407,689.96\",\n    \"status\": \"read\",\n    \"bbox\": {\"x_min\": 455, \"y_min\": 289, \"x_max\": 540, \"y_max\": 302}\n  },\n  \"rows\": []\n}",
+ "usage": {
+  "completion_tokens": 634,
+  "prompt_tokens": 3285,
+  "total_tokens": 3919,
+  "prompt_tokens_details": {
+   "cached_tokens": 49
+  }
+ },
+ "cost_usd": 0.0,
+ "latency_s": 154.29,
+ "finish_reason": "stop"
+}

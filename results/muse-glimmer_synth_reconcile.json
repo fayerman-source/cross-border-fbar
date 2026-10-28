@@ -1,0 +1,142 @@
+{
+ "model": "muse-glimmer",
+ "summary": {
+  "accounts_found": "6/6",
+  "max_value_ok": "6/6",
+  "max_source_ok": "6/6",
+  "usd_ok": "6/6",
+  "flags": {
+   "true_positive": 9,
+   "false_positive": 0,
+   "missed": 0,
+   "raised_by_misreads": 1
+  },
+  "aggregate_usd": {
+   "got": 373618,
+   "want": 373618
+  },
+  "extra_accounts": []
+ },
+ "accounts": [
+  {
+   "account_id": "kr-checking",
+   "found": true,
+   "max_ok": true,
+   "max_source_ok": true,
+   "usd_ok": true,
+   "want": {
+    "max": "287450200",
+    "usd": 199100
+   },
+   "got": {
+    "max": "287450200",
+    "usd": 199100
+   },
+   "flags_missed": [],
+   "flags_extra": [],
+   "unscored_review_flags": [],
+   "flags_from_misreads": {}
+  },
+  {
+   "account_id": "kr-parents",
+   "found": true,
+   "max_ok": true,
+   "max_source_ok": true,
+   "usd_ok": true,
+   "want": {
+    "max": "49286000",
+    "usd": 34138
+   },
+   "got": {
+    "max": "49286000",
+    "usd": 34138
+   },
+   "flags_missed": [],
+   "flags_extra": [],
+   "unscored_review_flags": [],
+   "flags_from_misreads": {}
+  },
+  {
+   "account_id": "de-joint",
+   "found": true,
+   "max_ok": true,
+   "max_source_ok": true,
+   "usd_ok": true,
+   "want": {
+    "max": "108378.46",
+    "usd": 127355
+   },
+   "got": {
+    "max": "108378.46",
+    "usd": 127355
+   },
+   "flags_missed": [],
+   "flags_extra": [],
+   "unscored_review_flags": [],
+   "flags_from_misreads": {}
+  },
+  {
+   "account_id": "th-savings",
+   "found": true,
+   "max_ok": true,
+   "max_source_ok": true,
+   "usd_ok": true,
+   "want": {
+    "max": "412350.25",
+    "usd": 13025
+   },
+   "got": {
+    "max": "412350.25",
+    "usd": 13025
+   },
+   "flags_missed": [],
+   "flags_extra": [],
+   "unscored_review_flags": [],
+   "flags_from_misreads": {
+    "institution_names_differ": [
+     "th-savings_2025-01",
+     "th-savings_2025-10",
+     "th-savings_2025-11"
+    ]
+   }
+  },
+  {
+   "account_id": "kr-mmda",
+   "found": true,
+   "max_ok": true,
+   "max_source_ok": true,
+   "usd_ok": true,
+   "want": {
+    "max": null,
+    "usd": null
+   },
+   "got": {
+    "max": null,
+    "usd": null
+   },
+   "flags_missed": [],
+   "flags_extra": [],
+   "unscored_review_flags": [],
+   "flags_from_misreads": {}
+  },
+  {
+   "account_id": "masked-checking",
+   "found": true,
+   "max_ok": true,
+   "max_source_ok": true,
+   "usd_ok": true,
+   "want": {
+    "max": null,
+    "usd": null
+   },
+   "got": {
+    "max": null,
+    "usd": null
+   },
+   "flags_missed": [],
+   "flags_extra": [],
+   "unscored_review_flags": [],
+   "flags_from_misreads": {}
+  }
+ ]
+}
