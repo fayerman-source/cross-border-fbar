@@ -1,0 +1,19 @@
+{
+ "label": "eval:de-joint_2025-12:p1",
+ "model": "muse-spark-1.3",
+ "content": "{\"account_number\": {\"bbox\": {\"x_max\": 453, \"x_min\": 227, \"y_max\": 155, \"y_min\": 139}, \"status\": \"read\", \"text\": \"DE36 9901 2345 0481 5273 60\"}, \"closing_balance\": {\"bbox\": {\"x_max\": 590, \"x_min\": 449, \"y_max\": 439, \"y_min\": 423}, \"status\": \"read\", \"text\": \"23.507,15 EUR\"}, \"currency\": {\"bbox\": {\"x_max\": 260, \"x_min\": 227, \"y_max\": 212, \"y_min\": 197}, \"status\": \"read\", \"text\": \"EUR\"}, \"holder\": {\"bbox\": {\"x_max\": 482, \"x_min\": 225, \"y_max\": 132, \"y_min\": 117}, \"status\": \"read\", \"text\": \"JUNG SEULGI JOY und Jonas Albrecht\"}, \"institution\": {\"bbox\": {\"x_max\": 295, \"x_min\": 75, \"y_max\": 75, \"y_min\": 55}, \"status\": \"read\", \"text\": \"Bergwald Bank AG\"}, \"opening_balance\": {\"bbox\": {\"x_max\": 589, \"x_min\": 449, \"y_max\": 264, \"y_min\": 248}, \"status\": \"read\", \"text\": \"23.078,73 EUR\"}, \"period\": {\"bbox\": {\"x_max\": 395, \"x_min\": 227, \"y_max\": 191, \"y_min\": 177}, \"status\": \"read\", \"text\": \"01.12.2025 - 31.12.2025\"}, \"rows\": [{\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 698, \"x_min\": 645, \"y_max\": 321, \"y_min\": 308}, \"amount_column\": \"debit\", \"amount_text\": \"310,00\", \"balance_bbox\": {\"x_max\": 927, \"x_min\": 855, \"y_max\": 321, \"y_min\": 308}, \"balance_text\": \"22.768,73\", \"date_text\": \"01.12.2025\", \"description\": \"Hausgeld WEG Lindenstr. 12\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 70, \"y_max\": 323, \"y_min\": 306}}, {\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 798, \"x_min\": 745, \"y_max\": 341, \"y_min\": 328}, \"amount_column\": \"credit\", \"amount_text\": \"950,00\", \"balance_bbox\": {\"x_max\": 928, \"x_min\": 855, \"y_max\": 341, \"y_min\": 328}, \"balance_text\": \"23.718,73\", \"date_text\": \"03.12.2025\", \"description\": \"Mieteingan Wohnung Leipzig\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 70, \"y_max\": 343, \"y_min\": 326}}, {\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 698, \"x_min\": 658, \"y_max\": 361, \"y_min\": 348}, \"amount_column\": \"debit\", \"amount_text\": \"45,90\", \"balance_bbox\": {\"x_max\": 928, \"x_min\": 855, \"y_max\": 361, \"y_min\": 348}, \"balance_text\": \"23.672,83\", \"date_text\": \"05.12.2025\", \"description\": \"Haftpflichtversicherung\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 70, \"y_max\": 363, \"y_min\": 347}}, {\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 698, \"x_min\": 658, \"y_max\": 381, \"y_min\": 368}, \"amount_column\": \"debit\", \"amount_text\": \"69,19\", \"balance_bbox\": {\"x_max\": 928, \"x_min\": 855, \"y_max\": 381, \"y_min\": 368}, \"balance_text\": \"23.603,64\", \"date_text\": \"06.12.2025\", \"description\": \"Kartenzahlung REWE\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 70, \"y_max\": 383, \"y_min\": 367}}, {\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 698, \"x_min\": 658, \"y_max\": 402, \"y_min\": 389}, \"amount_column\": \"debit\", \"amount_text\": \"96,49\", \"balance_bbox\": {\"x_max\": 928, \"x_min\": 855, \"y_max\": 402, \"y_min\": 389}, \"balance_text\": \"23.507,15\", \"date_text\": \"21.12.2025\", \"description\": \"Kartenzahlung REWE\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 70, \"y_max\": 404, \"y_min\": 387}}]}",
+ "usage": {
+  "completion_tokens": 4743,
+  "prompt_tokens": 3237,
+  "total_tokens": 7980,
+  "completion_tokens_details": {
+   "reasoning_tokens": 3594
+  },
+  "prompt_tokens_details": {
+   "cached_tokens": 478
+  }
+ },
+ "cost_usd": 0.023678,
+ "latency_s": 13.5,
+ "finish_reason": "stop"
+}

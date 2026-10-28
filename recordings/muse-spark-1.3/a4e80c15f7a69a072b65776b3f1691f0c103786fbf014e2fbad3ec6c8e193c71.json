@@ -1,0 +1,19 @@
+{
+ "label": "eval:kr-parents_2025-06:p1",
+ "model": "muse-spark-1.3",
+ "content": "{\"account_number\": {\"bbox\": {\"x_max\": 362, \"x_min\": 227, \"y_max\": 149, \"y_min\": 133}, \"status\": \"read\", \"text\": \"302-0571-2288-41\"}, \"closing_balance\": {\"bbox\": {\"x_max\": 781, \"x_min\": 694, \"y_max\": 434, \"y_min\": 420}, \"status\": \"read\", \"text\": \"46,043,000\"}, \"currency\": {\"bbox\": {\"x_max\": 268, \"x_min\": 227, \"y_max\": 205, \"y_min\": 192}, \"status\": \"read\", \"text\": \"KRW\"}, \"holder\": {\"bbox\": {\"x_max\": 275, \"x_min\": 227, \"y_max\": 126, \"y_min\": 111}, \"status\": \"read\", \"text\": \"정민호\"}, \"institution\": {\"bbox\": {\"x_max\": 147, \"x_min\": 75, \"y_max\": 73, \"y_min\": 52}, \"status\": \"read\", \"text\": \"다온은행\"}, \"opening_balance\": {\"bbox\": {\"x_max\": 451, \"x_min\": 354, \"y_max\": 241, \"y_min\": 227}, \"status\": \"read\", \"text\": \"46,022,000\"}, \"period\": {\"bbox\": {\"x_max\": 403, \"x_min\": 227, \"y_max\": 186, \"y_min\": 172}, \"status\": \"read\", \"text\": \"2025.06.01 ~ 2025.06.30\"}, \"rows\": [{\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 790, \"x_min\": 735, \"y_max\": 317, \"y_min\": 303}, \"amount_column\": \"credit\", \"amount_text\": \"500,000\", \"balance_bbox\": {\"x_max\": 925, \"x_min\": 848, \"y_max\": 317, \"y_min\": 303}, \"balance_text\": \"46,522,000\", \"date_text\": \"2025.06.10\", \"description\": \"정슬기\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 70, \"y_max\": 322, \"y_min\": 300}}, {\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 658, \"x_min\": 604, \"y_max\": 339, \"y_min\": 325}, \"amount_column\": \"debit\", \"amount_text\": \"385,000\", \"balance_bbox\": {\"x_max\": 925, \"x_min\": 848, \"y_max\": 339, \"y_min\": 325}, \"balance_text\": \"46,137,000\", \"date_text\": \"2025.06.13\", \"description\": \"병원비\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 70, \"y_max\": 343, \"y_min\": 324}}, {\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 658, \"x_min\": 592, \"y_max\": 361, \"y_min\": 347}, \"amount_column\": \"debit\", \"amount_text\": \"1,279,000\", \"balance_bbox\": {\"x_max\": 925, \"x_min\": 848, \"y_max\": 361, \"y_min\": 347}, \"balance_text\": \"44,858,000\", \"date_text\": \"2025.06.15\", \"description\": \"다온카드 결제대금\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 70, \"y_max\": 365, \"y_min\": 345}}, {\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 658, \"x_min\": 604, \"y_max\": 383, \"y_min\": 369}, \"amount_column\": \"debit\", \"amount_text\": \"201,000\", \"balance_bbox\": {\"x_max\": 925, \"x_min\": 848, \"y_max\": 383, \"y_min\": 369}, \"balance_text\": \"44,657,000\", \"date_text\": \"2025.06.20\", \"description\": \"관리비\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 70, \"y_max\": 387, \"y_min\": 367}}, {\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 791, \"x_min\": 724, \"y_max\": 404, \"y_min\": 390}, \"amount_column\": \"credit\", \"amount_text\": \"1,386,000\", \"balance_bbox\": {\"x_max\": 925, \"x_min\": 848, \"y_max\": 404, \"y_min\": 390}, \"balance_text\": \"46,043,000\", \"date_text\": \"2025.06.25\", \"description\": \"국민연금\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 70, \"y_max\": 409, \"y_min\": 389}}]}",
+ "usage": {
+  "completion_tokens": 2563,
+  "prompt_tokens": 3237,
+  "total_tokens": 5800,
+  "completion_tokens_details": {
+   "reasoning_tokens": 1444
+  },
+  "prompt_tokens_details": {
+   "cached_tokens": 478
+  }
+ },
+ "cost_usd": 0.014413,
+ "latency_s": 7.58,
+ "finish_reason": "stop"
+}

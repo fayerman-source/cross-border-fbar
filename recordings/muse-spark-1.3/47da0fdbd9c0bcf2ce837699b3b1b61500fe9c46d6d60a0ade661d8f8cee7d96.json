@@ -1,0 +1,19 @@
+{
+ "label": "eval:th-savings_2025-05:p1",
+ "model": "muse-spark-1.3",
+ "content": "{\"account_number\": {\"bbox\": {\"x_max\": 321, \"x_min\": 229, \"y_max\": 157, \"y_min\": 143}, \"status\": \"read\", \"text\": \"714-2-38065-9\"}, \"closing_balance\": {\"bbox\": {\"x_max\": 532, \"x_min\": 444, \"y_max\": 349, \"y_min\": 336}, \"status\": \"read\", \"text\": \"407,150.25\"}, \"currency\": {\"bbox\": {\"x_max\": 267, \"x_min\": 229, \"y_max\": 222, \"y_min\": 208}, \"status\": \"read\", \"text\": \"THB\"}, \"holder\": {\"bbox\": {\"x_max\": 388, \"x_min\": 229, \"y_max\": 135, \"y_min\": 122}, \"status\": \"read\", \"text\": \"MS. JUNG SEULGI JOY\"}, \"institution\": {\"bbox\": {\"x_max\": 272, \"x_min\": 73, \"y_max\": 77, \"y_min\": 54}, \"status\": \"read\", \"text\": \"\\u0e18\\u0e19\\u0e32\\u0e04\\u0e32\\u0e23\\u0e2a\\u0e22\\u0e32\\u0e21\\u0e42\\u0e25\\u0e15\\u0e31\\u0e2a\"}, \"opening_balance\": {\"bbox\": {\"x_max\": 926, \"x_min\": 833, \"y_max\": 265, \"y_min\": 253}, \"status\": \"read\", \"text\": \"407,150.25\"}, \"period\": {\"bbox\": {\"x_max\": 408, \"x_min\": 229, \"y_max\": 199, \"y_min\": 185}, \"status\": \"read\", \"text\": \"01/05/2568 - 31/05/2568\"}, \"rows\": [{\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 648, \"x_min\": 572, \"y_max\": 290, \"y_min\": 279}, \"amount_column\": \"debit\", \"amount_text\": \"300,000.00\", \"balance_bbox\": {\"x_max\": 927, \"x_min\": 832, \"y_max\": 290, \"y_min\": 279}, \"balance_text\": \"107,150.25\", \"date_text\": \"16/05/2568\", \"description\": \"\\u0e42\\u0e2d\\u0e19\\u0e40\\u0e07\\u0e34\\u0e19\\u0e44\\u0e1b\\u0e15\\u0e48\\u0e32\\u0e07\\u0e1b\\u0e23\\u0e30\\u0e40\\u0e17\\u0e28\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 70, \"y_max\": 293, \"y_min\": 274}}, {\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 785, \"x_min\": 697, \"y_max\": 316, \"y_min\": 305}, \"amount_column\": \"credit\", \"amount_text\": \"300,000.00\", \"balance_bbox\": {\"x_max\": 927, \"x_min\": 832, \"y_max\": 316, \"y_min\": 305}, \"balance_text\": \"407,150.25\", \"date_text\": \"16/05/2568\", \"description\": \"\\u0e23\\u0e31\\u0e1a\\u0e42\\u0e2d\\u0e19\\u0e40\\u0e07\\u0e34\\u0e19 \\u0e04\\u0e48\\u0e32\\u0e02\\u0e32\\u0e22\\u0e23\\u0e16\\u0e22\\u0e19\\u0e15\\u0e4c\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 70, \"y_max\": 317, \"y_min\": 297}}]}",
+ "usage": {
+  "completion_tokens": 2111,
+  "prompt_tokens": 3237,
+  "total_tokens": 5348,
+  "completion_tokens_details": {
+   "reasoning_tokens": 1209
+  },
+  "prompt_tokens_details": {
+   "cached_tokens": 478
+  }
+ },
+ "cost_usd": 0.012492,
+ "latency_s": 6.26,
+ "finish_reason": "stop"
+}

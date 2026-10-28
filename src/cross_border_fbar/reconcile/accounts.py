@@ -16,11 +16,11 @@ Rules (FinCEN "Reporting Maximum Account Value"; IRS IRM 4.26.16):
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from decimal import ROUND_CEILING, Decimal
 
-from ..extract.parse import normalize_name
+from ..extract.parse import account_key, normalize_name
 from ..rates import Rate
 from .observe import Observation, Source, most_common
 
@@ -314,6 +314,15 @@ def reconcile_account(
         if _in_year(b.day, tax_year)
     ]
     best = _max_value(balances)
+    if best is None and identified and any(o.lines for o in obs):
+        flags.append(
+            Flag(
+                "no_balance_anchor",
+                "review",
+                "transactions only: no balance appears on any document, so "
+                "the maximum can't be determined; request statements showing balances",
+            )
+        )
     best_usd = usd_ceiling(best.amount, rate) if best and rate else None
     if best and best.source.ref.startswith("row:"):
         flags.append(
@@ -362,11 +371,17 @@ def reconcile_account(
 
     ownership = intake.ownership if intake else "unknown"
     if not identified:
+        masked = obs[0].account_key.startswith("masked:") if obs else False
+        code, why = (
+            ("account_number_masked", "account number partly masked; can't be matched to an account")
+            if masked
+            else ("account_unidentified", "account number unreadable")
+        )
         flags.append(
             Flag(
-                "account_unidentified",
+                code,
                 "review",
-                "account number unreadable; not counted in totals",
+                f"{why}; not counted in totals",
                 [Source(o.upload, "account_number", None) for o in obs],
             )
         )
@@ -402,6 +417,40 @@ def _rate_for(currency: str | None, rates: dict[str, Rate], tax_year: int) -> Ra
     return rates.get(currency or "")
 
 
+def split_by_row_account(o: Observation) -> list[Observation]:
+    """Split a page listing several accounts into one observation per account.
+
+    Rows that belong to the page's own (header) account keep the page's opening and closing
+    balances; a statement that repeats its account number on every row stays whole.
+    """
+    if not any(ln.account_text for ln in o.lines):
+        return [o]
+    groups: dict[str, list] = defaultdict(list)
+    for ln in o.lines:
+        groups[account_key(ln.account_text) if ln.account_text else o.account_key].append(ln)
+    if set(groups) == {o.account_key}:
+        return [o]
+    keep = [p for p in o.problems if p not in ("account_number", "opening_balance", "closing_balance")]
+    parts = []
+    for key, lines in groups.items():
+        if key and key == o.account_key:
+            parts.append(replace(o, lines=lines))
+        else:
+            text = next((ln.account_text for ln in lines if ln.account_text), "")
+            parts.append(
+                replace(
+                    o,
+                    account_key=key,
+                    account_number=text,
+                    lines=lines,
+                    opening=None,
+                    closing=None,
+                    problems=keep,
+                )
+            )
+    return parts
+
+
 def reconcile(
     observations: list[Observation],
     intake: dict[str, Intake],
@@ -409,15 +458,26 @@ def reconcile(
     tax_year: int,
     threshold_usd: int = 1000,
 ) -> list[AccountResult]:
-    """Group pages by account number and reconcile each account; pages without one stay apart, uncounted."""
+    """Group by account number and reconcile each account. Pages or rows whose account can't be
+    identified (unreadable or partly masked) stay apart and are not counted in totals."""
     groups: dict[str, list[Observation]] = defaultdict(list)
     unidentified = []
-    for o in observations:
+    for o in (part for page in observations for part in split_by_row_account(page)):
         (groups[o.account_key] if o.account_key else unidentified).append(o)
     results = []
     for key, obs in sorted(groups.items()):
         rate = _rate_for(most_common(o.currency for o in obs), rates, tax_year)
-        results.append(reconcile_account(obs, intake.get(key), rate, tax_year, threshold_usd))
+        identified = not key.startswith("masked:")
+        results.append(
+            reconcile_account(
+                obs,
+                intake.get(key) if identified else None,
+                rate,
+                tax_year,
+                threshold_usd,
+                identified=identified,
+            )
+        )
     for o in unidentified:
         rate = _rate_for(o.currency, rates, tax_year)
         results.append(reconcile_account([o], None, rate, tax_year, threshold_usd, identified=False))

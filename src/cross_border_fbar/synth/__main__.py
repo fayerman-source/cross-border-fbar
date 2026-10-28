@@ -13,9 +13,10 @@ import json
 from pathlib import Path
 
 from .. import rates
+from .compiled import MASKED_CHECKING, MMDA_NUMBER, PERIOD, compiled_rows, mmda_true_peak
 from .household import household
 from .ledger import build_ledger, monthly_statements
-from .render import LAYOUTS, render_statement
+from .render import LAYOUTS, render_compiled, render_statement
 from .truth import account_truth, household_totals, major, to_usd_ceiling
 
 TAX_YEAR = 2025
@@ -43,6 +44,89 @@ def rasterize(pdf: Path, out_dir: Path, dpi: int) -> list[dict]:
         )
     doc.close()
     return pages
+
+
+def _compiled_statement(out: Path, seed: int, png: bool, dpi: int, accounts: list[dict]) -> dict:
+    """The compiled multi-account list (no balances), plus answer-key entries for its two accounts."""
+    checking = build_ledger(household(TAX_YEAR)[0], TAX_YEAR, seed)
+    rows = compiled_rows(seed, checking)
+    pdf = out / "statements" / "compiled-ledger.pdf"
+    drawn = render_compiled(rows, PERIOD, FONTS, pdf)
+    accounts.append(
+        {
+            "account_id": "kr-mmda",
+            "currency": "KRW",
+            "account_number": MMDA_NUMBER,
+            "holder_printed": None,
+            "ownership": "sole",
+            "financial_interest": True,
+            "owners": ["JUNG SEULGI JOY"],
+            "institutions": [],
+            "statements_provided": ["compiled-ledger"],
+            "statements_withheld": [],
+            "max_value": None,
+            "max_value_usd": None,
+            "max_month_end": None,
+            "intraday_candidates": [],
+            "year_end_balance": None,
+            "hidden_true_peak": {
+                "amount": major(mmda_true_peak(rows, TAX_YEAR), "KRW"),
+                "note": "from the hidden ledger; no document shows any balance for this account",
+            },
+            "expected_flags": [{"code": "no_balance_anchor", "severity": "review"}],
+        }
+    )
+    accounts.append(
+        {
+            "account_id": "masked-checking",
+            "currency": "KRW",
+            "account_number": MASKED_CHECKING,
+            "holder_printed": None,
+            "ownership": "unknown",
+            "financial_interest": None,
+            "owners": [],
+            "institutions": [],
+            "statements_provided": ["compiled-ledger"],
+            "statements_withheld": [],
+            "max_value": None,
+            "max_value_usd": None,
+            "max_month_end": None,
+            "intraday_candidates": [],
+            "year_end_balance": None,
+            "hidden_true_peak": None,
+            "counted": False,
+            "expected_flags": [{"code": "account_number_masked", "severity": "review"}],
+        }
+    )
+    rec = {
+        "statement_id": "compiled-ledger",
+        "account_id": None,
+        "period": PERIOD[0].isoformat(),
+        "file": str(pdf.relative_to(out)),
+        "bank": None,
+        "layout": "kr_ledger",
+        "pages": drawn["pages"],
+        "prints_running_balance": False,
+        "fields": drawn["fields"],
+        "transactions": [
+            {
+                "txn_id": r.row_id,
+                "date": r.day.isoformat(),
+                "description": r.counterparty,
+                "amount": major(r.signed, "KRW"),
+                "balance_after": None,
+                "balance_printed": False,
+                "account_printed": r.account_printed,
+                "tag": r.account_id,
+                **drawn["lines"][r.row_id],
+            }
+            for r in rows
+        ],
+    }
+    if png:
+        (out / "pages").mkdir(parents=True, exist_ok=True)
+        rec["page_images"] = rasterize(pdf, out / "pages", dpi)
+    return rec
 
 
 def generate(out: Path, seed: int, png: bool, dpi: int, threshold_usd: int) -> dict:
@@ -100,6 +184,8 @@ def generate(out: Path, seed: int, png: bool, dpi: int, threshold_usd: int) -> d
                 rec["page_images"] = rasterize(pdf, out / "pages", dpi)
             statements_out.append(rec)
 
+    statements_out.append(_compiled_statement(out, seed, png, dpi, accounts))
+
     truth = {
         "schema_version": 1,
         "synthetic": True,
@@ -135,10 +221,12 @@ def main() -> None:
     print(f"{len(truth['statements'])} statements -> {a.out}")
     for acct in truth["accounts"]:
         codes = sorted({f["code"] for f in acct["expected_flags"]})
-        print(
-            f"  {acct['account_id']:12} max {acct['max_value']['amount']:>14} {acct['currency']} "
-            f"= ${acct['max_value_usd']:,}  flags: {', '.join(codes) or '-'}"
+        value = (
+            f"{acct['max_value']['amount']:>14} {acct['currency']} = ${acct['max_value_usd']:,}"
+            if acct["max_value"]
+            else f"{'unknown':>14} {acct['currency']}"
         )
+        print(f"  {acct['account_id']:15} max {value}  flags: {', '.join(codes) or '-'}")
     h = truth["household"]
     print(f"  aggregate ${h['aggregate_max_usd']:,} (month-end only ${h['aggregate_month_end_only_usd']:,})")
 

@@ -436,3 +436,107 @@ def render_statement(spec: AccountSpec, stmt: Statement, fonts: Path, out: Path)
         "fields": fields,
         "lines": lines,
     }
+
+
+COMPILED_COLUMNS = (
+    Column("date", "날짜", 20, "C"),
+    Column("label", "계좌", 15, "C"),
+    Column("account", "계좌번호", 27, "C"),
+    Column("channel", "종류", 16, "C"),
+    Column("direction", "구분", 12, "C"),
+    Column("amount", "금액(원)", 24, "R"),
+    Column("counterparty", "적요원문(상대방)", 30, "L"),
+    Column("remark", "비고", 36, "L"),
+)
+
+
+def render_compiled(rows, period: tuple[date, date], fonts: Path, out: Path) -> dict:
+    """Render a compiled multi-account transaction list (no balances); return fields and line positions."""
+    doc = _Doc(fonts, "kr")
+    fields: dict[str, dict] = {}
+    lines: dict[str, dict] = {}
+    width = sum(c.width for c in COMPILED_COLUMNS)
+
+    def table_header(y: float) -> float:
+        doc.pdf.set_fill_color(105)
+        doc.pdf.rect(MARGIN, y, width, ROW_H, style="F")
+        x = MARGIN
+        for c in COMPILED_COLUMNS:
+            doc.pdf.set_font("kr", "B", 8.5)
+            doc.pdf.set_text_color(255)
+            doc.pdf.set_xy(x, y)
+            doc.pdf.cell(c.width, ROW_H, c.label, align="C")
+            x += c.width
+        return y + ROW_H
+
+    doc.new_page()
+    y = MARGIN
+    doc.text(MARGIN, y, 120, 8, "거래내역 정리", size=14, bold=True)
+    y += 10
+    doc.text(MARGIN, y, 20, 5.5, "조회기간", size=8.5, grey=True)
+    period_text = f"{period[0].isoformat()} ~ {period[1].isoformat()}"
+    fields["period"] = {
+        "value": period_text,
+        **doc.text(MARGIN + 20, y, 60, 5.5, period_text, size=9, font="latin"),
+    }
+    doc.text(MARGIN + 95, y, 25, 5.5, "금액 단위", size=8.5, grey=True)
+    fields["currency"] = {"value": "KRW", **doc.text(MARGIN + 120, y, 15, 5.5, "원", size=9)}
+    y = table_header(y + 9)
+
+    for i, r in enumerate(rows):
+        if y + ROW_H > BOTTOM - 6:
+            doc.new_page()
+            y = table_header(MARGIN)
+        if i % 2:
+            doc.pdf.set_fill_color(242)
+            doc.pdf.rect(MARGIN, y, width, ROW_H, style="F")
+        values = {
+            "date": r.day.isoformat(),
+            "label": r.account_label,
+            "account": r.account_printed,
+            "channel": r.channel,
+            "direction": r.direction,
+            "amount": f"{r.amount:,}",
+            "counterparty": r.counterparty,
+            "remark": r.remark,
+        }
+        rec = {
+            "page": doc.page,
+            "row_bbox": box(MARGIN, y, width, ROW_H),
+            "amount_bbox": None,
+            "amount_text_bbox": None,
+            "balance_bbox": None,
+            "balance_text_bbox": None,
+        }
+        x = MARGIN
+        for c in COMPILED_COLUMNS:
+            latin = c.key in ("date", "account", "amount")
+            pos = doc.text(
+                x, y, c.width, ROW_H, values[c.key], size=8, align=c.align, font="latin" if latin else None
+            )
+            if c.key == "amount":
+                rec["amount_bbox"], rec["amount_text_bbox"] = pos["bbox"], pos["text_bbox"]
+            if c.key == "account":
+                rec["account_text_bbox"] = pos["text_bbox"]
+            x += c.width
+        lines[r.row_id] = rec
+        y += ROW_H
+
+    pages = doc.page
+    for p in range(1, pages + 1):
+        doc.pdf.page = p
+        doc.text(MARGIN, PAGE_H - 14, 150, 5, FOOTER, size=7, font="latin", grey=True)
+        doc.text(
+            PAGE_W - MARGIN - 20,
+            PAGE_H - 14,
+            20,
+            5,
+            f"{p}/{pages}",
+            size=7,
+            font="latin",
+            grey=True,
+            align="R",
+        )
+    out.parent.mkdir(parents=True, exist_ok=True)
+    doc.pdf.output(str(out))
+    return {"pages": pages, "prints_running_balance": False, "fields": fields, "lines": lines}

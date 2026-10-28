@@ -1,0 +1,19 @@
+{
+ "label": "eval:kr-parents_2025-09:p1",
+ "model": "muse-spark-1.3",
+ "content": "{\"account_number\": {\"bbox\": {\"x_max\": 350, \"x_min\": 227, \"y_max\": 160, \"y_min\": 145}, \"status\": \"read\", \"text\": \"302-0571-2288-41\"}, \"closing_balance\": {\"bbox\": {\"x_max\": 780, \"x_min\": 691, \"y_max\": 437, \"y_min\": 422}, \"status\": \"read\", \"text\": \"47,864,000\"}, \"currency\": {\"bbox\": {\"x_max\": 261, \"x_min\": 226, \"y_max\": 223, \"y_min\": 210}, \"status\": \"read\", \"text\": \"KRW\"}, \"holder\": {\"bbox\": {\"x_max\": 273, \"x_min\": 227, \"y_max\": 139, \"y_min\": 124}, \"status\": \"read\", \"text\": \"\\uc815\\ubbfc\\ud638\"}, \"institution\": {\"bbox\": {\"x_max\": 169, \"x_min\": 75, \"y_max\": 73, \"y_min\": 52}, \"status\": \"read\", \"text\": \"\\ub2e4\\uc628\\uc740\\ud589\"}, \"opening_balance\": {\"bbox\": {\"x_max\": 450, \"x_min\": 378, \"y_max\": 247, \"y_min\": 232}, \"status\": \"read\", \"text\": \"47,287,000\"}, \"period\": {\"bbox\": {\"x_max\": 390, \"x_min\": 227, \"y_max\": 201, \"y_min\": 188}, \"status\": \"read\", \"text\": \"2025.09.01 ~ 2025.09.30\"}, \"rows\": [{\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 790, \"x_min\": 728, \"y_max\": 316, \"y_min\": 303}, \"amount_column\": \"credit\", \"amount_text\": \"500,000\", \"balance_bbox\": {\"x_max\": 924, \"x_min\": 851, \"y_max\": 316, \"y_min\": 303}, \"balance_text\": \"47,787,000\", \"date_text\": \"2025.09.10\", \"description\": \"\\uc815\\uc2ac\\uae30\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 70, \"y_max\": 320, \"y_min\": 297}}, {\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 657, \"x_min\": 604, \"y_max\": 340, \"y_min\": 327}, \"amount_column\": \"debit\", \"amount_text\": \"270,000\", \"balance_bbox\": {\"x_max\": 924, \"x_min\": 851, \"y_max\": 340, \"y_min\": 327}, \"balance_text\": \"47,517,000\", \"date_text\": \"2025.09.10\", \"description\": \"\\ubcd1\\uc6d0\\ube44\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 70, \"y_max\": 342, \"y_min\": 320}}, {\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 657, \"x_min\": 604, \"y_max\": 360, \"y_min\": 347}, \"amount_column\": \"debit\", \"amount_text\": \"830,000\", \"balance_bbox\": {\"x_max\": 924, \"x_min\": 851, \"y_max\": 360, \"y_min\": 347}, \"balance_text\": \"46,687,000\", \"date_text\": \"2025.09.15\", \"description\": \"\\ub2e4\\uc628\\uce74\\ub4dc \\uacb0\\uc81c\\ub300\\uae08\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 70, \"y_max\": 363, \"y_min\": 342}}, {\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 657, \"x_min\": 604, \"y_max\": 382, \"y_min\": 369}, \"amount_column\": \"debit\", \"amount_text\": \"209,000\", \"balance_bbox\": {\"x_max\": 924, \"x_min\": 851, \"y_max\": 382, \"y_min\": 369}, \"balance_text\": \"46,478,000\", \"date_text\": \"2025.09.20\", \"description\": \"\\uad00\\ub9ac\\ube44\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 70, \"y_max\": 384, \"y_min\": 363}}, {\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 791, \"x_min\": 716, \"y_max\": 403, \"y_min\": 390}, \"amount_column\": \"credit\", \"amount_text\": \"1,386,000\", \"balance_bbox\": {\"x_max\": 924, \"x_min\": 851, \"y_max\": 403, \"y_min\": 390}, \"balance_text\": \"47,864,000\", \"date_text\": \"2025.09.25\", \"description\": \"\\uad6d\\ubbfc\\uc5f0\\uae08\", \"row_bbox\": {\"x_max\": 930, \"x_min\": 70, \"y_max\": 406, \"y_min\": 384}}]}",
+ "usage": {
+  "completion_tokens": 2602,
+  "prompt_tokens": 3237,
+  "total_tokens": 5839,
+  "completion_tokens_details": {
+   "reasoning_tokens": 1406
+  },
+  "prompt_tokens_details": {
+   "cached_tokens": 478
+  }
+ },
+ "cost_usd": 0.014579,
+ "latency_s": 9.45,
+ "finish_reason": "stop"
+}

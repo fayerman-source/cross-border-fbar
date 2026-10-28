@@ -78,3 +78,26 @@ def normalize_account_number(text: str) -> str:
 
 def normalize_name(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").strip()).casefold()
+
+
+# ISO codes the tool can convert (Treasury labels in rates.py) plus USD. Anything else is "unknown",
+# not guessed: "All amounts in KRW" must not read as ALL, and "HK$" must not read as USD.
+KNOWN_CURRENCIES = {"KRW", "EUR", "THB", "INR", "USD"}
+_UNAMBIGUOUS_UNITS = {"₩": "KRW", "원": "KRW", "€": "EUR", "฿": "THB", "₹": "INR"}
+
+
+def parse_currency(text: str) -> str | None:
+    t = (text or "").strip()
+    for token in re.findall(r"[A-Z]{3}", t.upper()):
+        if token in KNOWN_CURRENCIES:
+            return token
+    for unit, iso in _UNAMBIGUOUS_UNITS.items():
+        if unit in t:
+            return iso
+    return None
+
+
+def account_key(text: str) -> str:
+    """Grouping key for an account number. Masked numbers (with *) can't be matched, so they stay apart."""
+    norm = normalize_account_number(text)
+    return f"masked:{norm}" if "*" in norm else norm

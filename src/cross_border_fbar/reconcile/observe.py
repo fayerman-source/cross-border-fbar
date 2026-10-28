@@ -8,12 +8,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
-from ..extract.parse import normalize_account_number, parse_amount, parse_date
-
-# ISO codes the tool can convert (Treasury labels in rates.py) plus USD. Anything else is "unknown",
-# not guessed: "All amounts in KRW" must not read as ALL, and "HK$" must not read as USD.
-KNOWN_CURRENCIES = {"KRW", "EUR", "THB", "INR", "USD"}
-_UNAMBIGUOUS_SYMBOLS = {"₩": "KRW", "€": "EUR", "฿": "THB", "₹": "INR"}
+from ..extract.parse import account_key, parse_amount, parse_currency, parse_date
 
 
 @dataclass(frozen=True)
@@ -33,6 +28,7 @@ class Line:
     printed_balance: Decimal | None
     description: str
     source: Source
+    account_text: str = ""  # the row's own account number, on lists covering several accounts
 
 
 @dataclass
@@ -50,17 +46,6 @@ class Observation:
     lines: list[Line]
     sources: dict[str, Source] = field(default_factory=dict)
     problems: list[str] = field(default_factory=list)  # key fields unreadable, or read but unparseable
-
-
-def parse_currency(text: str) -> str | None:
-    t = (text or "").strip()
-    for token in re.findall(r"[A-Z]{3}", t.upper()):
-        if token in KNOWN_CURRENCIES:
-            return token
-    for sym, iso in _UNAMBIGUOUS_SYMBOLS.items():
-        if sym in t:
-            return iso
-    return None
 
 
 def parse_period(text: str) -> tuple[date | None, date | None]:
@@ -109,6 +94,7 @@ def observe(reading: dict, upload: str, snapped: dict | None = None) -> Observat
                 parse_amount(row["balance_text"]),
                 row["description"],
                 src,
+                row.get("account_text", "").strip(),
             )
         )
     sources = {n: Source(upload, n, reading[n]["bbox"]) for n in KEY_FIELDS}
@@ -125,7 +111,7 @@ def observe(reading: dict, upload: str, snapped: dict | None = None) -> Observat
         upload=upload,
         institution=value("institution").strip(),
         currency=parsed["currency"],
-        account_key=normalize_account_number(value("account_number")),
+        account_key=account_key(value("account_number")),
         account_number=value("account_number").strip(),
         holder=value("holder").strip(),
         period_start=start,

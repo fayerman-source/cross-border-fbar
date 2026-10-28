@@ -196,3 +196,54 @@ def test_usd_accounts_abroad_need_no_rate():
 )
 def test_currency_parsing_never_guesses(text, want):
     assert parse_currency(text) == want
+
+
+def ledger_lines(rows):
+    """Rows of a compiled multi-account list: (day, amount, account_text); no balances."""
+    return [
+        Line(i, d, a, None, "", Source("list", f"row:{i}", None), account_text=acct)
+        for i, (d, a, acct) in enumerate(rows)
+    ]
+
+
+def compiled_page(rows):
+    o = obs("list", date(2024, 9, 1), date(2026, 1, 31), None, None, key="")
+    o.account_number, o.currency, o.lines = "", "KRW", ledger_lines(rows)
+    return o
+
+
+def test_a_list_covering_several_accounts_is_split_by_row():
+    page = compiled_page(
+        [
+            (date(2025, 2, 3), D(5_000_000), "110-731-552904"),
+            (date(2025, 3, 3), D(-1_000_000), "110-731-552904"),
+            (date(2025, 1, 24), D(6_840_000), "110-48*-******"),
+        ]
+    )
+    results = {
+        r.account_key: r for r in reconcile([page], {"110731552904": Intake("sole", True)}, RATES, 2025)
+    }
+    assert set(results) == {"110731552904", "masked:11048*******"}
+    mmda, masked = results["110731552904"], results["masked:11048*******"]
+    assert mmda.max_value is None
+    assert "no_balance_anchor" in codes(mmda)
+    assert not masked.identified
+    assert "account_number_masked" in codes(masked)
+    assert fbar_totals(list(results.values())).aggregate_max_usd == 0
+
+
+def test_won_unit_and_masked_keys():
+    from cross_border_fbar.extract.parse import account_key
+
+    assert parse_currency("금액 단위: 원") == "KRW"
+    assert account_key("110-48*-******") == "masked:11048*******"
+    assert account_key("110-731-552904") == "110731552904"
+
+
+def test_a_statement_repeating_its_own_account_on_rows_keeps_its_balances():
+    """Codex review on #4: repeating the header account per row used to discard opening and closing."""
+    o = obs("s", date(2025, 1, 1), date(2025, 1, 31), D(1000), D(500), [(date(2025, 1, 9), D(-500), None)])
+    o.lines[0].account_text = "ACC1"
+    (r,) = reconcile([o], SOLE, RATES, 2025)
+    assert r.max_value.amount == D(1000)
+    assert "no_balance_anchor" not in codes(r)

@@ -1,0 +1,19 @@
+{
+ "label": "eval:de-joint_2025-06:p1",
+ "model": "muse-spark-1.3",
+ "content": "{\"account_number\": {\"bbox\": {\"x_max\": 454, \"x_min\": 227, \"y_max\": 161, \"y_min\": 145}, \"status\": \"read\", \"text\": \"DE36 9901 2345 0481 5273 60\"}, \"closing_balance\": {\"bbox\": {\"x_max\": 615, \"x_min\": 473, \"y_max\": 428, \"y_min\": 410}, \"status\": \"read\", \"text\": \"21.126,54 EUR\"}, \"currency\": {\"bbox\": {\"x_max\": 261, \"x_min\": 226, \"y_max\": 228, \"y_min\": 212}, \"status\": \"read\", \"text\": \"EUR\"}, \"holder\": {\"bbox\": {\"x_max\": 504, \"x_min\": 227, \"y_max\": 140, \"y_min\": 122}, \"status\": \"read\", \"text\": \"JUNG SEULGI JOY und Jonas Albrecht\"}, \"institution\": {\"bbox\": {\"x_max\": 363, \"x_min\": 75, \"y_max\": 77, \"y_min\": 54}, \"status\": \"read\", \"text\": \"Rheinauen Privatbank\"}, \"opening_balance\": {\"bbox\": {\"x_max\": 614, \"x_min\": 473, \"y_max\": 275, \"y_min\": 257}, \"status\": \"read\", \"text\": \"20.570,86 EUR\"}, \"period\": {\"bbox\": {\"x_max\": 406, \"x_min\": 226, \"y_max\": 205, \"y_min\": 189}, \"status\": \"read\", \"text\": \"01.06.2025 - 30.06.2025\"}, \"rows\": [{\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 904, \"x_min\": 846, \"y_max\": 326, \"y_min\": 312}, \"amount_column\": \"signed\", \"amount_text\": \"-310,00\", \"balance_bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"balance_text\": \"\", \"date_text\": \"01.06.\", \"description\": \"Hausgeld WEG Lindenstr. 12\", \"row_bbox\": {\"x_max\": 928, \"x_min\": 70, \"y_max\": 328, \"y_min\": 309}}, {\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 904, \"x_min\": 857, \"y_max\": 347, \"y_min\": 332}, \"amount_column\": \"signed\", \"amount_text\": \"950,00\", \"balance_bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"balance_text\": \"\", \"date_text\": \"03.06.\", \"description\": \"Mieteingan Wohnung Leipzig\", \"row_bbox\": {\"x_max\": 928, \"x_min\": 70, \"y_max\": 350, \"y_min\": 330}}, {\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 904, \"x_min\": 854, \"y_max\": 368, \"y_min\": 354}, \"amount_column\": \"signed\", \"amount_text\": \"-45,90\", \"balance_bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"balance_text\": \"\", \"date_text\": \"05.06.\", \"description\": \"Haftpflichtversicherung\", \"row_bbox\": {\"x_max\": 928, \"x_min\": 70, \"y_max\": 371, \"y_min\": 351}}, {\"account_text\": \"\", \"amount_bbox\": {\"x_max\": 904, \"x_min\": 854, \"y_max\": 389, \"y_min\": 375}, \"amount_column\": \"signed\", \"amount_text\": \"-38,42\", \"balance_bbox\": {\"x_max\": 0, \"x_min\": 0, \"y_max\": 0, \"y_min\": 0}, \"balance_text\": \"\", \"date_text\": \"23.06.\", \"description\": \"Kartenzahlung REWE\", \"row_bbox\": {\"x_max\": 928, \"x_min\": 70, \"y_max\": 392, \"y_min\": 372}}]}",
+ "usage": {
+  "completion_tokens": 2730,
+  "prompt_tokens": 3237,
+  "total_tokens": 5967,
+  "completion_tokens_details": {
+   "reasoning_tokens": 1771
+  },
+  "prompt_tokens_details": {
+   "cached_tokens": 478
+  }
+ },
+ "cost_usd": 0.015123,
+ "latency_s": 9.09,
+ "finish_reason": "stop"
+}

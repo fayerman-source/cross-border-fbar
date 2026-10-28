@@ -187,12 +187,17 @@ def account_truth(
 
 
 def household_totals(accounts: list[dict], month_end_usd: dict[str, int], threshold_usd: int) -> dict:
-    """Aggregate across every reportable account (financial interest or signature authority)."""
-    reported = sum(a["max_value_usd"] for a in accounts)
+    """Aggregate across every reportable account (financial interest or signature authority).
+
+    Accounts whose maximum can't be established from the documents (no balance anywhere) and
+    accounts that can't be identified are listed, not counted.
+    """
+    counted = [a for a in accounts if a.get("counted", True)]
+    reported = sum(a["max_value_usd"] for a in counted if a["max_value_usd"] is not None)
     month_end_only = sum(month_end_usd.values())
     # One maximum per account: its worst case is its largest possible extra, not the sum of them.
     with_intraday = reported + sum(
-        max((c["possible_extra_usd"] for c in a["intraday_candidates"]), default=0) for a in accounts
+        max((c["possible_extra_usd"] for c in a["intraday_candidates"]), default=0) for a in counted
     )
     crosses = (reported <= FBAR_AGGREGATE_USD) != (with_intraday <= FBAR_AGGREGATE_USD) or (
         month_end_only <= FBAR_AGGREGATE_USD
@@ -204,4 +209,6 @@ def household_totals(accounts: list[dict], month_end_usd: dict[str, int], thresh
         "above_fbar_aggregate_threshold": reported > FBAR_AGGREGATE_USD,
         "threshold_crossing_depends_on_peaks": crosses,
         "flag_threshold_usd": threshold_usd,
+        "accounts_without_value": [a["account_id"] for a in counted if a["max_value_usd"] is None],
+        "accounts_not_counted": [a["account_id"] for a in accounts if not a.get("counted", True)],
     }
