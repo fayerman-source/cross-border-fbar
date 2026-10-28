@@ -310,3 +310,12 @@ def test_names_mixing_scripts_inside_one_name_stay_distinct():
     # A space-joined bilingual reading (as Glimmer returned it) still links the two single-language ones.
     bilingual = "ธนาคารสยามโลตัส Siam Lotus Bank"
     assert _distinct_institutions(["ธนาคารสยามโลตัส", bilingual, "Siam Lotus Bank"]) == ["ธนาคารสยามโลตัส"]
+
+
+def test_short_complete_bank_names_match_their_expanded_header():
+    """Codex on PR #6: 'UBS' and 'UBS AG' are one bank; the 4-character floor must not split them."""
+    from cross_border_fbar.reconcile.accounts import _distinct_institutions
+
+    assert _distinct_institutions(["UBS", "UBS AG", "UBS"]) == ["UBS"]
+    assert _distinct_institutions(["UBS AG", "DBS Bank"]) == ["UBS AG", "DBS Bank"]
+    assert _distinct_institutions(["SBI", "SBIN Bank"]) == ["SBI", "SBIN Bank"]

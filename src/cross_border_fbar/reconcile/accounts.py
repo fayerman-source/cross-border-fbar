@@ -85,13 +85,21 @@ def _adjacent(prev: Observation, cur: Observation) -> bool:
     return (cur.period_start - prev.period_end).days <= 1
 
 
+def _whole_words_of(a: str, b: str) -> bool:
+    """One normalized name is a run of whole words of the other: 'ubs' and 'ubs ag'."""
+    short, long_ = sorted((a.split(" "), b.split(" ")), key=len)
+    n = len(short)
+    return bool(short[0]) and any(long_[k : k + n] == short for k in range(len(long_) - n + 1))
+
+
 def _distinct_institutions(names: list[str]) -> list[str]:
     """Distinct banks in order, first reading of each kept.
 
     Two readings are one bank only when one whole name contains the other, linked transitively. A
     bilingual header read as 'ธนาคารสยามโลตัส Siam Lotus Bank' contains both single-language readings and
-    so links them; that's the evidence. Names are never split into fragments, so a shared word like
-    銀行 or Bank can't merge two different banks."""
+    so links them; that's the evidence. A short name counts when it is whole words of the longer one
+    ('UBS' in 'UBS AG'); otherwise containment needs 4+ characters. Names are never split into fragments,
+    so a shared word like 銀行 or Bank can't merge two different banks."""
     norms = [normalize_name(n) for n in names]
     parent = list(range(len(names)))
 
@@ -104,7 +112,7 @@ def _distinct_institutions(names: list[str]) -> list[str]:
     for i, a in enumerate(norms):
         for j in range(i):
             b = norms[j]
-            if a == b or (min(len(a), len(b)) >= 4 and (a in b or b in a)):
+            if a == b or _whole_words_of(a, b) or (min(len(a), len(b)) >= 4 and (a in b or b in a)):
                 parent[find(i)] = find(j)
     out, seen = [], set()
     for i, name in enumerate(names):
