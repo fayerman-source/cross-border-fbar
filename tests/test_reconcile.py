@@ -6,7 +6,7 @@ from decimal import Decimal
 import pytest
 
 from cross_border_fbar import rates
-from cross_border_fbar.extract.parse import normalize_account_number
+from cross_border_fbar.extract.parse import account_key, normalize_account_number
 from cross_border_fbar.reconcile.accounts import Intake, reconcile
 from cross_border_fbar.reconcile.fbar import fbar_totals
 from cross_border_fbar.reconcile.observe import observe, parse_currency, parse_period
@@ -21,10 +21,21 @@ def truth(tmp_path_factory):
 
 
 def reading_for(st: dict) -> dict:
-    """What a flawless model would return for one statement, in the extraction schema."""
+    """What a flawless model would return for one page of a document, in the extraction schema."""
     f = st["fields"]
+    names = (
+        "institution",
+        "currency",
+        "account_number",
+        "holder",
+        "period",
+        "opening_balance",
+        "closing_balance",
+    )
 
     def field(name):
+        if name not in f:
+            return {"text": "", "status": "absent", "bbox": BOX}
         return {"text": str(f[name]["value"]), "status": "read", "bbox": BOX}
 
     rows = []
@@ -35,6 +46,7 @@ def reading_for(st: dict) -> dict:
             {
                 "date_text": t["date"],
                 "description": t["description"],
+                "account_text": t.get("account_printed", ""),
                 "amount_text": t["amount"] if single_column else t["amount"].lstrip("-"),
                 "amount_column": "signed" if single_column else ("debit" if debit else "credit"),
                 "balance_text": t["balance_after"] if t["balance_printed"] else "",
@@ -43,21 +55,7 @@ def reading_for(st: dict) -> dict:
                 "balance_bbox": BOX,
             }
         )
-    return {
-        **{
-            n: field(n)
-            for n in (
-                "institution",
-                "currency",
-                "account_number",
-                "holder",
-                "period",
-                "opening_balance",
-                "closing_balance",
-            )
-        },
-        "rows": rows,
-    }
+    return {**{n: field(n) for n in names}, "rows": rows}
 
 
 def intake_from(truth):
@@ -86,10 +84,14 @@ def expected_set(acct):
 def test_perfect_readings_reproduce_the_answer_key(truth):
     got = run(truth, truth["statements"])
     for acct in truth["accounts"]:
-        r = got[normalize_account_number(acct["account_number"])]
-        assert r.max_value.amount == Decimal(acct["max_value"]["amount"]), acct["account_id"]
-        assert r.max_value.source.upload == acct["max_value"]["statement_id"]
-        assert r.max_value_usd == acct["max_value_usd"]
+        r = got[account_key(acct["account_number"])]
+        if acct["max_value"] is None:
+            assert r.max_value is None, acct["account_id"]
+            assert r.max_value_usd is None
+        else:
+            assert r.max_value.amount == Decimal(acct["max_value"]["amount"]), acct["account_id"]
+            assert r.max_value.source.upload == acct["max_value"]["statement_id"]
+            assert r.max_value_usd == acct["max_value_usd"]
         assert flag_set(r) == expected_set(acct), acct["account_id"]
     assert fbar_totals(list(got.values())).aggregate_max_usd == truth["household"]["aggregate_max_usd"]
 
