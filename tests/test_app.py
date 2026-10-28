@@ -346,3 +346,10 @@ def test_a_sign_off_is_invalidated_when_the_client_changes(inputs, tmp_path):
     assert again.state["signoff"] is None and again.state["summary"] is None
     with pytest.raises(ReviewError):
         again.export()
+
+
+@pytest.mark.parametrize("language", ["../../outside", "/tmp/x", "ko/../..", "en"])
+def test_a_phrase_table_path_takes_only_a_listed_language(language):
+    """SonarCloud on #5: the language from the command line reached a file path."""
+    with pytest.raises(ValueError, match="no client language"):
+        phrase_tables.table_path(language)

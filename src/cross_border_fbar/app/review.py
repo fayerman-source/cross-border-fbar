@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 from . import phrases as phrase_tables
+from .phrases import LANGUAGES
 from .worksheet import Inputs, build, worksheet_hash
 
 OWNERSHIPS = ("sole", "joint", "signature_authority")
@@ -40,7 +41,6 @@ SUMMARY_PHRASES = {
     "balance_not_confirmed": "the balance couldn't be confirmed from the documents",
     "bank_not_named": "bank not named",
 }
-LANGUAGES = {"ko": "Korean"}
 
 # Client-facing descriptions of review items; the model translates these, never the CPA's notes.
 CLIENT_LABELS = {

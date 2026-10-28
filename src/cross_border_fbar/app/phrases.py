@@ -13,9 +13,13 @@ import sys
 from pathlib import Path
 
 PHRASES_DIR = Path(__file__).parent / "translations"
+LANGUAGES = {"ko": "Korean"}  # code -> name the model is asked to translate into
 
 
 def table_path(language: str) -> Path:
+    """Only a listed language names a table, so no input can point the path anywhere else."""
+    if language not in LANGUAGES:
+        raise ValueError(f"no client language {language!r}; known: {sorted(LANGUAGES)}")
     return PHRASES_DIR / f"{language}.json"
 
 
@@ -33,9 +37,10 @@ def reviewed(language: str, phrases: dict[str, str]) -> dict[str, str]:
 
 def build(language: str) -> Path:
     """Translate every phrase into a new, unreviewed table. A person reviews it and sets reviewed_by."""
-    from .review import CLIENT_LABELS, LANGUAGES, SUMMARY_PHRASES, _translation_problem
+    from .review import CLIENT_LABELS, SUMMARY_PHRASES, _translation_problem
     from .server import translate_phrases
 
+    path = table_path(language)
     phrases = {**SUMMARY_PHRASES, **CLIENT_LABELS}
     translations, meta = translate_phrases(phrases, LANGUAGES[language])
     problem = _translation_problem(phrases, translations)
@@ -47,7 +52,6 @@ def build(language: str) -> Path:
         "reviewed_by": "",
         "phrases": {k: {"en": en, "text": translations[k]} for k, en in phrases.items()},
     }
-    path = table_path(language)
     path.parent.mkdir(exist_ok=True)
     path.write_text(json.dumps(doc, ensure_ascii=False, indent=1) + "\n")
     return path
