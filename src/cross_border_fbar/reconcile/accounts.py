@@ -418,25 +418,37 @@ def _rate_for(currency: str | None, rates: dict[str, Rate], tax_year: int) -> Ra
 
 
 def split_by_row_account(o: Observation) -> list[Observation]:
-    """Split a page listing several accounts into one observation per account."""
+    """Split a page listing several accounts into one observation per account.
+
+    Rows that belong to the page's own (header) account keep the page's opening and closing
+    balances; a statement that repeats its account number on every row stays whole.
+    """
     if not any(ln.account_text for ln in o.lines):
         return [o]
     groups: dict[str, list] = defaultdict(list)
     for ln in o.lines:
-        groups[ln.account_text or o.account_number].append(ln)
+        groups[account_key(ln.account_text) if ln.account_text else o.account_key].append(ln)
+    if set(groups) == {o.account_key}:
+        return [o]
     keep = [p for p in o.problems if p not in ("account_number", "opening_balance", "closing_balance")]
-    return [
-        replace(
-            o,
-            account_key=account_key(text) if text else "",
-            account_number=text,
-            lines=lines,
-            opening=None,
-            closing=None,
-            problems=keep,
-        )
-        for text, lines in groups.items()
-    ]
+    parts = []
+    for key, lines in groups.items():
+        if key and key == o.account_key:
+            parts.append(replace(o, lines=lines))
+        else:
+            text = next((ln.account_text for ln in lines if ln.account_text), "")
+            parts.append(
+                replace(
+                    o,
+                    account_key=key,
+                    account_number=text,
+                    lines=lines,
+                    opening=None,
+                    closing=None,
+                    problems=keep,
+                )
+            )
+    return parts
 
 
 def reconcile(

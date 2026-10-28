@@ -140,3 +140,16 @@ def test_fallback_alignment_accepts_strong_compression():
     model = [bands[true_start][0] + 5 + i * 18.4 for i in range(6)]  # 16% tighter spacing
     idx, _ = align_rows(model, bands)
     assert idx[0] == true_start
+
+
+def test_unprinted_fields_must_be_reported_absent_not_unreadable(page):
+    """Codex review on #4: empty-text 'unreadable' used to score as a correct absence."""
+    from cross_border_fbar.eval.score import _score_fields
+
+    _, rec = page
+    view = {**rec, "fields": {k: v for k, v in rec["fields"].items() if k != "holder"}}
+    reading = perfect_reading(rec)
+    reading["holder"] = {"text": "", "status": "unreadable", "bbox": reading["holder"]["bbox"]}
+    assert _score_fields(view, reading)["holder"]["value_ok"] is False
+    reading["holder"]["status"] = "absent"
+    assert _score_fields(view, reading)["holder"]["value_ok"] is True

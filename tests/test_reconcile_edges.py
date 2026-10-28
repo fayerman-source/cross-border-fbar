@@ -238,3 +238,12 @@ def test_won_unit_and_masked_keys():
     assert parse_currency("금액 단위: 원") == "KRW"
     assert account_key("110-48*-******") == "masked:11048*******"
     assert account_key("110-731-552904") == "110731552904"
+
+
+def test_a_statement_repeating_its_own_account_on_rows_keeps_its_balances():
+    """Codex review on #4: repeating the header account per row used to discard opening and closing."""
+    o = obs("s", date(2025, 1, 1), date(2025, 1, 31), D(1000), D(500), [(date(2025, 1, 9), D(-500), None)])
+    o.lines[0].account_text = "ACC1"
+    (r,) = reconcile([o], SOLE, RATES, 2025)
+    assert r.max_value.amount == D(1000)
+    assert "no_balance_anchor" not in codes(r)

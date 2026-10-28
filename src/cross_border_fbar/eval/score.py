@@ -62,7 +62,7 @@ def _score_fields(statement: dict, reading: dict) -> dict:
                 "want": None,
                 "got": got["text"],
                 "status": got["status"],
-                "value_ok": got["status"] == "absent" or not got["text"].strip() or repeated,
+                "value_ok": got["status"] == "absent" or repeated,
                 "centre_in_cell": None,
                 "iou_text": None,
             }
