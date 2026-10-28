@@ -8,7 +8,7 @@ from pathlib import Path
 
 from ..llm import Client
 
-PROMPT_VERSION = "statement_page_v2"
+PROMPT_VERSION = "statement_page_v3"
 PROMPT = (Path(__file__).parent / "prompts" / f"{PROMPT_VERSION}.md").read_text()
 
 _BOX = {
@@ -46,6 +46,7 @@ SCHEMA = {
                 "type": "object",
                 "properties": {
                     "date_text": {"type": "string"},
+                    "account_text": {"type": "string"},
                     "description": {"type": "string"},
                     "amount_text": {"type": "string"},
                     "amount_column": {"type": "string", "enum": ["debit", "credit", "signed"]},
@@ -56,6 +57,7 @@ SCHEMA = {
                 },
                 "required": [
                     "date_text",
+                    "account_text",
                     "description",
                     "amount_text",
                     "amount_column",
