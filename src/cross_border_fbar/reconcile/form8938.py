@@ -45,8 +45,8 @@ class Household:
 class Test:
     threshold_usd: int | None  # None until filing status and residence are stated
     low_usd: int  # the total is at least this
-    high_usd: int  # and at most this, for the accounts counted
-    complete: bool  # every counted account had a value
+    high_usd: int | None  # upper bound only when complete
+    complete: bool  # all evidence needed for this particular test is available
     result: str  # above | not_above | between | incomplete | needs_intake
 
 
@@ -65,7 +65,7 @@ def _part(usd: int, half: bool) -> int:
     return -(-usd // 2) if half else usd  # a half share rounds up, like every value here
 
 
-def _result(threshold: int | None, low: int, high: int, complete: bool) -> str:
+def _result(threshold: int | None, low: int, high: int | None, complete: bool) -> str:
     if threshold is None:
         return "needs_intake"
     if low > threshold:
@@ -92,6 +92,20 @@ def form8938_totals(
     filing = household.filing_status if household.filing_status in FILING_STATUSES else None
     notes = []
     year_end_sum = max_sum = largest_max = 0
+    year_end_complete = any_time_complete = True
+    # These conditions can hide an annual peak even when a December balance is readable.
+    annual_uncertainty = {
+        "missing_statement",
+        "coverage_gap",
+        "field_unreadable",
+        "no_balance_anchor",
+        "no_statements",
+        "currency_conflict",
+        "arithmetic_mismatch",
+        "continuity_break",
+        "possible_intraday_peak",
+        "no_usable_balance",
+    }
     for a in counted:
         half = False
         if filing == "mfs" and a.ownership == "joint":
@@ -104,7 +118,11 @@ def form8938_totals(
                     f"{a.account_number}: counted at full value; half if the joint owner is a spouse who "
                     "is also a specified individual"
                 )
-        if a.max_value_usd is None or a.year_end_usd is None:
+        annual_missing = a.max_value_usd is None or any(f.code in annual_uncertainty for f in a.flags)
+        year_end_missing = a.year_end_usd is None
+        any_time_complete = any_time_complete and not annual_missing
+        year_end_complete = year_end_complete and not year_end_missing
+        if annual_missing or year_end_missing:
             without_value.append(a.account_number)
         if a.year_end_usd is not None:
             year_end_sum += _part(a.year_end_usd, half)
@@ -112,7 +130,6 @@ def form8938_totals(
             max_sum += _part(a.max_value_usd, half)
             largest_max = max(largest_max, _part(a.max_value_usd, half))
 
-    complete = not without_value
     if filing is None or household.lives_abroad is None:
         year_end_t = any_time_t = None
     else:
@@ -126,12 +143,16 @@ def form8938_totals(
         year_end=Test(
             year_end_t,
             year_end_sum,
-            year_end_sum,
-            complete,
-            _result(year_end_t, year_end_sum, year_end_sum, complete),
+            year_end_sum if year_end_complete else None,
+            year_end_complete,
+            _result(year_end_t, year_end_sum, year_end_sum, year_end_complete),
         ),
         any_time=Test(
-            any_time_t, any_time_low, max_sum, complete, _result(any_time_t, any_time_low, max_sum, complete)
+            any_time_t,
+            any_time_low,
+            max_sum if any_time_complete else None,
+            any_time_complete,
+            _result(any_time_t, any_time_low, max_sum, any_time_complete),
         ),
         accounts_counted=[a.account_number for a in counted],
         accounts_without_value=without_value,

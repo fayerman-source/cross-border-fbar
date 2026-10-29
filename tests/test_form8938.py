@@ -122,3 +122,32 @@ def test_nothing_says_anyone_must_file():
     t = form8938_totals([acct("A", 900_000, 900_000)], ABROAD_MFS, {})
     text = " ".join(t.notes).lower()
     assert "must" not in text and "required" not in text and "penalt" not in text
+
+
+@pytest.mark.parametrize("code", ["missing_statement", "coverage_gap", "possible_intraday_peak"])
+def test_annual_evidence_gaps_do_not_make_the_year_end_test_incomplete(code):
+    from cross_border_fbar.reconcile.accounts import Flag
+
+    account = acct("A", 1000, 1000)
+    account.flags = [Flag(code, "review", "Synthetic evidence gap")]
+    totals = form8938_totals([account], Household("single", False), {})
+    assert totals.year_end.complete and totals.year_end.result == "not_above"
+    assert not totals.any_time.complete and totals.any_time.result == "incomplete"
+    assert totals.any_time.high_usd is None
+    assert totals.accounts_without_value == ["A"]
+
+
+def test_missing_year_end_does_not_prevent_a_complete_annual_test():
+    totals = form8938_totals([acct("A", 1000, None)], Household("single", False), {})
+    assert not totals.year_end.complete and totals.year_end.high_usd is None
+    assert totals.any_time.complete and totals.any_time.result == "not_above"
+
+
+def test_observed_lower_bound_can_cross_threshold_despite_missing_annual_coverage():
+    from cross_border_fbar.reconcile.accounts import Flag
+
+    account = acct("A", 80000, 1000)
+    account.flags = [Flag("missing_statement", "review", "missing January")]
+    totals = form8938_totals([account], Household("single", False), {})
+    assert not totals.any_time.complete
+    assert totals.any_time.result == "above" and totals.any_time.high_usd is None
