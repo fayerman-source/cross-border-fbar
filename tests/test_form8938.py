@@ -429,3 +429,68 @@ def test_disputed_computed_paths_do_not_claim_a_finite_annual_upper_bound():
     assert totals.any_time.low_usd == 1000
     assert totals.any_time.high_usd is None
     assert totals.any_time.result == "incomplete"
+
+
+@pytest.mark.parametrize("unknown_month", [1, 12])
+def test_currency_is_required_on_the_statement_whose_value_is_converted(unknown_month):
+    from datetime import date
+    from decimal import Decimal
+
+    from test_reconcile_edges import obs
+
+    from cross_border_fbar.rates import Rate
+    from cross_border_fbar.reconcile.accounts import reconcile
+
+    pages = [
+        obs(
+            "jan",
+            date(2025, 1, 1),
+            date(2025, 1, 31),
+            Decimal(1000),
+            Decimal(1000),
+            currency=None if unknown_month == 1 else "EUR",
+            problems=["currency"] if unknown_month == 1 else [],
+        ),
+        obs(
+            "dec",
+            date(2025, 12, 1),
+            date(2025, 12, 31),
+            Decimal(60000),
+            Decimal(60000),
+            currency=None if unknown_month == 12 else "EUR",
+            problems=["currency"] if unknown_month == 12 else [],
+        ),
+    ]
+    (account,) = reconcile(
+        pages,
+        {"ACC1": Intake("sole", True)},
+        {"EUR": Rate("EUR", Decimal(2), "2025-12-31", "synthetic rate")},
+        2025,
+    )
+    totals = form8938_totals([account], Household("single", False), {})
+    assert not account.annual_max_complete
+    if unknown_month == 12:
+        assert account.year_end_usd is None
+        assert account.year_end_bounds is None
+        assert totals.year_end.result == "incomplete"
+        assert account.max_value_usd == 500
+    else:
+        assert account.year_end_usd == 30000
+        assert totals.year_end.result == "not_above"
+
+
+def test_an_absent_currency_also_requires_source_review_instead_of_account_wide_inheritance():
+    from datetime import date
+    from decimal import Decimal
+
+    from test_reconcile_edges import obs
+
+    from cross_border_fbar.reconcile.accounts import reconcile
+
+    page = obs("unknown", date(2025, 1, 1), date(2025, 12, 31), Decimal(60000), Decimal(60000), currency=None)
+    (account,) = reconcile([page], {"ACC1": Intake("sole", True)}, {}, 2025)
+    assert account.max_value is None
+    assert account.year_end_usd is None
+    assert any(
+        flag.code == "field_unreadable" and flag.sources[0].ref == "currency" for flag in account.flags
+    )
