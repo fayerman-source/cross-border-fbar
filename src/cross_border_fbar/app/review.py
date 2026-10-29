@@ -44,6 +44,7 @@ SUMMARY_PHRASES = {
 
 # Client-facing descriptions of review items; the model translates these, never the CPA's notes.
 CLIENT_LABELS = {
+    "balance_readings_conflict": "readings of the same opening or closing balance that disagree",
     "no_balance_anchor": "no balance appears on the documents; statements showing balances were requested",
     "missing_statement": "one month's statement is missing",
     "signature_authority_only": "the account is held by someone else and the client can sign on it",

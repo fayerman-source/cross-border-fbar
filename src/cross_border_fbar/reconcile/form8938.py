@@ -9,8 +9,10 @@
 - A joint owner counts the whole value, except that spouses who are both specified individuals and file
   separately each count half (instructions, Joint Interest Valuation).
 - The any-time total is not the sum of each account's maximum, since maximums can fall on different
-  days. That sum is an upper bound; the year-end total and the largest single maximum are lower bounds.
-  When the threshold sits between them, the result says so instead of picking a side.
+  days. The sum of per-account upper bounds is the household upper bound. Year-end lower bounds and
+  the largest single-account lower bound supply the household lower bound. Conflicting boundary
+  readings contribute their lowest and highest candidates; unknown evidence leaves the upper bound
+  unknown. A threshold between the bounds is reported as such instead of picking a reading.
 
 Only accounts read from statements are included; other specified foreign financial assets are not. The
 CPA determines filing status, residence and every input here. Nothing here says whether anyone must file.
@@ -20,7 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .accounts import AccountResult, Intake
+from .accounts import AccountResult, Intake, ValueBounds
 
 # (lives_abroad, joint_return) -> (last day of the year, any time during the year), each "more than".
 THRESHOLDS = {
@@ -46,7 +48,7 @@ class Test:
     threshold_usd: int | None  # None until filing status and residence are stated
     low_usd: int  # the total is at least this
     high_usd: int | None  # upper bound only when complete
-    complete: bool  # all evidence needed for this particular test is available
+    complete: bool  # all counted accounts have a finite upper bound for this test
     result: str  # above | not_above | between | incomplete | needs_intake
 
 
@@ -66,12 +68,12 @@ def _part(usd: int, half: bool) -> int:
     return -(-usd // 2) if half else usd  # a half share rounds up, like every value here
 
 
-def _result(threshold: int | None, low: int, high: int | None, complete: bool) -> str:
+def _result(threshold: int | None, low: int, high: int | None) -> str:
     if threshold is None:
         return "needs_intake"
     if low > threshold:
         return "above"
-    if not complete:
+    if high is None:
         return "incomplete"
     return "not_above" if high <= threshold else "between"
 
@@ -79,10 +81,10 @@ def _result(threshold: int | None, low: int, high: int | None, complete: bool) -
 @dataclass(frozen=True)
 class _AccountValue:
     number: str
-    year_end: int
-    maximum: int
-    year_end_complete: bool
-    annual_complete: bool
+    year_end_low: int
+    year_end_high: int | None
+    maximum_low: int
+    maximum_high: int | None
     half: bool
     note: str | None
 
@@ -124,13 +126,14 @@ def _joint_share(
 
 def _account_value(account: AccountResult, household: Household, intake: dict[str, Intake]) -> _AccountValue:
     half, note = _joint_share(account, household, intake)
-    annual_complete = account.max_value_usd is not None and account.annual_max_complete
+    year_end = account.year_end_bounds or ValueBounds(0, None)
+    maximum = account.maximum_bounds or ValueBounds(0, None)
     return _AccountValue(
         account.account_number,
-        _part(account.year_end_usd or 0, half),
-        _part(account.max_value_usd or 0, half),
-        account.year_end_usd is not None,
-        annual_complete,
+        _part(year_end.low_usd, half),
+        _part(year_end.high_usd, half) if year_end.high_usd is not None else None,
+        _part(maximum.low_usd, half),
+        _part(maximum.high_usd, half) if maximum.high_usd is not None else None,
         half,
         note,
     )
@@ -142,8 +145,14 @@ def _thresholds(household: Household) -> tuple[int | None, int | None]:
     return THRESHOLDS[(household.lives_abroad, household.filing_status == "mfj")]
 
 
-def _test(threshold: int | None, low: int, high: int, complete: bool) -> Test:
-    return Test(threshold, low, high if complete else None, complete, _result(threshold, low, high, complete))
+def _test(threshold: int | None, low: int, high: int | None) -> Test:
+    return Test(threshold, low, high, high is not None, _result(threshold, low, high))
+
+
+def _sum_upper(values: list[int | None], unresolved: bool) -> int | None:
+    if unresolved or any(value is None for value in values):
+        return None
+    return sum(values)
 
 
 def form8938_totals(
@@ -151,30 +160,21 @@ def form8938_totals(
 ) -> Form8938Totals:
     counted, excluded, unresolved = _select_accounts(accounts)
     values = [_account_value(account, household, intake) for account in counted]
-    year_end_sum = sum(value.year_end for value in values)
-    max_sum = sum(value.maximum for value in values)
-    largest_max = max((value.maximum for value in values), default=0)
+    year_end_sum = sum(value.year_end_low for value in values)
+    year_end_upper = _sum_upper([value.year_end_high for value in values], bool(unresolved))
+    max_upper = _sum_upper([value.maximum_high for value in values], bool(unresolved))
+    largest_max = max((value.maximum_low for value in values), default=0)
     year_end_t, any_time_t = _thresholds(household)
     notes = [value.note for value in values if value.note]
     if household.filing_status == "mfj":
         notes.append("a joint return counts both spouses' assets; only the accounts read here are included")
     notes.append("accounts only; other specified foreign financial assets are not included")
     return Form8938Totals(
-        year_end=_test(
-            year_end_t,
-            year_end_sum,
-            year_end_sum,
-            not unresolved and all(value.year_end_complete for value in values),
-        ),
-        any_time=_test(
-            any_time_t,
-            max(year_end_sum, largest_max),
-            max_sum,
-            not unresolved and all(value.annual_complete for value in values),
-        ),
+        year_end=_test(year_end_t, year_end_sum, year_end_upper),
+        any_time=_test(any_time_t, max(year_end_sum, largest_max), max_upper),
         accounts_counted=[account.account_number for account in counted],
         accounts_without_value=[
-            value.number for value in values if not (value.year_end_complete and value.annual_complete)
+            value.number for value in values if value.year_end_high is None or value.maximum_high is None
         ],
         excluded=excluded,
         halved=[value.number for value in values if value.half],

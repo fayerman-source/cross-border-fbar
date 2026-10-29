@@ -1,0 +1,26 @@
+{
+ "label": "client-conflict-phrase",
+ "model": "muse-spark-1.3",
+ "content": "{\"balance_readings_conflict\":\"서로 일치하지 않는 귀하의 동일한 기초 또는 기말 잔고 수치\"}",
+ "usage": {
+  "completion_tokens": 2042,
+  "prompt_tokens": 254,
+  "total_tokens": 2296,
+  "completion_tokens_details": {
+   "reasoning_tokens": 2010
+  },
+  "prompt_tokens_details": {
+   "cached_tokens": 0
+  }
+ },
+ "cost_usd": 0.008996,
+ "latency_s": 7.53,
+ "finish_reason": "stop",
+ "translation_input": {
+  "language": "Korean",
+  "phrases": {
+   "balance_readings_conflict": "readings of the same opening or closing balance that disagree"
+  },
+  "prompt": "Translate each value below into Korean, for a note a US tax preparer (CPA) sends a client about items reviewed on a foreign-account worksheet.\n\nRules:\n- Return exactly the same JSON keys, each value translated. No advice, numbers, dates, names or additional facts.\n- Every value is a label or noun phrase, NOT a sentence asserting that an action was completed. Keep it plural-safe when several flags of the same kind occur. Do not use semicolons or line breaks.\n- Speak to the reader as \"your\", never \"the client\". Do not say documents were requested, items matched, or ownership confirmed.\n- Use the IRS Korean glossary (Publication 850 EN-KR, September 2023) terms where applicable: account = 계좌; account statement = 계좌 명세서; balance = 잔고; certified public accountant = 공인회계사; Department of the Treasury (U.S.) = 미국 재무부; foreign account = 해외 계좌. These are verified glossary entries. Use ordinary Korean for terms the glossary does not contain.\n\nPhrases:\n{\n \"balance_readings_conflict\": \"readings of the same opening or closing balance that disagree\"\n}"
+ }
+}

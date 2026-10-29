@@ -2,7 +2,7 @@
 
 import pytest
 
-from cross_border_fbar.reconcile.accounts import AccountResult, Intake
+from cross_border_fbar.reconcile.accounts import AccountResult, Intake, ValueBounds
 from cross_border_fbar.reconcile.form8938 import Household, form8938_totals
 
 ABROAD_MFS = Household("mfs", lives_abroad=True, spouse_specified_individual=False)
@@ -26,6 +26,8 @@ def acct(number, max_usd, year_end_usd, ownership="sole", interest=True, identif
         year_end_usd=year_end_usd,
         flags=[],
         annual_max_complete=True,
+        maximum_bounds=ValueBounds(max_usd or 0, max_usd),
+        year_end_bounds=ValueBounds(year_end_usd or 0, year_end_usd),
     )
 
 
@@ -141,6 +143,7 @@ def test_annual_evidence_gaps_do_not_make_the_year_end_test_incomplete(code):
     account = acct("A", 1000, 1000)
     account.flags = [Flag(code, "review", "Synthetic evidence gap")]
     account.annual_max_complete = False
+    account.maximum_bounds = ValueBounds(account.max_value_usd or 0, None)
     totals = form8938_totals([account], Household("single", False), {})
     assert totals.year_end.complete
     assert totals.year_end.result == "not_above"
@@ -164,6 +167,7 @@ def test_observed_lower_bound_can_cross_threshold_despite_missing_annual_coverag
     account = acct("A", 80000, 1000)
     account.flags = [Flag("missing_statement", "review", "missing January")]
     account.annual_max_complete = False
+    account.maximum_bounds = ValueBounds(account.max_value_usd or 0, None)
     totals = form8938_totals([account], Household("single", False), {})
     assert not totals.any_time.complete
     assert totals.any_time.result == "above"
@@ -191,8 +195,8 @@ def test_sub_tolerance_intraday_uncertainty_prevents_a_below_threshold_annual_re
     assert not account.flags
     assert not account.annual_max_complete
     totals = form8938_totals([account], Household("single", False), {})
-    assert totals.any_time.result == "incomplete"
-    assert totals.any_time.high_usd is None
+    assert totals.any_time.result == "between"
+    assert totals.any_time.high_usd == 75100
     assert totals.year_end.result == "above"
 
 
@@ -322,9 +326,10 @@ def test_conflicting_year_end_closings_never_depend_on_upload_names(reverse_name
     assert account.year_end_usd is None
     assert not account.annual_max_complete
     totals = form8938_totals([account], Household("single", False), {})
-    assert totals.year_end.result == "incomplete"
-    assert totals.any_time.result == "incomplete"
-    assert totals.accounts_without_value == ["ACC1"]
+    assert totals.year_end.result == "between"
+    assert totals.any_time.result == "not_above"
+    assert totals.year_end.low_usd == 1000
+    assert totals.year_end.high_usd == 60000
 
 
 def test_agreeing_year_end_closings_keep_the_value_with_an_absent_continuation_balance():
@@ -366,3 +371,61 @@ def test_unknown_dates_with_printed_high_balances_leave_the_annual_upper_bound_u
     totals = form8938_totals([account], Household("single", False), {})
     assert totals.any_time.result == "incomplete"
     assert totals.any_time.high_usd is None
+
+
+@pytest.mark.parametrize(
+    "closings,year_result,annual_result",
+    [
+        ((60000, 1000), "between", "not_above"),
+        ((90000, 1000), "between", "between"),
+        ((90000, 85000), "above", "above"),
+        ((40000, 1000), "not_above", "not_above"),
+    ],
+)
+def test_conflicting_readings_contribute_safe_lower_and_upper_candidates(
+    closings, year_result, annual_result
+):
+    from datetime import date
+    from decimal import Decimal
+
+    from test_reconcile_edges import obs
+
+    from cross_border_fbar.reconcile.accounts import reconcile
+
+    pages = [
+        obs(name, date(2025, 1, 1), date(2025, 12, 31), Decimal(1000), Decimal(value), currency="USD")
+        for name, value in zip(["a", "z"], closings, strict=True)
+    ]
+    (account,) = reconcile(pages, {"ACC1": Intake("sole", True)}, {}, 2025)
+    totals = form8938_totals([account], Household("single", False), {})
+    assert totals.year_end.low_usd == min(closings)
+    assert totals.year_end.high_usd == max(closings)
+    assert totals.year_end.result == year_result
+    assert totals.any_time.result == annual_result
+
+
+def test_disputed_computed_paths_do_not_claim_a_finite_annual_upper_bound():
+    from datetime import date
+    from decimal import Decimal
+
+    from test_reconcile_edges import obs
+
+    from cross_border_fbar.reconcile.accounts import reconcile
+
+    pages = [
+        obs(
+            "a",
+            date(2025, 1, 1),
+            date(2025, 12, 31),
+            Decimal(1000),
+            Decimal(1000),
+            [(date(2025, 5, 1), Decimal(80000), None), (date(2025, 5, 2), Decimal(-80000), None)],
+            currency="USD",
+        ),
+        obs("z", date(2025, 1, 1), date(2025, 12, 31), Decimal(900), Decimal(1000), currency="USD"),
+    ]
+    (account,) = reconcile(pages, {"ACC1": Intake("sole", True)}, {}, 2025)
+    totals = form8938_totals([account], Household("single", False), {})
+    assert totals.any_time.low_usd == 1000
+    assert totals.any_time.high_usd is None
+    assert totals.any_time.result == "incomplete"

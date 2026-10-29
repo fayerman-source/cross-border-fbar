@@ -8,6 +8,7 @@ let selected = null; // key of the traced figure or chip currently shown
 const OWNERSHIP = { sole: "Owner", joint: "Joint owner", signature_authority: "Sig. authority", unknown: "Not stated" };
 const OWNERSHIP_LONG = { sole: "owner", joint: "joint owner", signature_authority: "signature authority only" };
 const FLAG = {
+  balance_readings_conflict: () => "Opening or closing balance readings disagree",
   max_not_at_month_end: () => "Highest balance falls mid-month, not at a month end",
   possible_intraday_peak: () => "Possible same-day peak above the reported maximum",
   missing_statement: (f) => `No statement for ${f.month}`,
@@ -31,9 +32,10 @@ const FLAG = {
 };
 
 // Show the reconciler's message only where it adds facts the title doesn't carry.
-const DETAIL = new Set(["possible_intraday_peak", "arithmetic_mismatch", "continuity_break", "coverage_gap",
+const DETAIL = new Set(["balance_readings_conflict", "possible_intraday_peak", "arithmetic_mismatch", "continuity_break", "coverage_gap",
   "field_unreadable", "page_not_read", "institution_names_differ", "out_of_year_statement", "currency_conflict", "duplicate_upload"]);
 const ACTION = {
+  balance_readings_conflict: "Compare every source and resolve the opening or closing balance for that date.",
   no_balance_anchor: "Request statements showing balances for this account.",
   missing_statement: "Request the missing statement, or confirm none exists.",
   account_number_masked: "Match these rows to a known account, or request the full account number.",

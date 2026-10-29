@@ -95,6 +95,10 @@
   "page_not_read": {
    "en": "a page that couldn't be read was checked",
    "text": "판독이 불가능한 페이지를 확인했습니다"
+  },
+  "balance_readings_conflict": {
+   "en": "readings of the same opening or closing balance that disagree",
+   "text": "서로 일치하지 않는 귀하의 동일한 기초 또는 기말 잔고 수치"
   }
  },
  "edited_in_review": [
