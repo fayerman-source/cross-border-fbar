@@ -104,7 +104,7 @@ def test_summary_is_assembled_only_from_fixed_phrases_and_signed_figures(review,
     assert "INTERNAL-NOTE-7731" not in json.dumps(seen)  # CPA notes stay internal
     lines = s["text"].splitlines()
     assert lines[0] == "«heading»"
-    assert "새별은행 · «account_ending» 3746 · «highest_balance» 287,450,200 KRW ($199,100)" in lines
+    assert "새별은행 · «account_ending» 3746 · «highest_balance» 287,450,200 KRW (199,100.00 USD)" in lines
     assert "  «reviewed»: «nothing_further»" in lines
     # Every word outside the figures and bank names is a fixed phrase.
     words = set(re.findall(r"[A-Za-z가-힣]+", re.sub(r"«[a-z_]+»", "", s["text"])))
@@ -114,7 +114,7 @@ def test_summary_is_assembled_only_from_fixed_phrases_and_signed_figures(review,
         for n in a["institutions"]
         for w in re.findall(r"[A-Za-z가-힣]+", n)
     }
-    assert words - banks <= {"KRW", "EUR", "THB"}
+    assert words - banks <= {"KRW", "EUR", "THB", "USD"}
     assert set(s["unreviewed"]) == set(seen)
 
 
@@ -158,11 +158,15 @@ def test_unreviewed_phrases_are_approved_only_when_confirmed(signed):
 def test_a_reviewed_table_needs_no_model_call_and_stale_entries_are_retranslated(
     signed, tmp_path, monkeypatch
 ):
-    table = {k: {"en": en, "text": f"[{k}]"} for k, en in {**SUMMARY_PHRASES, **CLIENT_LABELS}.items()}
+    from babel.messages.catalog import Catalog
+
     d = tmp_path / "tables"
     d.mkdir()
-    (d / "ko.json").write_text(json.dumps({"reviewed_by": "A. Reviewer", "phrases": table}))
     monkeypatch.setattr(phrase_tables, "PHRASES_DIR", d)
+    catalog = Catalog(locale="ko", last_translator="A. Reviewer", fuzzy=False)
+    for key, en in {**SUMMARY_PHRASES, **CLIENT_LABELS}.items():
+        catalog.add(en, f"[{key}]", context=key)
+    phrase_tables.save("ko", catalog)
 
     def no_call(*a, **k):
         raise AssertionError("a reviewed table needs no translation")
@@ -170,8 +174,9 @@ def test_a_reviewed_table_needs_no_model_call_and_stale_entries_are_retranslated
     s = signed.draft_summary(no_call)
     assert s["unreviewed"] == {} and s["text"].startswith("[heading]")
     signed.approve_summary("A. Rivera")
-    table["heading"]["en"] = "an older English heading"
-    (d / "ko.json").write_text(json.dumps({"reviewed_by": "A. Reviewer", "phrases": table}))
+    catalog.delete(SUMMARY_PHRASES["heading"], context="heading")
+    catalog.add("an older English heading", "[heading]", context="heading")
+    phrase_tables.save("ko", catalog)
     s = signed.draft_summary(tokens)
     assert list(s["unreviewed"]) == ["heading"]
 
@@ -179,10 +184,9 @@ def test_a_reviewed_table_needs_no_model_call_and_stale_entries_are_retranslated
 def test_the_committed_korean_table_covers_every_phrase_with_current_english():
     """Changing an English phrase or adding a review flag makes the table stale; this fails until it is
     translated and reviewed again."""
-    doc = json.loads(phrase_tables.table_path("ko").read_text())
-    entries = doc["phrases"]
+    catalog = phrase_tables.load("ko")
     current = {**SUMMARY_PHRASES, **CLIENT_LABELS}
-    assert {k for k in current if k not in entries or entries[k]["en"] != current[k]} == set()
+    assert all(catalog.get(en, context=k) is not None for k, en in current.items())
 
 
 def test_server_serves_pages_but_not_files_outside_them(inputs, tmp_path):
@@ -259,27 +263,37 @@ def test_two_coverage_gaps_on_one_account_need_separate_acknowledgements():
     from cross_border_fbar.app.worksheet import flag_id
     from cross_border_fbar.reconcile.accounts import Flag
 
-    a = Flag("coverage_gap", "review", "no statement covers 2025-01-01 to 2025-01-14")
-    b = Flag("coverage_gap", "review", "no statement covers 2025-12-16 to 2025-12-31")
+    a = Flag("coverage_gap", "no statement covers 2025-01-01 to 2025-01-14")
+    b = Flag("coverage_gap", "no statement covers 2025-12-16 to 2025-12-31")
     assert flag_id("ACC1", a) != flag_id("ACC1", b)
 
 
-def test_every_review_flag_has_a_client_label_and_a_worksheet_title():
-    """A review flag without a label reached the client summary as its raw code. Read the codes from the
-    reconciler's source so a new flag can't be added without both."""
-    import re
-    from pathlib import Path
+def test_every_flag_emitted_anywhere_is_in_the_catalog_and_no_catalog_entry_is_dead():
+    import ast
 
-    from cross_border_fbar.app.review import CLIENT_LABELS
+    from cross_border_fbar.reconcile.flags import CATALOG
 
     pkg = Path(__file__).resolve().parents[1] / "src" / "cross_border_fbar"
-    source = "".join(p.read_text() for p in (pkg / "reconcile").glob("*.py"))
-    review_codes = set(re.findall(r'Flag\(\s*"([a-z_]+)",\s*"review"', source))
-    assert {"institution_names_differ", "possible_intraday_peak", "ownership_unknown"} <= review_codes
-    assert review_codes - set(CLIENT_LABELS) == set()
-    app_js = (pkg / "app" / "static" / "app.js").read_text()
-    titled = set(re.findall(r"^\s+([a-z_]+): \(", app_js, re.M))
-    assert review_codes - titled == set()
+    raised = set()
+    for path in pkg.rglob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "Flag":
+                assert isinstance(node.args[0], ast.Constant), f"dynamic flag code in {path}"
+                raised.add(node.args[0].value)
+    assert raised == set(CATALOG)
+    assert CLIENT_LABELS == {k: v.client_phrase for k, v in CATALOG.items() if v.severity == "review"}
+    for definition in CATALOG.values():
+        assert ";" not in definition.client_phrase
+        assert "the client" not in definition.client_phrase
+        assert all(
+            (
+                definition.severity,
+                definition.condition,
+                definition.cpa_action,
+                definition.title,
+                definition.client_phrase,
+            )
+        )
 
 
 def test_failed_pages_and_accounts_without_statements_block_sign_off(inputs, tmp_path):
@@ -424,3 +438,196 @@ def test_the_eval_does_not_count_intake_rows_as_found(inputs, tmp_path, monkeypa
     monkeypatch.setattr(reconcile_eval, "RESULTS", results)
     out = reconcile_eval.evaluate(inputs.set_dir, "muse-spark-1.3")
     assert out["summary"]["accounts_found"].startswith("0/")
+
+
+def altered_review(inputs, tmp_path, mutate):
+    doc = json.loads(inputs.readings.read_text())
+    mutate(doc)
+    readings = tmp_path / "altered-readings.json"
+    readings.write_text(json.dumps(doc))
+    return Review(Inputs(inputs.set_dir, readings, inputs.intake), tmp_path / "changed-review", root=tmp_path)
+
+
+def test_currency_selection_is_audited_and_required_before_acknowledgement(inputs, tmp_path):
+    def mutate(doc):
+        for page in doc["pages"]:
+            if page["statement_id"] == "kr-checking_2025-12" and "reading" in page:
+                page["reading"]["currency"]["text"] = "EUR"
+
+    review = altered_review(inputs, tmp_path, mutate)
+    flag = next(f for f in review.worksheet["flags"] if f["code"] == "currency_conflict")
+    before_hash = worksheet_hash(review.worksheet)
+    account = next(a for a in review.worksheet["accounts"] if a["key"] == flag["account"])
+    assert account["max"] is account["max_usd"] is account["year_end_balance"] is None
+    with pytest.raises(ReviewError, match="Select the account currency"):
+        review.acknowledge(flag["id"], "checked", "CPA")
+    with pytest.raises(ReviewError, match="source note"):
+        review.set_currency(account["key"], "KRW", "", "CPA")
+    review.set_currency(account["key"], "KRW", "Synthetic bank confirms currency label error", "CPA")
+    account = next(a for a in review.worksheet["accounts"] if a["key"] == flag["account"])
+    assert account["currency"] == "KRW" and account["max_usd"] == 199100
+    assert account["currency_correction"]["reviewer"] == "CPA"
+    assert review.audit_tail(1)[0]["action"] == "correct_currency"
+    assert worksheet_hash(review.worksheet) != before_hash
+    review.acknowledge(flag["id"], "currency resolved", "CPA")
+    again = Review(review.inputs, review.dir, root=tmp_path)
+    assert again.worksheet == review.worksheet
+    assert flag["id"] not in again.open_review_flags()
+
+
+def review_without_treasury_rate(inputs, tmp_path, extra_review=False):
+    def mutate(doc):
+        for page in doc["pages"]:
+            if page["statement_id"].startswith("th-savings") and "reading" in page:
+                page["reading"]["currency"]["text"] = "INR"
+                if extra_review and page["statement_id"] == "th-savings_2025-01":
+                    page["reading"]["institution"]["text"] = "Synthetic Alternative Bank Name"
+
+    review = altered_review(inputs, tmp_path, mutate)
+    flag = next(f for f in review.worksheet["flags"] if f["code"] == "currency_unknown")
+    return review, flag
+
+
+def test_alternative_rate_acknowledgement_recomputes_persists_and_reopens(inputs, tmp_path):
+    from decimal import ROUND_CEILING, Decimal
+
+    review, flag = review_without_treasury_rate(inputs, tmp_path)
+    account = next(a for a in review.worksheet["accounts"] if a["key"] == flag["account"])
+    assert account["max_usd"] is None
+    rate = {"units_per_usd": "2.5", "source": "Synthetic alternative rate table", "record_date": "2025-12-31"}
+    review.acknowledge(flag["id"], "verified year-end rate", "CPA", rate=rate)
+    account = next(a for a in review.worksheet["accounts"] if a["key"] == flag["account"])
+    assert account["max_usd"] == int(
+        (Decimal(account["max"]["amount"]) / Decimal("2.5")).to_integral_value(rounding=ROUND_CEILING)
+    )
+    assert account["rate_source"] == rate["source"]
+    assert account["rate_date"] == "2025-12-31" and account["rate_basis"] == "cpa"
+    assert review.audit_tail(2)[0]["rate"]["units_per_usd"] == "2.5"
+    again = Review(review.inputs, review.dir, root=tmp_path)
+    assert again.worksheet == review.worksheet
+    assert flag["id"] not in again.open_review_flags()
+    again.reopen(flag["id"], "CPA")
+    account = next(a for a in again.worksheet["accounts"] if a["key"] == flag["account"])
+    assert account["max_usd"] is None
+    assert flag["id"] in again.open_review_flags()
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"units_per_usd": "0"},
+        {"units_per_usd": "-2"},
+        {"units_per_usd": "NaN"},
+        {"units_per_usd": "Infinity"},
+        {"units_per_usd": "oops"},
+        {"source": " "},
+        {"source": None},
+        {"source": []},
+        {"record_date": "2025-06-30"},
+        {"record_date": "bad-date"},
+    ],
+)
+def test_alternative_rates_require_a_positive_rate_verifiable_source_and_year_end_date(
+    inputs, tmp_path, change
+):
+    review, flag = review_without_treasury_rate(inputs, tmp_path)
+    rate = {"units_per_usd": "2.5", "source": "Synthetic rate table", "record_date": "2025-12-31", **change}
+    with pytest.raises(ReviewError):
+        review.acknowledge(flag["id"], "checked", "CPA", rate=rate)
+    assert not review.state["rates"]
+    assert flag["id"] in review.open_review_flags()
+
+
+def test_masked_and_unread_items_reach_the_client_note(inputs, tmp_path, monkeypatch):
+    def mutate(doc):
+        doc["pages"].append({"statement_id": "de-joint_2025-01", "page": 1, "error": "timeout"})
+        for page in doc["pages"]:
+            if page["statement_id"] == "th-savings_2025-01" and "reading" in page:
+                page["reading"]["account_number"]["text"] = "123-***-789"
+
+    review = altered_review(inputs, tmp_path, mutate)
+    monkeypatch.setattr(phrase_tables, "PHRASES_DIR", tmp_path / "missing")
+    for fid in review.open_review_flags():
+        review.acknowledge(fid, "checked", "CPA")
+    review.sign_off("CPA", "CP")
+    facts = review.summary_facts()
+    assert set(facts["excluded_items"]) == {"account_number_masked", "page_not_read"}
+    draft = review.draft_summary(tokens)
+    assert "«excluded_items»: «account_number_masked»; «page_not_read»" in draft["text"]
+
+
+def test_stale_and_fuzzy_gettext_entries_are_unreviewed(tmp_path, monkeypatch):
+    from babel.messages.catalog import Catalog
+
+    monkeypatch.setattr(phrase_tables, "PHRASES_DIR", tmp_path)
+    catalog = Catalog(locale="ko", last_translator="Human Reviewer", fuzzy=False)
+    catalog.add("old label", "오래된 문구", context="label")
+    catalog.add("fuzzy label", "검토할 문구", context="fuzzy", flags={"fuzzy"})
+    phrase_tables.save("ko", catalog)
+    requested = {"label": "new label", "fuzzy": "fuzzy label"}
+    assert phrase_tables.reviewed("ko", requested) == {}
+    updated = phrase_tables.sync("ko", requested)
+    assert updated.get("new label", context="label").fuzzy
+    assert updated.get("new label", context="label").previous_id == ["old label"]
+    phrase_tables.save("ko", updated)
+    assert phrase_tables.load("ko").get("new label", context="label").fuzzy
+
+
+def test_catalog_supplies_worksheet_titles_actions_and_severity(inputs):
+    from cross_border_fbar.reconcile.flags import CATALOG
+
+    for flag in build(inputs)["flags"]:
+        definition = CATALOG[flag["code"]]
+        assert flag["title"] == definition.title
+        assert flag["cpa_action"] == definition.cpa_action
+        assert flag["severity"] == definition.severity
+
+
+def test_numeric_client_formatting_keeps_decimal_precision_and_currency_rules():
+    from cross_border_fbar.app.review import _money
+
+    assert _money("9007199254740993.51", "EUR") == "9,007,199,254,740,993.51 EUR"
+    assert _money("1234", "KRW", "ko") == "1,234 KRW"
+    assert _money(None, "EUR") is None
+
+
+def test_unreviewed_catalog_drafts_are_reused_but_need_explicit_approval(signed, tmp_path, monkeypatch):
+    from babel.messages.catalog import Catalog
+
+    monkeypatch.setattr(phrase_tables, "PHRASES_DIR", tmp_path)
+    catalog = Catalog(locale="ko", last_translator="", fuzzy=False)
+    for key, english in {**SUMMARY_PHRASES, **CLIENT_LABELS}.items():
+        catalog.add(english, f"[{key}]", context=key, flags={"fuzzy"})
+    phrase_tables.save("ko", catalog)
+
+    def no_call(*args, **kwargs):
+        raise AssertionError("current catalog drafts need no extra translation call")
+
+    summary = signed.draft_summary(no_call)
+    assert summary["unreviewed"] and summary["text"].startswith("[heading]")
+    with pytest.raises(ReviewError, match="haven't been reviewed"):
+        signed.approve_summary("CPA")
+    signed.approve_summary("CPA", confirm_unreviewed=True)
+
+
+def test_updated_figures_reopen_previously_acknowledged_account_flags(inputs, tmp_path):
+    review, flag = review_without_treasury_rate(inputs, tmp_path, extra_review=True)
+    account_flags = [f for f in review.worksheet["flags"] if f["account"] == flag["account"]]
+    for item in account_flags:
+        review.acknowledge(item["id"], "checked", "CPA")
+    review.acknowledge(
+        flag["id"],
+        "rate verified",
+        "CPA",
+        rate={
+            "units_per_usd": "2",
+            "source": "Synthetic alternative source",
+            "record_date": "2025-12-31",
+        },
+    )
+    other_reviews = [
+        f["id"] for f in account_flags if f["code"] != "currency_unknown" and f["severity"] == "review"
+    ]
+    assert other_reviews
+    assert set(other_reviews) <= set(review.open_review_flags())
+    assert flag["id"] not in review.open_review_flags()

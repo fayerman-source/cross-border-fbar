@@ -22,6 +22,7 @@ from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal, localcontext
 
 from ..extract.parse import account_key, normalize_name
 from ..rates import Rate
+from .flags import CATALOG
 from .observe import Observation, Source, most_common
 
 
@@ -38,11 +39,18 @@ class Intake:
 @dataclass
 class Flag:
     code: str
-    severity: str  # info | review
     message: str
     sources: list[Source] = field(default_factory=list)
     month: str | None = None  # YYYY-MM, for missing_statement
     extra_usd: int | None = None
+
+    def __post_init__(self):
+        if self.code not in CATALOG:
+            raise ValueError(f"unknown flag code {self.code!r}")
+
+    @property
+    def severity(self) -> str:
+        return CATALOG[self.code].severity
 
 
 @dataclass
@@ -130,7 +138,6 @@ def _institution_flag(by_name: dict[str, list[Observation]]) -> Flag | None:
         sources.append(group[0].sources.get("institution", Source(group[0].upload, "institution", None)))
     return Flag(
         "institution_names_differ",
-        "review",
         "statements print different bank names: " + "; ".join(parts),
         sources,
     )
@@ -155,7 +162,6 @@ def _dedupe(obs: list[Observation], flags: list[Flag]) -> tuple[list[Observation
             flags.append(
                 Flag(
                     "duplicate_upload",
-                    "info",
                     f"same statement as {first[sig]}",
                     [Source(o.upload, "page", None)],
                 )
@@ -195,11 +201,11 @@ def _coverage_flags(obs: list[Observation], tax_year: int, flags: list[Flag]) ->
             month_end = date(d.year + d.month // 12, d.month % 12 + 1, 1) - timedelta(days=1)
             if d.day == 1 and month_end <= end:
                 m = f"{d.year}-{d.month:02d}"
-                flags.append(Flag("missing_statement", "review", f"no statement covers {m}", month=m))
+                flags.append(Flag("missing_statement", f"no statement covers {m}", month=m))
                 d = month_end + timedelta(days=1)
             else:
                 stop = min(end, month_end)
-                flags.append(Flag("coverage_gap", "review", f"no statement covers {d} to {stop}"))
+                flags.append(Flag("coverage_gap", f"no statement covers {d} to {stop}"))
                 d = stop + timedelta(days=1)
 
 
@@ -231,7 +237,6 @@ def _balances(o: Observation, prev: Observation | None, flags: list[Flag]) -> li
                 flags.append(
                     Flag(
                         "arithmetic_mismatch",
-                        "review",
                         f"printed balance {line.printed_balance} != computed {running}",
                         [line.source],
                     )
@@ -245,7 +250,6 @@ def _balances(o: Observation, prev: Observation | None, flags: list[Flag]) -> li
             flags.append(
                 Flag(
                     "arithmetic_mismatch",
-                    "review",
                     f"closing balance {o.closing} != computed {running}",
                     [o.sources["closing_balance"]],
                 )
@@ -290,7 +294,6 @@ def _field_flags(obs: list[Observation], flags: list[Flag]) -> None:
             flags.append(
                 Flag(
                     "field_unreadable",
-                    "review",
                     f"{name} could not be read or parsed",
                     [o.sources.get(name, Source(o.upload, name, None))],
                 )
@@ -333,7 +336,6 @@ def _conflict_flags(conflicts: list[tuple[date, str, list[Balance]]]) -> list[Fl
     return [
         Flag(
             "balance_readings_conflict",
-            "review",
             f"review {boundary} balance readings for {day}: "
             + ", ".join(str(value) for value in sorted({reading.amount for reading in readings})),
             [reading.source for reading in readings],
@@ -365,7 +367,7 @@ def _annual_evidence_bounded(obs, flags, tax_year) -> bool:
     previous = [None, *obs[:-1]]
     if any(not _statement_numeric_complete(o, p) for o, p in zip(obs, previous, strict=True)):
         return False
-    return not any(f.code in {"arithmetic_mismatch", "continuity_break", "currency_conflict"} for f in flags)
+    return not any(f.code in {"arithmetic_mismatch", "continuity_break"} for f in flags)
 
 
 def _annual_point_complete(best, bounded, conflicts, intraday, maximum_bounds) -> bool:
@@ -426,8 +428,10 @@ def reconcile_account(
     tax_year: int,
     threshold_usd: int,
     identified: bool = True,
+    currency_selection: str | None = None,
 ) -> AccountResult:
     flags: list[Flag] = []
+    all_obs = obs
     obs = sorted(obs, key=lambda o: (o.period_start or date.min, o.upload))
     out_of_year = [
         o
@@ -438,7 +442,6 @@ def reconcile_account(
         flags.append(
             Flag(
                 "out_of_year_statement",
-                "info",
                 f"{o.period_start} to {o.period_end} is outside {tax_year}",
                 [Source(o.upload, "page", None)],
             )
@@ -450,8 +453,21 @@ def reconcile_account(
 
     currencies = {o.currency for o in obs if o.currency}
     currency_conflict = len(currencies) > 1
-    unit_context_complete = all(o.currency is not None for o in obs)
-    calc_obs = [] if currency_conflict else [o for o in obs if o.currency is not None]
+    currency_ready = not currency_conflict or currency_selection is not None
+    effective_obs = (
+        [
+            replace(
+                o,
+                currency=currency_selection,
+                problems=[problem for problem in o.problems if problem != "currency"],
+            )
+            for o in obs
+        ]
+        if currency_selection
+        else obs
+    )
+    unit_context_complete = all(o.currency is not None for o in effective_obs)
+    calc_obs = [o for o in effective_obs if o.currency is not None] if currency_ready else []
     conflicts = _balance_conflicts(calc_obs)
     flags.extend(_conflict_flags(conflicts))
     prevs = [None, *calc_obs[:-1]] if calc_obs else []
@@ -465,7 +481,6 @@ def reconcile_account(
             flags.append(
                 Flag(
                     "continuity_break",
-                    "review",
                     f"closing {prev.closing} does not carry into opening {cur.opening}",
                     [prev.sources["closing_balance"], cur.sources["opening_balance"]],
                 )
@@ -481,16 +496,25 @@ def reconcile_account(
     if (
         best is None
         and identified
-        and not currency_conflict
+        and currency_ready
         and any(o.lines for o in calc_obs)
         and not _has_balance_anchor(obs)
     ):
         flags.append(
             Flag(
                 "no_balance_anchor",
-                "review",
                 "transactions only: no balance appears on any document, so "
                 "the maximum can't be determined; request statements showing balances",
+            )
+        )
+    elif (
+        best is None and identified and currency_ready and all(o.currency is not None for o in effective_obs)
+    ):
+        flags.append(
+            Flag(
+                "no_usable_balance",
+                "no readable balance or transaction lines for the tax year",
+                [Source(o.upload, "page", None) for o in all_obs],
             )
         )
     best_usd = usd_ceiling(best.amount, rate) if best and rate else None
@@ -498,7 +522,6 @@ def reconcile_account(
         flags.append(
             Flag(
                 "max_not_at_month_end",
-                "info",
                 "the maximum is a mid-period line, not a period-end balance",
                 [best.source],
             )
@@ -507,7 +530,6 @@ def reconcile_account(
         flags.append(
             Flag(
                 "max_from_computed_balance",
-                "info",
                 "computed from the lines; not printed on the statement",
                 [best.source],
             )
@@ -521,7 +543,6 @@ def reconcile_account(
                 flags.append(
                     Flag(
                         "possible_intraday_peak",
-                        "review",
                         f"crediting first on {day} would show {upper}, about ${extra:,} above the "
                         "reported maximum",
                         sources,
@@ -535,47 +556,49 @@ def reconcile_account(
     if names_flag:
         flags.append(names_flag)
     if currency_conflict:
-        flags.append(Flag("currency_conflict", "review", f"statements show {sorted(currencies)}"))
-    if rate is None:
-        flags.append(Flag("currency_unknown", "review", "no Treasury rate for this account's currency"))
+        flags.append(
+            Flag(
+                "currency_conflict",
+                f"statements show {sorted(currencies)}",
+                [o.sources.get("currency", Source(o.upload, "currency", None)) for o in obs],
+            )
+        )
+    if currency_ready and (rate is None or rate.basis == "cpa"):
+        flags.append(Flag("currency_unknown", "no Treasury rate for this account's currency"))
 
     ownership = intake.ownership if intake else "unknown"
     if not identified:
-        masked = obs[0].account_key.startswith("masked:") if obs else False
-        code, why = (
-            ("account_number_masked", "account number partly masked; can't be matched to an account")
-            if masked
-            else ("account_unidentified", "account number unreadable")
-        )
-        flags.append(
-            Flag(
-                code,
-                "review",
-                f"{why}; not counted in totals",
-                [Source(o.upload, "account_number", None) for o in obs],
+        masked = all_obs[0].account_key.startswith("masked:") if all_obs else False
+        sources = [Source(o.upload, "account_number", None) for o in all_obs]
+        if masked:
+            flags.append(
+                Flag("account_number_masked", "account number partly masked; not counted in totals", sources)
             )
-        )
-    elif ownership == "signature_authority":
-        flags.append(
-            Flag("signature_authority_only", "review", "signature authority without financial interest")
-        )
+        else:
+            flags.append(
+                Flag("account_unidentified", "account number unreadable; not counted in totals", sources)
+            )
+    elif ownership == "signature_authority" and intake.financial_interest is False:
+        flags.append(Flag("signature_authority_only", "signature authority without financial interest"))
+    elif ownership == "signature_authority" and intake.financial_interest is None:
+        flags.append(Flag("financial_interest_unknown", "financial interest not stated at intake"))
     elif ownership == "unknown":
-        flags.append(Flag("ownership_unknown", "review", "ownership not stated at intake"))
+        flags.append(Flag("ownership_unknown", "ownership not stated at intake"))
 
-    year_end, year_end_bounds = _year_end_evidence([] if currency_conflict else obs, tax_year, rate)
-    bounded = _annual_evidence_bounded(obs, flags, tax_year)
+    year_end, year_end_bounds = _year_end_evidence(effective_obs if currency_ready else [], tax_year, rate)
+    bounded = _annual_evidence_bounded(effective_obs, flags, tax_year)
     maximum_bounds = _maximum_bounds(balances, intraday, rate, bounded, conflicts, flags)
     annual_max_complete = _annual_point_complete(best, bounded, conflicts, intraday, maximum_bounds)
     return AccountResult(
-        account_key=obs[0].account_key if obs else "",
-        account_number=most_common(o.account_number for o in obs) or "",
+        account_key=all_obs[0].account_key if all_obs else "",
+        account_number=most_common(o.account_number for o in all_obs) or "",
         identified=identified,
         institutions=institutions,
-        currency=None if currency_conflict else most_common(o.currency for o in obs),
+        currency=currency_selection or (most_common(o.currency for o in obs) if currency_ready else None),
         holders=list(dict.fromkeys(o.holder for o in obs if o.holder)),
         ownership=ownership,
         financial_interest=intake.financial_interest if intake else None,
-        uploads=[o.upload for o in obs],
+        uploads=[o.upload for o in all_obs],
         duplicate_uploads=dupes,
         max_value=best if unit_context_complete else None,
         max_value_usd=best_usd if unit_context_complete else None,
@@ -592,7 +615,7 @@ def reconcile_account(
 
 def _rate_for(currency: str | None, rates: dict[str, Rate], tax_year: int) -> Rate | None:
     if currency == "USD":
-        return Rate("USD", Decimal(1), f"{tax_year}-12-31", "no conversion: account held in USD")
+        return Rate("USD", Decimal(1), f"{tax_year}-12-31", "no conversion: account held in USD", "identity")
     return rates.get(currency or "")
 
 
@@ -657,6 +680,8 @@ def reconcile(
     tax_year: int,
     threshold_usd: int = 1000,
     unread_pages: dict[str, str] | None = None,
+    account_rates: dict[str, Rate] | None = None,
+    currency_selections: dict[str, str] | None = None,
 ) -> list[AccountResult]:
     """Group by account number and reconcile each account. Pages or rows whose account can't be
     identified (unreadable or partly masked) stay apart and are not counted in totals.
@@ -670,7 +695,12 @@ def reconcile(
         (groups[o.account_key] if o.account_key else unidentified).append(o)
     results = []
     for key, obs in sorted(groups.items()):
-        rate = _rate_for(most_common(o.currency for o in obs), rates, tax_year)
+        selected = (currency_selections or {}).get(key)
+        alternate = (account_rates or {}).get(key)
+        currency = selected or most_common(o.currency for o in obs)
+        if alternate and alternate.currency != currency:
+            alternate = None
+        rate = _rate_for(currency, rates, tax_year) or alternate
         identified = not key.startswith("masked:")
         results.append(
             reconcile_account(
@@ -680,6 +710,7 @@ def reconcile(
                 tax_year,
                 threshold_usd,
                 identified=identified,
+                currency_selection=selected,
             )
         )
     for o in unidentified:
@@ -687,11 +718,9 @@ def reconcile(
         r = reconcile_account([o], None, rate, tax_year, threshold_usd, identified=False)
         results.append(replace(r, account_key=f"unidentified:{o.upload}"))
     for key in sorted(set(intake) - set(groups)):
-        flag = Flag("no_statements", "review", "stated at intake; no statement for this account was read")
+        flag = Flag("no_statements", "stated at intake; no statement for this account was read")
         results.append(_empty_result(key, intake[key].account_number or key, True, intake[key], [], flag))
     for upload, reason in sorted((unread_pages or {}).items()):
-        flag = Flag(
-            "page_not_read", "review", f"page couldn't be read: {reason}", [Source(upload, "page", None)]
-        )
+        flag = Flag("page_not_read", f"page couldn't be read: {reason}", [Source(upload, "page", None)])
         results.append(_empty_result(f"unread:{upload}", "", False, None, [upload], flag))
     return results

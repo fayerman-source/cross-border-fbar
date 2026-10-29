@@ -20,7 +20,7 @@ from .worksheet import Inputs
 
 STATIC = Path(__file__).parent / "static"
 FONTS_DIR = (Path(__file__).resolve().parents[3] / "fonts").resolve()
-PHRASES_PROMPT = (Path(__file__).parent / "prompts" / "client_phrases_v2.md").read_text()
+PHRASES_PROMPT = (Path(__file__).parent / "prompts" / "client_phrases_v3.md").read_text()
 SUMMARY_MODEL = "muse-spark-1.3"
 
 
@@ -41,17 +41,17 @@ def translate_phrases(phrases: dict, language: str, fresh: bool = False) -> tupl
     r = client.chat(
         SUMMARY_MODEL,
         [{"role": "user", "content": prompt}],
-        max_tokens=6000,
+        max_tokens=16000,
         response_format=fmt,
         label="client-phrases",
     )
     try:
         translations = json.loads(r.content)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError):
         translations = None
     meta = {
         "model": SUMMARY_MODEL,
-        "prompt": "client_phrases_v2",
+        "prompt": "client_phrases_v3",
         "cost_usd": r.cost_usd,
         "replayed": r.replayed,
     }
@@ -155,7 +155,12 @@ class Handler(BaseHTTPRequestHandler):
     def _post_action(self, body: dict):
         review, who = self.review, str(body.get("reviewer", "")).strip() or "reviewer"
         actions = {
-            "/api/ack": lambda: review.acknowledge(body["flag"], str(body.get("note", "")), who),
+            "/api/ack": lambda: review.acknowledge(
+                body["flag"], str(body.get("note", "")), who, rate=body.get("rate")
+            ),
+            "/api/currency": lambda: review.set_currency(
+                body["account"], body["currency"], str(body.get("note", "")), who
+            ),
             "/api/reopen": lambda: review.reopen(body["flag"], who),
             "/api/ownership": lambda: review.set_ownership(
                 body["account"], body["ownership"], str(body.get("note", "")), who

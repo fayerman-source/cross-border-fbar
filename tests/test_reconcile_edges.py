@@ -406,3 +406,71 @@ def test_an_unknown_currency_cannot_leak_a_partial_maximum_into_fbar_totals():
     totals = fbar_totals([account])
     assert totals.accounts_without_value == ["ACC1"]
     assert totals.accounts_counted == 0
+
+
+def test_mixed_currencies_never_produce_a_native_dollar_or_year_end_value():
+    from dataclasses import replace
+
+    pages = year_of()
+    pages[-1] = replace(pages[-1], currency="KRW", opening=D(1000000), closing=D(1000000))
+    (r,) = reconcile(pages, SOLE, RATES, 2025)
+    assert "currency_conflict" in codes(r)
+    assert r.currency is r.max_value is r.max_value_usd is r.year_end_balance is None
+    assert "continuity_break" not in codes(r)  # no arithmetic across unlike units
+    (corrected,) = reconcile(pages, SOLE, RATES, 2025, currency_selections={"ACC1": "KRW"})
+    assert corrected.currency == "KRW"
+    assert corrected.max_value.amount == D(1000000)
+    assert corrected.max_value_usd == 693
+    assert corrected.year_end_balance == D(1000000)
+
+
+def test_currency_is_part_of_duplicate_identity():
+    from dataclasses import replace
+
+    page = year_of()[0]
+    (r,) = reconcile([page, replace(page, upload="other", currency="KRW")], SOLE, RATES, 2025)
+    assert not r.duplicate_uploads
+    assert "currency_conflict" in codes(r)
+    assert r.max_value is None
+
+
+@pytest.mark.parametrize(
+    "interest,expected",
+    [
+        (False, "signature_authority_only"),
+        (None, "financial_interest_unknown"),
+        (True, None),
+    ],
+)
+def test_signature_authority_checks_financial_interest(interest, expected):
+    (r,) = reconcile(year_of(), {"ACC1": Intake("signature_authority", interest)}, RATES, 2025)
+    relevant = codes(r) & {"signature_authority_only", "financial_interest_unknown"}
+    assert relevant == ({expected} if expected else set())
+
+
+def test_identified_account_with_no_usable_data_has_a_review_flag():
+    empty = obs("empty", date(2025, 1, 1), date(2025, 12, 31), None, None)
+    (r,) = reconcile([empty], SOLE, RATES, 2025)
+    assert "no_usable_balance" in codes(r)
+    assert r.max_value is None
+
+
+def test_out_of_year_only_accounts_retain_identity_and_uploads():
+    page = obs("old", date(2024, 1, 1), date(2024, 12, 31), D(1), D(2))
+    (r,) = reconcile([page], SOLE, RATES, 2025)
+    assert r.account_key == r.account_number == "ACC1"
+    assert r.uploads == ["old"]
+    assert "no_usable_balance" in codes(r)
+    flag = next(item for item in r.flags if item.code == "no_usable_balance")
+    assert [source.upload for source in flag.sources] == ["old"]
+
+
+def test_currency_conflicts_keep_the_currency_source_from_every_statement():
+    pages = [
+        obs("eur", date(2025, 1, 1), date(2025, 1, 31), D(1000), D(1000), currency="EUR"),
+        obs("krw", date(2025, 2, 1), date(2025, 2, 28), D(1000), D(1000), currency="KRW"),
+    ]
+    (account,) = reconcile(pages, SOLE, RATES, 2025)
+    (flag,) = [item for item in account.flags if item.code == "currency_conflict"]
+    assert [source.upload for source in flag.sources] == ["eur", "krw"]
+    assert all(source.ref == "currency" for source in flag.sources)

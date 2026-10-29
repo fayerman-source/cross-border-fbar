@@ -1,0 +1,179 @@
+# Client summary phrases. Last-Translator names the human reviewer.
+# Remove fuzzy only after human review. Empty Last-Translator means unreviewed.
+# Terminology: IRS Pub 850 (EN-KR), September 2023: https://www.irs.gov/pub/irs-prior/p850enkr--2023.pdf
+msgid ""
+msgstr ""
+"Project-Id-Version: cross-border-fbar VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-28 23:43-0400\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: \n"
+"Language: ko\n"
+"Language-Team: ko <LL@li.org>\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "excluded_items"
+msgid "Items left out of the totals"
+msgstr "합계에서 제외된 항목"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "reviewed"
+msgid "Items reviewed"
+msgstr "검토 항목"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "heading"
+msgid "What your CPA reviewed"
+msgstr "귀하의 공인회계사 검토 항목"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "account_ending"
+msgid "account ending"
+msgstr "계좌 끝번호"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "currency_unknown"
+msgid "accounts with no Treasury exchange rate, whose dollar amounts depend on a separately recorded rate"
+msgstr "미국 재무부 환율이 없어 별도 기록된 환율에 따른 달러 금액이 적용되는 계좌"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "no_usable_balance"
+msgid "accounts with no readable balance for the year"
+msgstr "연중 판독 가능한 잔고가 없는 계좌"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "no_statements"
+msgid "accounts with no statement among the documents read"
+msgstr "읽은 문서 중 계좌 명세서가 없는 계좌"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "bank_not_named"
+msgid "bank name not available"
+msgstr "은행명 미기재"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "continuity_break"
+msgid "closing balances that did not match the next statement's opening balance"
+msgstr "다음 계좌 명세서의 기초 잔고와 일치하지 않는 기말 잔고"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "coverage_gap"
+msgid "days of the year that no statement covers"
+msgstr "계좌 명세서가 없는 연중 일"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "highest_balance"
+msgid "highest balance"
+msgstr "최고 잔고"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "balance_not_confirmed"
+msgid "highest balance not determined"
+msgstr "확정되지 않은 최고 잔고"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "missing_statement"
+msgid "months of the year that no statement covers"
+msgstr "계좌 명세서가 없는 연중 월"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "nothing_further"
+msgid "none flagged"
+msgstr "지적 사항 없음"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "page_not_read"
+msgid "pages that could not be read and were left out of the totals"
+msgstr "합계에서 제외된 판독 불가 페이지"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "field_unreadable"
+msgid "parts of a statement that could not be read, such as a date, currency or balance"
+msgstr "날짜, 통화 또는 잔고 등 판독할 수 없는 계좌 명세서 부분"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "balance_readings_conflict"
+msgid "readings of the same opening or closing balance that disagree"
+msgstr "서로 일치하지 않는 귀하의 동일한 기초 또는 기말 잔고 수치"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "account_number_masked"
+msgid "rows with partly masked account numbers left out of the totals"
+msgstr "합계에서 제외된 일부 가려진 계좌번호가 있는 행"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "account_unidentified"
+msgid "rows with unreadable account numbers left out of the totals"
+msgstr "합계에서 제외된 판독 불가한 계좌번호가 있는 행"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "arithmetic_mismatch"
+msgid "statement balances that did not match the transactions as read"
+msgstr "판독된 거래 내역과 일치하지 않는 계좌 명세서상 잔고"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "currency_conflict"
+msgid "statements showing different currencies for this account"
+msgstr "귀하의 계좌에 대해 서로 다른 통화를 표시하는 계좌 명세서"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "no_balance_anchor"
+msgid "statements that list transactions but show no balance"
+msgstr "거래 내역만 있고 잔고 표시가 없는 계좌 명세서"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "institution_names_differ"
+msgid "the bank names printed differently on statements"
+msgstr "계좌 명세서에 다르게 인쇄된 은행명"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "possible_intraday_peak"
+msgid "the order of same-day deposits and withdrawals, which can change the highest balance"
+msgstr "최고 잔고를 변경할 수 있는 당일 입출금 순서"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "financial_interest_unknown"
+msgid "whether you have a financial interest in accounts you can sign on"
+msgstr "서명 가능한 계좌에 대한 귀하의 재정적 이해관계 여부"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "ownership_unknown"
+msgid "who owns the account, which has not been recorded"
+msgstr "기록되지 않은 계좌 소유자"
+
+#. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
+msgctxt "signature_authority_only"
+msgid "your authority to sign on an account owned by someone else"
+msgstr "타인 소유 계좌에 대한 귀하의 서명 권한"

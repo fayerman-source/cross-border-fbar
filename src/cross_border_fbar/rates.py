@@ -35,6 +35,7 @@ class Rate:
     units_per_usd: Decimal  # Treasury quotes foreign units per 1 USD
     record_date: str
     source_url: str
+    basis: str = "treasury"  # treasury | cpa | identity
 
 
 def rates_path(year: int) -> Path:
