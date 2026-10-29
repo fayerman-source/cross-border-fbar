@@ -75,23 +75,6 @@ def _result(threshold: int | None, low: int, high: int | None, complete: bool) -
     return "not_above" if high <= threshold else "between"
 
 
-# Conditions that can hide an annual peak even when December is readable.
-ANNUAL_UNCERTAINTY = frozenset(
-    {
-        "missing_statement",
-        "coverage_gap",
-        "field_unreadable",
-        "no_balance_anchor",
-        "no_statements",
-        "currency_conflict",
-        "arithmetic_mismatch",
-        "continuity_break",
-        "possible_intraday_peak",
-        "no_usable_balance",
-    }
-)
-
-
 @dataclass(frozen=True)
 class _AccountValue:
     number: str
@@ -135,9 +118,7 @@ def _joint_share(
 
 def _account_value(account: AccountResult, household: Household, intake: dict[str, Intake]) -> _AccountValue:
     half, note = _joint_share(account, household, intake)
-    annual_complete = account.max_value_usd is not None and not any(
-        flag.code in ANNUAL_UNCERTAINTY for flag in account.flags
-    )
+    annual_complete = account.max_value_usd is not None and account.annual_max_complete
     return _AccountValue(
         account.account_number,
         _part(account.year_end_usd or 0, half),

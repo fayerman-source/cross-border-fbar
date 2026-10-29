@@ -25,6 +25,7 @@ def acct(number, max_usd, year_end_usd, ownership="sole", interest=True, identif
         year_end_balance=None,
         year_end_usd=year_end_usd,
         flags=[],
+        annual_max_complete=True,
     )
 
 
@@ -44,7 +45,8 @@ def test_signature_authority_and_unstated_interest_are_not_counted():
         "PARENTS": "no financial interest (signature authority only)",
         "ASK": "financial interest not stated",
     }
-    assert (t.year_end.low_usd, t.any_time.high_usd) == (90_000, 100_000)
+    assert t.year_end.low_usd == 90000
+    assert t.any_time.high_usd == 100000
 
 
 @pytest.mark.parametrize(
@@ -61,7 +63,8 @@ def test_signature_authority_and_unstated_interest_are_not_counted():
 )
 def test_thresholds_follow_filing_status_and_residence(status, abroad, want):
     t = form8938_totals([acct("A", 1, 1)], Household(status, abroad), {})
-    assert (t.year_end.threshold_usd, t.any_time.threshold_usd) == want
+    assert t.year_end.threshold_usd == want[0]
+    assert t.any_time.threshold_usd == want[1]
 
 
 @pytest.mark.parametrize(
@@ -69,31 +72,36 @@ def test_thresholds_follow_filing_status_and_residence(status, abroad, want):
 )
 def test_no_threshold_until_status_and_residence_are_stated(household):
     t = form8938_totals([acct("A", 900_000, 900_000)], household, {})
-    assert (t.year_end.result, t.any_time.result) == ("needs_intake", "needs_intake")
+    assert t.year_end.result == "needs_intake"
+    assert t.any_time.result == "needs_intake"
     assert t.any_time.high_usd == 900_000  # the totals are still shown
 
 
 def test_threshold_is_more_than_not_at_least():
     t = form8938_totals([acct("A", 300_000, 200_000)], ABROAD_MFS, {})
-    assert (t.year_end.result, t.any_time.result) == ("not_above", "not_above")
+    assert t.year_end.result == "not_above"
+    assert t.any_time.result == "not_above"
 
 
 def test_maximums_on_different_days_bound_the_any_time_total_without_deciding_it():
     # Each maximum alone is under $300,000 and so is the year-end total; their sum is over.
     t = form8938_totals([acct("A", 199_100, 150_000), acct("B", 127_355, 20_000)], ABROAD_MFS, {})
-    assert (t.any_time.low_usd, t.any_time.high_usd) == (199_100, 326_455)
+    assert t.any_time.low_usd == 199100
+    assert t.any_time.high_usd == 326455
     assert t.any_time.result == "between"
 
 
 def test_a_lower_bound_over_the_threshold_is_above_even_with_values_missing():
     t = form8938_totals([acct("A", 310_000, 250_000), acct("MMDA", None, None)], ABROAD_MFS, {})
     assert t.accounts_without_value == ["MMDA"]
-    assert (t.year_end.result, t.any_time.result) == ("above", "above")
+    assert t.year_end.result == "above"
+    assert t.any_time.result == "above"
 
 
 def test_missing_values_leave_an_under_threshold_total_incomplete():
     t = form8938_totals([acct("A", 100_000, 90_000), acct("MMDA", None, None)], ABROAD_MFS, {})
-    assert (t.year_end.result, t.any_time.result) == ("incomplete", "incomplete")
+    assert t.year_end.result == "incomplete"
+    assert t.any_time.result == "incomplete"
 
 
 def test_separate_filers_who_are_both_specified_individuals_count_half_of_a_joint_account():
@@ -101,7 +109,8 @@ def test_separate_filers_who_are_both_specified_individuals_count_half_of_a_join
     intake = {"J": Intake("joint", True, joint_with_spouse=True)}
     t = form8938_totals([acct("J", 127_355, 100_001, ownership="joint")], household, intake)
     assert t.halved == ["J"]
-    assert (t.year_end.low_usd, t.any_time.high_usd) == (50_001, 63_678)  # halves round up
+    assert t.year_end.low_usd == 50001
+    assert t.any_time.high_usd == 63678
 
 
 def test_a_joint_owner_who_is_not_a_specified_individual_leaves_the_full_value():
@@ -130,6 +139,7 @@ def test_annual_evidence_gaps_do_not_make_the_year_end_test_incomplete(code):
 
     account = acct("A", 1000, 1000)
     account.flags = [Flag(code, "review", "Synthetic evidence gap")]
+    account.annual_max_complete = False
     totals = form8938_totals([account], Household("single", False), {})
     assert totals.year_end.complete
     assert totals.year_end.result == "not_above"
@@ -152,7 +162,64 @@ def test_observed_lower_bound_can_cross_threshold_despite_missing_annual_coverag
 
     account = acct("A", 80000, 1000)
     account.flags = [Flag("missing_statement", "review", "missing January")]
+    account.annual_max_complete = False
     totals = form8938_totals([account], Household("single", False), {})
     assert not totals.any_time.complete
     assert totals.any_time.result == "above"
     assert totals.any_time.high_usd is None
+
+
+def test_sub_tolerance_intraday_uncertainty_prevents_a_below_threshold_annual_result():
+    from datetime import date
+    from decimal import Decimal
+
+    from test_reconcile_edges import obs
+
+    from cross_border_fbar.reconcile.accounts import reconcile
+
+    page = obs(
+        "year",
+        date(2025, 1, 1),
+        date(2025, 12, 31),
+        Decimal(74900),
+        Decimal(74900),
+        [(date(2025, 6, 5), Decimal(-200), Decimal(74700)), (date(2025, 6, 5), Decimal(200), Decimal(74900))],
+        currency="USD",
+    )
+    (account,) = reconcile([page], {"ACC1": Intake("sole", True)}, {}, 2025)
+    assert not account.flags
+    assert not account.annual_max_complete
+    totals = form8938_totals([account], Household("single", False), {})
+    assert totals.any_time.result == "incomplete"
+    assert totals.any_time.high_usd is None
+    assert totals.year_end.result == "above"
+
+
+def test_mixed_currency_accounts_withhold_all_native_and_dollar_values():
+    from datetime import date
+    from decimal import Decimal
+
+    from test_reconcile_edges import obs
+
+    from cross_border_fbar.rates import Rate
+    from cross_border_fbar.reconcile.accounts import reconcile
+
+    pages = [
+        obs("jan", date(2025, 1, 1), date(2025, 1, 31), Decimal(1000), Decimal(1000), currency="EUR"),
+        obs("feb", date(2025, 2, 1), date(2025, 2, 28), Decimal(1000), Decimal(1000), currency="EUR"),
+        obs("dec", date(2025, 12, 1), date(2025, 12, 31), Decimal(60000), Decimal(60000), currency="USD"),
+    ]
+    (account,) = reconcile(
+        pages,
+        {"ACC1": Intake("sole", True)},
+        {"EUR": Rate("EUR", Decimal(2), "2025-12-31", "synthetic rate")},
+        2025,
+    )
+    assert account.max_value is None
+    assert account.max_value_usd is None
+    assert account.year_end_balance is None
+    assert account.year_end_usd is None
+    assert not account.annual_max_complete
+    totals = form8938_totals([account], Household("single", False), {})
+    assert totals.year_end.result == "incomplete"
+    assert totals.any_time.result == "incomplete"

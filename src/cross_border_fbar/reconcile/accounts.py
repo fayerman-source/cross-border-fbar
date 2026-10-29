@@ -70,6 +70,7 @@ class AccountResult:
     year_end_balance: Decimal | None
     year_end_usd: int | None
     flags: list[Flag]
+    annual_max_complete: bool = False  # evidence completeness, independent of presentation flag tolerance
 
 
 def usd_ceiling(amount: Decimal, rate: Rate) -> int:
@@ -123,7 +124,7 @@ def _signature(o: Observation):
     if None in (o.period_start, o.period_end, o.opening, o.closing):
         return None
     lines = tuple((ln.day, ln.amount, ln.printed_balance) for ln in o.lines)
-    return (o.period_start, o.period_end, o.opening, o.closing, lines)
+    return (o.currency, o.period_start, o.period_end, o.opening, o.closing, lines)
 
 
 def _dedupe(obs: list[Observation], flags: list[Flag]) -> tuple[list[Observation], list[str]]:
@@ -283,6 +284,17 @@ def _max_value(balances: list[Balance]) -> Balance | None:
     return max(balances, key=lambda b: (b.amount, b.kind == "printed", not b.source.ref.startswith("row:")))
 
 
+def _annual_complete(obs, best, intraday, flags, tax_year) -> bool:
+    """An annual upper bound requires complete numeric evidence, regardless of review flag tolerance."""
+    if best is None or _uncovered(obs, tax_year):
+        return False
+    if any(o.problems for o in obs):
+        return False
+    if any(f.code in {"arithmetic_mismatch", "continuity_break", "currency_conflict"} for f in flags):
+        return False
+    return not any(upper > best.amount for upper, _, _ in intraday)
+
+
 def reconcile_account(
     obs: list[Observation],
     intake: Intake | None,
@@ -312,8 +324,11 @@ def reconcile_account(
     _field_flags(obs, flags)
     _coverage_flags(obs, tax_year, flags)
 
-    prevs = [None, *obs[:-1]]
-    for prev, cur in zip(prevs[1:], obs[1:], strict=True):
+    currencies = {o.currency for o in obs if o.currency}
+    currency_conflict = len(currencies) > 1
+    calc_obs = [] if currency_conflict else obs
+    prevs = [None, *calc_obs[:-1]] if calc_obs else []
+    for prev, cur in zip(prevs[1:], calc_obs[1:], strict=True):
         if (
             _adjacent(prev, cur)
             and prev.closing is not None
@@ -331,12 +346,12 @@ def reconcile_account(
 
     balances = [
         b
-        for o, p in zip(obs, prevs, strict=True)
+        for o, p in zip(calc_obs, prevs, strict=True)
         for b in _balances(o, p, flags)
         if _in_year(b.day, tax_year)
     ]
     best = _max_value(balances)
-    if best is None and identified and any(o.lines for o in obs):
+    if best is None and identified and not currency_conflict and any(o.lines for o in obs):
         flags.append(
             Flag(
                 "no_balance_anchor",
@@ -365,10 +380,9 @@ def reconcile_account(
             )
         )
 
+    intraday = [c for o, p in zip(calc_obs, prevs, strict=True) for c in _intraday(o, p, tax_year)]
     if best and rate:
-        for upper, sources, day in (
-            c for o, p in zip(obs, prevs, strict=True) for c in _intraday(o, p, tax_year)
-        ):
+        for upper, sources, day in intraday:
             extra = usd_ceiling(upper, rate) - best_usd
             if upper > best.amount and extra >= threshold_usd:
                 flags.append(
@@ -387,8 +401,7 @@ def reconcile_account(
     names_flag = _institution_flag(by_name)
     if names_flag:
         flags.append(names_flag)
-    currencies = {o.currency for o in obs if o.currency}
-    if len(currencies) > 1:
+    if currency_conflict:
         flags.append(Flag("currency_conflict", "review", f"statements show {sorted(currencies)}"))
     if rate is None:
         flags.append(Flag("currency_unknown", "review", "no Treasury rate for this account's currency"))
@@ -416,14 +429,14 @@ def reconcile_account(
     elif ownership == "unknown":
         flags.append(Flag("ownership_unknown", "review", "ownership not stated at intake"))
 
-    dec = [o for o in obs if o.period_end == date(tax_year, 12, 31)]
+    dec = [o for o in calc_obs if o.period_end == date(tax_year, 12, 31)]
     year_end = dec[-1].closing if dec else None
     return AccountResult(
         account_key=obs[0].account_key if obs else "",
         account_number=most_common(o.account_number for o in obs) or "",
         identified=identified,
         institutions=institutions,
-        currency=most_common(o.currency for o in obs),
+        currency=None if currency_conflict else most_common(o.currency for o in obs),
         holders=list(dict.fromkeys(o.holder for o in obs if o.holder)),
         ownership=ownership,
         financial_interest=intake.financial_interest if intake else None,
@@ -434,6 +447,7 @@ def reconcile_account(
         year_end_balance=year_end,
         year_end_usd=usd_ceiling(year_end, rate) if year_end is not None and rate else None,
         flags=flags,
+        annual_max_complete=_annual_complete(obs, best, intraday, flags, tax_year),
     )
 
 
