@@ -128,6 +128,10 @@ def test_summary_is_assembled_only_from_fixed_phrases_and_signed_figures(review,
         lambda p: {**{k: "x" for k in p}, "reviewed": "신고하셔야 합니다"},
         lambda p: {**{k: "x" for k in p}, "reviewed": "x" * 200},
         lambda p: None,
+        lambda p: ["not an object"],
+        lambda p: "not an object",
+        lambda p: 17,
+        lambda p: True,
     ],
 )
 def test_a_translation_that_adds_anything_is_held_back(signed, bad):
@@ -683,3 +687,66 @@ def test_catalog_sync_removes_multiple_obsolete_entries_without_mutating_its_ite
     assert [(message.context, message.id) for message in updated if message.id] == [
         ("current", "current label")
     ]
+
+
+def test_client_changes_reopen_acknowledgements_even_when_account_figures_stay_the_same(inputs, tmp_path):
+    review = Review(inputs, tmp_path / "client-review", root=tmp_path)
+    flag_id = review.open_review_flags()[0]
+    review.acknowledge(flag_id, "reviewed for the original client", "CPA")
+    intake = json.loads(inputs.intake.read_text())
+    intake["client"] = "Another Synthetic Client"
+    changed = tmp_path / "new-client.json"
+    changed.write_text(json.dumps(intake))
+    reopened = Review(Inputs(inputs.set_dir, inputs.readings, changed), review.dir, root=tmp_path)
+    assert flag_id in reopened.open_review_flags()
+    assert flag_id not in reopened.view()["review"]["acks"]
+
+
+def test_catalog_instruction_changes_reopen_the_corresponding_acknowledgements(review):
+    flag_id = review.open_review_flags()[0]
+    review.acknowledge(flag_id, "reviewed under the previous instruction", "CPA")
+    flag = next(item for item in review.worksheet["flags"] if item["id"] == flag_id)
+    flag["cpa_action"] = "A different source check is now required."
+    assert flag_id in review.open_review_flags()
+
+
+def test_export_contains_current_acknowledgements_and_preserves_history_in_the_audit(review):
+    flag = next(item for item in review.worksheet["flags"] if item["code"] == "signature_authority_only")
+    review.acknowledge(flag["id"], "reviewed previous classification", "CPA")
+    review.set_ownership(flag["account"], "sole", "updated synthetic intake", "CPA")
+    for flag_id in review.open_review_flags():
+        review.acknowledge(flag_id, "reviewed current worksheet", "CPA")
+    review.sign_off("CPA", "CP")
+    exported = review.export()
+    assert flag["id"] not in exported["acknowledgements"]
+    assert any(entry.get("flag") == flag["id"] for entry in exported["audit"])
+
+
+def test_a_rejected_redraft_replaces_the_previous_draft_with_a_persisted_blocked_state(signed):
+    previous = signed.draft_summary(tokens)
+    assert previous["text"]
+    rejected = signed.draft_summary(lambda phrases, language, fresh: (["bad shape"], {"model": "fake"}))
+    assert rejected["blocked"]
+    assert rejected["text"] is None
+    restarted = Review(signed.inputs, signed.dir, root=signed.dir.parent)
+    assert restarted.state["summary"] == rejected
+    with pytest.raises(ReviewError, match="can't be released"):
+        restarted.approve_summary("CPA", confirm_unreviewed=True)
+
+
+def test_unreadable_currency_keeps_a_correction_available_with_one_observed_unit(inputs, tmp_path):
+    def mutate(doc):
+        for page in doc["pages"]:
+            if page["statement_id"] == "kr-checking_2025-12" and "reading" in page:
+                page["reading"]["currency"]["text"] = ""
+                page["reading"]["currency"]["status"] = "unreadable"
+
+    review = altered_review(inputs, tmp_path, mutate)
+    account = next(row for row in review.worksheet["accounts"] if row["account_number"] == "110-482-913746")
+    assert account["observed_currencies"] == ["KRW"]
+    assert account["currency_review_needed"]
+    assert account["max_usd"] is None
+    review.set_currency(account["key"], "KRW", "currency verified from the synthetic source", "CPA")
+    corrected = next(row for row in review.worksheet["accounts"] if row["key"] == account["key"])
+    assert corrected["max_usd"] == 199100
+    assert corrected["currency_correction"]["note"] == "currency verified from the synthetic source"

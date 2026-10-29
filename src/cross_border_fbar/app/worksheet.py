@@ -145,6 +145,11 @@ def build(
         account["observed_currencies"] = sorted(
             {o.currency for o in observations if o.account_key == r.account_key and o.currency}
         )
+        account["currency_review_needed"] = any(
+            observation.currency is None
+            for observation in observations
+            if observation.account_key == r.account_key
+        )
         accounts.append(account)
     return {
         "tax_year": inp.tax_year,
@@ -210,6 +215,7 @@ def _account(r: AccountResult, year_rates: dict, intake: dict, flag_ids: list[st
         "currency": r.currency,
         "holders": r.holders,
         "ownership": r.ownership,
+        "financial_interest": r.financial_interest,
         "ownership_source": "intake" if r.account_key in intake else "unknown",
         "max": _balance_view(r.max_value),
         **_rate_view(r.currency, rate),

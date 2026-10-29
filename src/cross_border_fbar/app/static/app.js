@@ -242,7 +242,8 @@ function accountRow(a, signed) {
 }
 
 function currencyControl(a, signed) {
-  if (!a.identified || a.observed_currencies.length < 2) return null;
+  if (!a.identified || !a.observed_currencies.length) return null;
+  if (a.observed_currencies.length < 2 && !a.currency_review_needed && !a.currency_correction) return null;
   return el("label", { class: "sub" }, "Currency correction (applies to all statements)",
     el("select", { "aria-label": `Currency of ${a.account_number}`, disabled: signed,
       onchange: async (ev) => {

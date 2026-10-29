@@ -156,11 +156,25 @@ class Review:
     # -- views ---------------------------------------------------------------------------------
     def _account_hash(self, key: str) -> str:
         account = next(a for a in self.worksheet["accounts"] if a["key"] == key)
-        return worksheet_hash(account)
+        return worksheet_hash(
+            {
+                "client": self.worksheet["client"],
+                "tax_year": self.worksheet["tax_year"],
+                "account": account,
+                "flags": [flag for flag in self.worksheet["flags"] if flag["account"] == key],
+            }
+        )
 
     def _ack_valid(self, flag: dict) -> bool:
         ack = self.state["acks"].get(flag["id"])
         return bool(ack and ack.get("account_hash") == self._account_hash(flag["account"]))
+
+    def _valid_acknowledgements(self) -> dict:
+        return {
+            flag["id"]: self.state["acks"][flag["id"]]
+            for flag in self.worksheet["flags"]
+            if self._ack_valid(flag)
+        }
 
     def open_review_flags(self) -> list[str]:
         return [
@@ -170,14 +184,7 @@ class Review:
     def view(self) -> dict:
         return {
             "worksheet": self.worksheet,
-            "review": {
-                **self.state,
-                "acks": {
-                    f["id"]: self.state["acks"][f["id"]]
-                    for f in self.worksheet["flags"]
-                    if self._ack_valid(f)
-                },
-            },
+            "review": {**self.state, "acks": self._valid_acknowledgements()},
             "open_review_flags": self.open_review_flags(),
             "audit": self.audit_tail(40),
         }
@@ -336,7 +343,7 @@ class Review:
         return {
             "worksheet": self.worksheet,
             "signoff": self.state["signoff"],
-            "acknowledgements": self.state["acks"],
+            "acknowledgements": self._valid_acknowledgements(),
             "corrections": self.state["overrides"],
             "audit": self.audit_tail(10_000),
         }
@@ -402,7 +409,9 @@ class Review:
         if missing:
             new, meta = translate(missing, LANGUAGES[language], fresh=self.state["summary"] is not None)
             problem = _translation_problem(missing, new)
-        unreviewed = {**catalog_drafts, **(new or {})}
+            if problem:
+                new = {}
+        unreviewed = {**catalog_drafts, **new}
         if not problem:
             problem = _translation_problem(phrases, {**known, **unreviewed})
         self.state["summary"] = {
