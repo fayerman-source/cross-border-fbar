@@ -301,3 +301,68 @@ def test_missing_transaction_evidence_never_produces_a_complete_annual_bound(kin
     totals = form8938_totals([account], Household("single", False), {})
     assert totals.any_time.result == "incomplete"
     assert totals.year_end.result == "not_above"
+
+
+@pytest.mark.parametrize("reverse_names", [False, True])
+def test_conflicting_year_end_closings_never_depend_on_upload_names(reverse_names):
+    from datetime import date
+    from decimal import Decimal
+
+    from test_reconcile_edges import obs
+
+    from cross_border_fbar.reconcile.accounts import reconcile
+
+    names = ["z", "a"] if reverse_names else ["a", "z"]
+    pages = [
+        obs(name, date(2025, 1, 1), date(2025, 12, 31), Decimal(1000), Decimal(closing), currency="USD")
+        for name, closing in zip(names, [60000, 1000], strict=True)
+    ]
+    (account,) = reconcile(pages, {"ACC1": Intake("sole", True)}, {}, 2025)
+    assert account.year_end_balance is None
+    assert account.year_end_usd is None
+    assert not account.annual_max_complete
+    totals = form8938_totals([account], Household("single", False), {})
+    assert totals.year_end.result == "incomplete"
+    assert totals.any_time.result == "incomplete"
+    assert totals.accounts_without_value == ["ACC1"]
+
+
+def test_agreeing_year_end_closings_keep_the_value_with_an_absent_continuation_balance():
+    from datetime import date
+    from decimal import Decimal
+
+    from test_reconcile_edges import obs
+
+    from cross_border_fbar.reconcile.accounts import reconcile
+
+    pages = [
+        obs("a", date(2025, 1, 1), date(2025, 12, 31), Decimal(1000), Decimal(1000), currency="USD"),
+        obs("z", date(2025, 12, 1), date(2025, 12, 31), None, None, currency="USD"),
+    ]
+    (account,) = reconcile(pages, {"ACC1": Intake("sole", True)}, {}, 2025)
+    assert account.year_end_balance == Decimal(1000)
+    assert account.year_end_usd == 1000
+
+
+def test_unknown_dates_with_printed_high_balances_leave_the_annual_upper_bound_unknown():
+    from datetime import date
+    from decimal import Decimal
+
+    from test_reconcile_edges import obs
+
+    from cross_border_fbar.reconcile.accounts import reconcile
+
+    page = obs(
+        "year",
+        date(2025, 1, 1),
+        date(2025, 12, 31),
+        Decimal(1000),
+        Decimal(1000),
+        [(None, Decimal(80000), Decimal(81000)), (None, Decimal(-80000), Decimal(1000))],
+        currency="USD",
+    )
+    (account,) = reconcile([page], {"ACC1": Intake("sole", True)}, {}, 2025)
+    assert not account.annual_max_complete
+    totals = form8938_totals([account], Household("single", False), {})
+    assert totals.any_time.result == "incomplete"
+    assert totals.any_time.high_usd is None

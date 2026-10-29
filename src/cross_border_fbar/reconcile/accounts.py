@@ -284,6 +284,17 @@ def _max_value(balances: list[Balance]) -> Balance | None:
     return max(balances, key=lambda b: (b.amount, b.kind == "printed", not b.source.ref.startswith("row:")))
 
 
+def _closing_balance_on(observations: list[Observation], day: date) -> Decimal | None:
+    """A date-specific value requires agreement; upload and period order never break a numeric tie."""
+    amounts = {o.closing for o in observations if o.period_end == day and o.closing is not None}
+    return next(iter(amounts)) if len(amounts) == 1 else None
+
+
+def _closing_balances_agree(observations: list[Observation]) -> bool:
+    dates = {o.period_end for o in observations if o.period_end is not None and o.closing is not None}
+    return all(_closing_balance_on(observations, day) is not None for day in dates)
+
+
 def _statement_numeric_complete(observation: Observation, previous: Observation | None) -> bool:
     if observation.lines and _seed(observation, previous)[0] is None:
         return False
@@ -294,7 +305,7 @@ def _annual_complete(obs, best, intraday, flags, tax_year) -> bool:
     """An annual upper bound requires complete numeric evidence, regardless of review flag tolerance."""
     if best is None or _uncovered(obs, tax_year):
         return False
-    if any(o.problems for o in obs):
+    if any(o.problems for o in obs) or not _closing_balances_agree(obs):
         return False
     previous = [None, *obs[:-1]]
     if any(not _statement_numeric_complete(o, p) for o, p in zip(obs, previous, strict=True)):
@@ -438,8 +449,7 @@ def reconcile_account(
     elif ownership == "unknown":
         flags.append(Flag("ownership_unknown", "review", "ownership not stated at intake"))
 
-    dec = [o for o in calc_obs if o.period_end == date(tax_year, 12, 31)]
-    year_end = dec[-1].closing if dec else None
+    year_end = _closing_balance_on(calc_obs, date(tax_year, 12, 31))
     return AccountResult(
         account_key=obs[0].account_key if obs else "",
         account_number=most_common(o.account_number for o in obs) or "",
