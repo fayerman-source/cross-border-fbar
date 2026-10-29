@@ -1,0 +1,324 @@
+"""The CPA's review: acknowledgements, ownership corrections, sign-off, client summary; all audited.
+
+Rules the review enforces:
+- Every review flag must be acknowledged, with a note, before sign-off.
+- After sign-off the worksheet is frozen: corrections and acknowledgements are refused, and the
+  signed fingerprint is recorded. Export and the client summary exist only after sign-off.
+- The client-language summary is generated from the signed figures only, checked against the
+  scope line, and released only when the CPA approves it.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import threading
+import time
+from pathlib import Path
+
+from . import phrases as phrase_tables
+from .phrases import LANGUAGES
+from .worksheet import Inputs, build, worksheet_hash
+
+OWNERSHIPS = ("sole", "joint", "signature_authority")
+# The client summary is assembled from a fixed table of phrases, translated, plus the signed figures; the
+# model writes no sentence of its own, so it can't add filing advice. OUT_OF_SCOPE is a second check on
+# each translated phrase. Korean is matched by stem so polite inflections (신고하셔야 합니다) can't slip.
+OUT_OF_SCOPE = re.compile(
+    r"신고|제출\s*(?:하|해|의무|대상|필요)|의무|대상자|벌금|과태료|가산세|처벌|면제|납부|"
+    r"\b(?:must|required to|need to|obligat\w*)\s+(?:file|report|submit)|\bpenalt|\bfines?\b|\bexempt",
+    re.I,
+)
+
+
+# The summary's own words. Every line of the note is built from these and CLIENT_LABELS.
+SUMMARY_PHRASES = {
+    "heading": "What your CPA reviewed",
+    "account_ending": "account ending",
+    "highest_balance": "highest balance",
+    "reviewed": "Items reviewed",
+    "nothing_further": "nothing further to review",
+    "balance_not_confirmed": "the balance couldn't be confirmed from the documents",
+    "bank_not_named": "bank not named",
+}
+
+# Client-facing descriptions of review items; the model translates these, never the CPA's notes.
+CLIENT_LABELS = {
+    "no_balance_anchor": "no balance appears on the documents; statements showing balances were requested",
+    "missing_statement": "one month's statement is missing",
+    "signature_authority_only": "the account is held by someone else and the client can sign on it",
+    "possible_intraday_peak": "a same-day deposit and withdrawal were checked against the highest balance",
+    "account_number_masked": "rows with a partly masked account number were matched to the client's accounts",
+    "arithmetic_mismatch": "a printed balance was checked against the transactions",
+    "continuity_break": "the balances between two statements were checked",
+    "coverage_gap": "some days of the year are not covered by a statement",
+    "institution_names_differ": "the bank name differs between statements and was checked",
+    "currency_conflict": "the currency shown on the statements was checked",
+    "currency_unknown": "the account's currency was checked against the Treasury exchange rates",
+    "ownership_unknown": "who owns the account was confirmed with the client",
+    "field_unreadable": "a part of a statement that couldn't be read was checked",
+    "no_statements": "no statement was received for this account; statements were requested",
+    "page_not_read": "a page that couldn't be read was checked",
+}
+
+
+def _translation_problem(phrases: dict, got) -> str | None:
+    """Why a translation can't be used, or None. Phrases carry no numbers, so a translation has none."""
+    if not isinstance(got, dict) or set(got) != set(phrases):
+        return "doesn't cover exactly the phrases asked for"
+    for key, text in got.items():
+        if not isinstance(text, str) or not text.strip() or "\n" in text or re.search(r"\d", text):
+            return f"has an unusable translation for '{key}'"
+        if len(text) > 3 * len(phrases[key]) + 20:
+            return f"has a translation for '{key}' far longer than the phrase"
+        hit = OUT_OF_SCOPE.search(text)
+        if hit:
+            return f"contains '{hit.group(0)}'"
+    return None
+
+
+def _assemble(facts: dict, t: dict) -> str:
+    lines = [t["heading"]]
+    for a in facts["accounts"]:
+        head = f"{a['bank'] or t['bank_not_named']} · {t['account_ending']} {a['account_ending']}"
+        if a["highest_balance"]:
+            usd = f" ({a['highest_balance_usd']})" if a["highest_balance_usd"] else ""
+            head += f" · {t['highest_balance']} {a['highest_balance']}{usd}"
+        else:
+            head += f" · {t['balance_not_confirmed']}"
+        items = [t[c] for c in a["review_items"]] or [t["nothing_further"]]
+        lines += [head, f"  {t['reviewed']}: " + "; ".join(items)]
+    return "\n".join(lines)
+
+
+def _fmt(amount: str | None, currency: str | None) -> str | None:
+    if amount is None:
+        return None
+    digits = 0 if currency == "KRW" else 2
+    return f"{float(amount):,.{digits}f} {currency or ''}".strip()
+
+
+def confined(path: Path, root: Path) -> Path:
+    """The review folder must sit inside root (the working directory by default)."""
+    root, target = root.resolve(), (root / path).resolve()
+    if target != root and root not in target.parents:
+        raise ValueError(f"review folder {path} is outside {root}")
+    return target
+
+
+class ReviewError(Exception):
+    pass
+
+
+class Review:
+    def __init__(self, inputs: Inputs, review_dir: Path, root: Path | None = None):
+        self.inputs = inputs
+        self.dir = confined(review_dir, root or Path.cwd())
+        self.dir.mkdir(parents=True, exist_ok=True)
+        self.state_path = self.dir / "state.json"
+        self.audit_path = self.dir / "audit.jsonl"
+        self.lock = threading.Lock()
+        self.state = (
+            json.loads(self.state_path.read_text())
+            if self.state_path.exists()
+            else {"acks": {}, "overrides": {}, "signoff": None, "summary": None}
+        )
+        self.worksheet = build(inputs, self.state["overrides"])
+        self._revalidate_signoff()
+
+    def _revalidate_signoff(self) -> None:
+        """A sign-off covers the figures it fingerprinted. If the readings or intake changed since,
+        the old sign-off no longer applies: keep it on record, clear it, and require a new review."""
+        signed = self.state["signoff"]
+        if signed and signed["hash"] != worksheet_hash(self.worksheet):
+            self.state.setdefault("invalidated_signoffs", []).append(signed)
+            self.state["signoff"] = None
+            self.state["summary"] = None
+            self._audit(
+                "signoff_invalidated",
+                "system",
+                reason="the worksheet changed after sign-off",
+                signed_hash=signed["hash"],
+                current_hash=worksheet_hash(self.worksheet),
+            )
+
+    # -- views ---------------------------------------------------------------------------------
+    def open_review_flags(self) -> list[str]:
+        return [
+            f["id"]
+            for f in self.worksheet["flags"]
+            if f["severity"] == "review" and f["id"] not in self.state["acks"]
+        ]
+
+    def view(self) -> dict:
+        return {
+            "worksheet": self.worksheet,
+            "review": self.state,
+            "open_review_flags": self.open_review_flags(),
+            "audit": self.audit_tail(40),
+        }
+
+    def audit_tail(self, n: int) -> list[dict]:
+        if not self.audit_path.exists():
+            return []
+        return [json.loads(x) for x in self.audit_path.read_text().splitlines()[-n:]]
+
+    # -- actions -------------------------------------------------------------------------------
+    def _audit(self, action: str, reviewer: str, **detail) -> None:
+        entry = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "action": action, "reviewer": reviewer, **detail}
+        with self.audit_path.open("a") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        self.state_path.write_text(json.dumps(self.state, ensure_ascii=False, indent=1))
+
+    def _require_open(self) -> None:
+        if self.state["signoff"]:
+            raise ReviewError("The worksheet is signed off; it can't be changed.")
+
+    def acknowledge(self, flag_id: str, note: str, reviewer: str) -> None:
+        with self.lock:
+            self._require_open()
+            if flag_id not in {f["id"] for f in self.worksheet["flags"]}:
+                raise ReviewError("That review item isn't on this worksheet.")
+            if not note.strip():
+                raise ReviewError("Add a note saying what you checked.")
+            self.state["acks"][flag_id] = {"note": note.strip(), "reviewer": reviewer, "ts": time.time()}
+            self._audit("acknowledge", reviewer, flag=flag_id, note=note.strip())
+
+    def reopen(self, flag_id: str, reviewer: str) -> None:
+        with self.lock:
+            self._require_open()
+            self.state["acks"].pop(flag_id, None)
+            self._audit("reopen", reviewer, flag=flag_id)
+
+    def set_ownership(self, account: str, ownership: str, note: str, reviewer: str) -> None:
+        with self.lock:
+            self._require_open()
+            if ownership not in OWNERSHIPS:
+                raise ReviewError(f"Ownership must be one of {', '.join(OWNERSHIPS)}.")
+            if not note.strip():
+                raise ReviewError("Add a note saying where the correction comes from.")
+            before = next((a["ownership"] for a in self.worksheet["accounts"] if a["key"] == account), None)
+            if before is None:
+                raise ReviewError("That account isn't on this worksheet.")
+            self.state["overrides"][account] = ownership
+            self.worksheet = build(self.inputs, self.state["overrides"])
+            self._audit(
+                "correct_ownership",
+                reviewer,
+                account=account,
+                before=before,
+                after=ownership,
+                note=note.strip(),
+            )
+
+    def sign_off(self, reviewer: str, initials: str) -> None:
+        with self.lock:
+            self._require_open()
+            if not reviewer.strip() or not initials.strip():
+                raise ReviewError("Enter your name and initials to sign off.")
+            open_flags = self.open_review_flags()
+            if open_flags:
+                raise ReviewError(f"{len(open_flags)} review item(s) still need acknowledgement.")
+            self.state["signoff"] = {
+                "reviewer": reviewer.strip(),
+                "initials": initials.strip(),
+                "ts": time.strftime("%Y-%m-%d %H:%M"),
+                "hash": worksheet_hash(self.worksheet),
+            }
+            self._audit("sign_off", reviewer, hash=self.state["signoff"]["hash"])
+
+    def export(self) -> dict:
+        if not self.state["signoff"]:
+            raise ReviewError("Sign off before exporting.")
+        if self.state["signoff"]["hash"] != worksheet_hash(self.worksheet):
+            raise ReviewError("The worksheet changed after sign-off; review and sign off again.")
+        return {
+            "worksheet": self.worksheet,
+            "signoff": self.state["signoff"],
+            "acknowledgements": self.state["acks"],
+            "corrections": self.state["overrides"],
+            "audit": self.audit_tail(10_000),
+        }
+
+    # -- client summary ------------------------------------------------------------------------
+    def summary_facts(self) -> dict:
+        """Only the signed figures, formatted, with plain descriptions of what was reviewed.
+
+        The CPA's acknowledgement notes are internal working-paper notes and are not passed on;
+        account numbers are reduced to their last four digits; statement contents are not included.
+        """
+        ws = self.worksheet
+        facts = []
+        for a in ws["accounts"]:
+            if not a["identified"]:
+                continue
+            reviews = [f for f in ws["flags"] if f["id"] in a["flags"] and f["severity"] == "review"]
+            digits = re.sub(r"\D", "", a["account_number"])
+            amount = a["max"]["amount"] if a["max"] else None
+            facts.append(
+                {
+                    "bank": a["institutions"][-1] if a["institutions"] else None,
+                    "account_ending": digits[-4:],
+                    "currency": a["currency"],
+                    "highest_balance": _fmt(amount, a["currency"]),
+                    "highest_balance_usd": f"${a['max_usd']:,}" if a["max_usd"] is not None else None,
+                    "review_items": list(dict.fromkeys(f["code"] for f in reviews)),
+                }
+            )
+        return {"client": ws["client"], "tax_year": ws["tax_year"], "accounts": facts}
+
+    def draft_summary(self, translate, language: str = "ko") -> dict:
+        """translate(phrases, language, fresh) -> (translations, meta). Runs only after sign-off.
+
+        The note is assembled from fixed phrases and the signed figures. Phrases come from the language's
+        reviewed table; only phrases missing from it are sent to the model, and the draft lists them as
+        unreviewed. A translation that adds keys, digits, line breaks or out-of-scope words holds the draft
+        back. A redraft asks for a fresh translation, so a held draft can't be replayed."""
+        if not self.state["signoff"]:
+            raise ReviewError("Sign off before drafting the client summary.")
+        if language not in LANGUAGES:
+            raise ReviewError(f"No client language {language!r}.")
+        facts = self.summary_facts()
+        codes = {c for a in facts["accounts"] for c in a["review_items"]}
+        if codes - set(CLIENT_LABELS):
+            raise ReviewError(f"No client wording for {sorted(codes - set(CLIENT_LABELS))}.")
+        phrases = {**SUMMARY_PHRASES, **{c: CLIENT_LABELS[c] for c in sorted(codes)}}
+        known = phrase_tables.reviewed(language, phrases)
+        missing = {k: v for k, v in phrases.items() if k not in known}
+        meta, problem, new = {"model": None, "source": f"reviewed table ({language})"}, None, {}
+        if missing:
+            new, meta = translate(missing, LANGUAGES[language], fresh=self.state["summary"] is not None)
+            problem = _translation_problem(missing, new)
+        self.state["summary"] = {
+            "text": None if problem else _assemble(facts, {**known, **new}),
+            "language": language,
+            "unreviewed": {k: new[k] for k in missing} if not problem else {},
+            "meta": meta,
+            "approved": None,
+            "blocked": problem,
+        }
+        self._audit(
+            "draft_summary",
+            self.state["signoff"]["reviewer"],
+            model=meta.get("model"),
+            unreviewed=sorted(missing),
+            blocked=problem,
+        )
+        return self.state["summary"]
+
+    def approve_summary(self, reviewer: str, confirm_unreviewed: bool = False) -> None:
+        """Phrases translated for this draft, not taken from a reviewed table, are approved only when the
+        CPA confirms them; they are listed in the draft and recorded with the approval."""
+        with self.lock:
+            s = self.state["summary"]
+            if not s:
+                raise ReviewError("Draft the summary first.")
+            if s["blocked"]:
+                raise ReviewError(f"This draft can't be released: it {s['blocked']}. Draft it again.")
+            if s["unreviewed"] and not confirm_unreviewed:
+                raise ReviewError(
+                    f"{len(s['unreviewed'])} phrases were translated for this draft and haven't been "
+                    "reviewed. Read them and confirm to approve."
+                )
+            s["approved"] = {"reviewer": reviewer, "ts": time.strftime("%Y-%m-%d %H:%M")}
+            self._audit("approve_summary", reviewer, confirmed_unreviewed=sorted(s["unreviewed"]))

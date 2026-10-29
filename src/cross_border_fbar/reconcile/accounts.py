@@ -31,6 +31,7 @@ class Intake:
 
     ownership: str  # sole | joint | signature_authority | unknown
     financial_interest: bool | None = None
+    account_number: str = ""  # as the client gave it; shown when no statement for the account was read
 
 
 @dataclass
@@ -472,15 +473,39 @@ def split_by_row_account(o: Observation) -> list[Observation]:
     return parts
 
 
+def _empty_result(key: str, number: str, identified: bool, intake: Intake | None, uploads, flag: Flag):
+    return AccountResult(
+        account_key=key,
+        account_number=number,
+        identified=identified,
+        institutions=[],
+        currency=None,
+        holders=[],
+        ownership=intake.ownership if intake else "unknown",
+        financial_interest=intake.financial_interest if intake else None,
+        uploads=list(uploads),
+        duplicate_uploads=[],
+        max_value=None,
+        max_value_usd=None,
+        year_end_balance=None,
+        flags=[flag],
+    )
+
+
 def reconcile(
     observations: list[Observation],
     intake: dict[str, Intake],
     rates: dict[str, Rate],
     tax_year: int,
     threshold_usd: int = 1000,
+    unread_pages: dict[str, str] | None = None,
 ) -> list[AccountResult]:
     """Group by account number and reconcile each account. Pages or rows whose account can't be
-    identified (unreadable or partly masked) stay apart and are not counted in totals."""
+    identified (unreadable or partly masked) stay apart and are not counted in totals.
+
+    Nothing given drops out unseen: an account stated at intake with no statement read, and each
+    page that couldn't be read at all (upload -> reason), come back as results with a review flag.
+    Every result has its own account_key: results without an account number are keyed by their page."""
     groups: dict[str, list[Observation]] = defaultdict(list)
     unidentified = []
     for o in (part for page in observations for part in split_by_row_account(page)):
@@ -501,5 +526,14 @@ def reconcile(
         )
     for o in unidentified:
         rate = _rate_for(o.currency, rates, tax_year)
-        results.append(reconcile_account([o], None, rate, tax_year, threshold_usd, identified=False))
+        r = reconcile_account([o], None, rate, tax_year, threshold_usd, identified=False)
+        results.append(replace(r, account_key=f"unidentified:{o.upload}"))
+    for key in sorted(set(intake) - set(groups)):
+        flag = Flag("no_statements", "review", "stated at intake; no statement for this account was read")
+        results.append(_empty_result(key, intake[key].account_number or key, True, intake[key], [], flag))
+    for upload, reason in sorted((unread_pages or {}).items()):
+        flag = Flag(
+            "page_not_read", "review", f"page couldn't be read: {reason}", [Source(upload, "page", None)]
+        )
+        results.append(_empty_result(f"unread:{upload}", "", False, None, [upload], flag))
     return results

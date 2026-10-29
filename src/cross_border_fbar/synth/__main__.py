@@ -206,6 +206,22 @@ def generate(out: Path, seed: int, png: bool, dpi: int, threshold_usd: int) -> d
     }
     out.mkdir(parents=True, exist_ok=True)
     (out / "truth.json").write_text(json.dumps(truth, ensure_ascii=False, indent=2) + "\n")
+    # What the client states on the intake call (ownership isn't printed on statements). The worksheet
+    # app reads this, never the answer key; voice intake will produce the same shape.
+    intake = {
+        "client": truth["client"]["name"],
+        "source": "synthetic intake call script (fictional)",
+        "accounts": [
+            {
+                "account_number": a["account_number"],
+                "ownership": a["ownership"],
+                "financial_interest": a["financial_interest"],
+            }
+            for a in truth["accounts"]
+            if a.get("counted", True)
+        ],
+    }
+    (out / "intake.json").write_text(json.dumps(intake, ensure_ascii=False, indent=2) + "\n")
     return truth
 
 

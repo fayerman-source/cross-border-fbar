@@ -1,0 +1,19 @@
+{
+ "label": "client-phrases",
+ "model": "muse-spark-1.3",
+ "content": "{\"account_ending\": \"계좌 끝자리\", \"account_number_masked\": \"계좌번호가 일부 가려진 내역을 고객님의 계좌와 대조했습니다\", \"arithmetic_mismatch\": \"표기된 잔액을 거래 내역과 대조하여 확인했습니다\", \"balance_not_confirmed\": \"서류에서 잔액을 확인할 수 없었습니다\", \"bank_not_named\": \"은행명이 기재되어 있지 않습니다\", \"continuity_break\": \"두 명세서 간의 잔액을 대조하여 확인했습니다\", \"coverage_gap\": \"연중 일부 날짜가 명세서로 확인되지 않습니다\", \"currency_conflict\": \"명세서에 표시된 통화를 확인했습니다\", \"currency_unknown\": \"계좌의 통화를 재무부 환율과 대조하여 확인했습니다\", \"field_unreadable\": \"명세서 중 판독이 불가능한 부분을 확인했습니다\", \"heading\": \"CPA가 검토한 내용입니다\", \"highest_balance\": \"최고 잔액\", \"institution_names_differ\": \"명세서 간 은행명이 상이하여 확인했습니다\", \"missing_statement\": \"한 달치 명세서가 누락되었습니다\", \"no_balance_anchor\": \"서류에 잔액이 나타나 있지 않아 잔액이 표시된 명세서를 요청했습니다\", \"no_statements\": \"이 계좌에 대한 명세서가 접수되지 않아 명세서를 요청했습니다\", \"nothing_further\": \"추가로 검토할 사항이 없습니다\", \"ownership_unknown\": \"계좌 명의자를 고객님과 함께 확인했습니다\", \"page_not_read\": \"판독이 불가능한 페이지를 확인했습니다\", \"possible_intraday_peak\": \"당일 입금 및 출금을 최고 잔액과 대조하여 확인했습니다\", \"reviewed\": \"검토했습니다\", \"signature_authority_only\": \"타인 명의의 계좌이며 고객님께서 서명 권한을 보유하고 있습니다\"}",
+ "usage": {
+  "completion_tokens": 2749,
+  "prompt_tokens": 445,
+  "total_tokens": 3194,
+  "completion_tokens_details": {
+   "reasoning_tokens": 2346
+  },
+  "prompt_tokens_details": {
+   "cached_tokens": 0
+  }
+ },
+ "cost_usd": 0.01224,
+ "latency_s": 10.31,
+ "finish_reason": "stop"
+}

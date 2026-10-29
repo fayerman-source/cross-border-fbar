@@ -1,0 +1,107 @@
+{
+ "language": "ko",
+ "translated_by": "muse-spark-1.3 (client_phrases_v1)",
+ "reviewed_by": "",
+ "phrases": {
+  "heading": {
+   "en": "What your CPA reviewed",
+   "text": "CPA가 검토한 내용",
+   "model_text": "CPA가 검토한 내용입니다"
+  },
+  "account_ending": {
+   "en": "account ending",
+   "text": "계좌 끝자리"
+  },
+  "highest_balance": {
+   "en": "highest balance",
+   "text": "최고 잔액"
+  },
+  "reviewed": {
+   "en": "Items reviewed",
+   "text": "검토 사항",
+   "model_text": "검토했습니다"
+  },
+  "nothing_further": {
+   "en": "nothing further to review",
+   "text": "추가 검토 사항 없음",
+   "model_text": "추가로 검토할 사항이 없습니다"
+  },
+  "balance_not_confirmed": {
+   "en": "the balance couldn't be confirmed from the documents",
+   "text": "서류에서 잔액을 확인할 수 없었습니다"
+  },
+  "bank_not_named": {
+   "en": "bank not named",
+   "text": "은행명 미기재",
+   "model_text": "은행명이 기재되어 있지 않습니다"
+  },
+  "no_balance_anchor": {
+   "en": "no balance appears on the documents; statements showing balances were requested",
+   "text": "서류에 잔액이 나타나 있지 않아 잔액이 표시된 명세서를 요청했습니다"
+  },
+  "missing_statement": {
+   "en": "one month's statement is missing",
+   "text": "한 달치 명세서가 누락되었습니다"
+  },
+  "signature_authority_only": {
+   "en": "the account is held by someone else and the client can sign on it",
+   "text": "타인 명의의 계좌이며 고객님께서 서명 권한을 보유하고 있습니다"
+  },
+  "possible_intraday_peak": {
+   "en": "a same-day deposit and withdrawal were checked against the highest balance",
+   "text": "당일 입금 및 출금을 최고 잔액과 대조하여 확인했습니다"
+  },
+  "account_number_masked": {
+   "en": "rows with a partly masked account number were matched to the client's accounts",
+   "text": "계좌번호가 일부 가려진 내역을 고객님의 계좌와 대조했습니다"
+  },
+  "arithmetic_mismatch": {
+   "en": "a printed balance was checked against the transactions",
+   "text": "표기된 잔액을 거래 내역과 대조하여 확인했습니다"
+  },
+  "continuity_break": {
+   "en": "the balances between two statements were checked",
+   "text": "두 명세서 간의 잔액을 대조하여 확인했습니다"
+  },
+  "coverage_gap": {
+   "en": "some days of the year are not covered by a statement",
+   "text": "연중 일부 날짜가 명세서로 확인되지 않습니다"
+  },
+  "institution_names_differ": {
+   "en": "the bank name differs between statements and was checked",
+   "text": "명세서 간 은행명이 상이하여 확인했습니다"
+  },
+  "currency_conflict": {
+   "en": "the currency shown on the statements was checked",
+   "text": "명세서에 표시된 통화를 확인했습니다"
+  },
+  "currency_unknown": {
+   "en": "the account's currency was checked against the Treasury exchange rates",
+   "text": "계좌의 통화를 미국 재무부 환율과 대조하여 확인했습니다",
+   "model_text": "계좌의 통화를 재무부 환율과 대조하여 확인했습니다"
+  },
+  "ownership_unknown": {
+   "en": "who owns the account was confirmed with the client",
+   "text": "계좌 명의자를 고객님과 함께 확인했습니다"
+  },
+  "field_unreadable": {
+   "en": "a part of a statement that couldn't be read was checked",
+   "text": "명세서 중 판독이 불가능한 부분을 확인했습니다"
+  },
+  "no_statements": {
+   "en": "no statement was received for this account; statements were requested",
+   "text": "이 계좌에 대한 명세서가 접수되지 않아 명세서를 요청했습니다"
+  },
+  "page_not_read": {
+   "en": "a page that couldn't be read was checked",
+   "text": "판독이 불가능한 페이지를 확인했습니다"
+  }
+ },
+ "edited_in_review": [
+  "bank_not_named",
+  "currency_unknown",
+  "heading",
+  "nothing_further",
+  "reviewed"
+ ]
+}
