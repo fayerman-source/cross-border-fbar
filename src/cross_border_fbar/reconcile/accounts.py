@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
-from decimal import ROUND_CEILING, Decimal
+from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal, localcontext
 
 from ..extract.parse import account_key, normalize_name
 from ..rates import Rate
@@ -55,8 +55,8 @@ class Balance:
 
 @dataclass(frozen=True)
 class ValueBounds:
-    low_usd: int
-    high_usd: int | None  # None when the evidence cannot establish a finite upper bound
+    low_usd: Decimal
+    high_usd: Decimal | None  # None when the evidence cannot establish a finite upper bound
 
 
 @dataclass
@@ -85,6 +85,15 @@ def usd_ceiling(amount: Decimal, rate: Rate) -> int:
     if amount <= 0:
         return 0
     return int((amount / rate.units_per_usd).to_integral_value(rounding=ROUND_CEILING))
+
+
+def usd_bound(amount: Decimal, rate: Rate, *, upper: bool) -> Decimal:
+    """Unrounded Form 8938 bounds; directed precision never overstates a lower bound."""
+    if amount <= 0:
+        return Decimal(0)
+    with localcontext() as context:
+        context.rounding = ROUND_CEILING if upper else ROUND_FLOOR
+        return amount / rate.units_per_usd
 
 
 def _in_year(day: date | None, tax_year: int) -> bool:
@@ -383,11 +392,13 @@ def _maximum_bounds(balances, intraday, rate, bounded, conflicts, flags) -> Valu
         for balance in balances
         if balance.kind == "printed" or computed_reliable
     ]
-    lower = usd_ceiling(max(known_lows, default=Decimal(0)), rate)
+    lower = usd_bound(max(known_lows, default=Decimal(0)), rate, upper=False)
     # A disputed anchor can change a computed path beyond the observed point estimates.
     has_disputed_computation = bool(conflicts) and any(balance.kind == "computed" for balance in balances)
     upper = max([balance.amount for balance in balances] + [value for value, _, _ in intraday])
-    return ValueBounds(lower, usd_ceiling(upper, rate) if bounded and not has_disputed_computation else None)
+    return ValueBounds(
+        lower, usd_bound(upper, rate, upper=True) if bounded and not has_disputed_computation else None
+    )
 
 
 def _year_end_evidence(observations, tax_year, rate) -> tuple[Decimal | None, ValueBounds | None]:
@@ -402,7 +413,8 @@ def _year_end_evidence(observations, tax_year, rate) -> tuple[Decimal | None, Va
         return value, None
     values = [o.closing for o in readable]
     bounds = ValueBounds(
-        usd_ceiling(min(values), rate), usd_ceiling(max(values), rate) if upper_known else None
+        usd_bound(min(values), rate, upper=False),
+        usd_bound(max(values), rate, upper=True) if upper_known else None,
     )
     return value, bounds
 
@@ -568,7 +580,7 @@ def reconcile_account(
         max_value=best if unit_context_complete else None,
         max_value_usd=best_usd if unit_context_complete else None,
         year_end_balance=year_end,
-        year_end_usd=year_end_bounds.low_usd
+        year_end_usd=usd_ceiling(year_end, rate)
         if year_end is not None and year_end_bounds is not None
         else None,
         flags=flags,

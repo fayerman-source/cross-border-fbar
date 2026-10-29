@@ -6,6 +6,7 @@
 - Two tests: the total on the last day of the tax year, and the total at any time during it, each
   "more than" a threshold set by filing status and residence (26 CFR 1.6038D-2(a)).
 - Values convert at the Treasury rate for the last day of the tax year, the same rate FBAR uses here.
+  Threshold bounds retain unrounded amounts; FBAR whole-dollar ceiling is a separate presentation rule.
 - A joint owner counts the whole value, except that spouses who are both specified individuals and file
   separately each count half (instructions, Joint Interest Valuation).
 - The any-time total is not the sum of each account's maximum, since maximums can fall on different
@@ -21,6 +22,7 @@ CPA determines filing status, residence and every input here. Nothing here says 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal, localcontext
 
 from .accounts import AccountResult, Intake, ValueBounds
 
@@ -46,8 +48,8 @@ class Household:
 @dataclass
 class Test:
     threshold_usd: int | None  # None until filing status and residence are stated
-    low_usd: int  # the total is at least this
-    high_usd: int | None  # upper bound only when complete
+    low_usd: Decimal  # the total is at least this
+    high_usd: Decimal | None  # upper bound only when complete
     complete: bool  # all counted accounts have a finite upper bound for this test
     result: str  # above | not_above | between | incomplete | needs_intake
 
@@ -64,11 +66,14 @@ class Form8938Totals:
     unresolved_accounts: dict[str, str] = field(default_factory=dict)
 
 
-def _part(usd: int, half: bool) -> int:
-    return -(-usd // 2) if half else usd  # a half share rounds up, like every value here
+def _share_bound(usd: Decimal, half: bool, *, upper: bool) -> Decimal:
+    with localcontext() as context:
+        context.rounding = ROUND_CEILING if upper else ROUND_FLOOR
+        value = Decimal(usd)
+        return value / 2 if half else value
 
 
-def _result(threshold: int | None, low: int, high: int | None) -> str:
+def _result(threshold: int | None, low: Decimal, high: Decimal | None) -> str:
     if threshold is None:
         return "needs_intake"
     if low > threshold:
@@ -81,10 +86,10 @@ def _result(threshold: int | None, low: int, high: int | None) -> str:
 @dataclass(frozen=True)
 class _AccountValue:
     number: str
-    year_end_low: int
-    year_end_high: int | None
-    maximum_low: int
-    maximum_high: int | None
+    year_end_low: Decimal
+    year_end_high: Decimal | None
+    maximum_low: Decimal
+    maximum_high: Decimal | None
     half: bool
     note: str | None
 
@@ -110,31 +115,42 @@ def _select_accounts(
 
 def _joint_share(
     account: AccountResult, household: Household, intake: dict[str, Intake]
-) -> tuple[bool, str | None]:
+) -> tuple[bool, bool, str | None]:
     if household.filing_status != "mfs" or account.ownership != "joint":
-        return False, None
+        return False, False, None
     joint_with_spouse = intake.get(account.account_key, Intake("unknown")).joint_with_spouse
-    if joint_with_spouse and household.spouse_specified_individual:
-        return True, None
-    if joint_with_spouse is None or household.spouse_specified_individual is None:
-        return False, (
-            f"{account.account_number}: counted at full value; half if the joint owner is a spouse who "
-            "is also a specified individual"
-        )
-    return False, None
+    specified = household.spouse_specified_individual
+    if joint_with_spouse is False or specified is False:
+        return False, False, None
+    if joint_with_spouse is True and specified is True:
+        return True, True, None
+    missing = []
+    if joint_with_spouse is None:
+        missing.append("whether the joint owner is a spouse")
+    if specified is None:
+        missing.append("whether the spouse is a specified individual")
+    return (
+        True,
+        False,
+        (
+            f"{account.account_number}: share not established; confirm "
+            + " and ".join(missing)
+            + "; bounds use half to full value"
+        ),
+    )
 
 
 def _account_value(account: AccountResult, household: Household, intake: dict[str, Intake]) -> _AccountValue:
-    half, note = _joint_share(account, household, intake)
+    lower_half, upper_half, note = _joint_share(account, household, intake)
     year_end = account.year_end_bounds or ValueBounds(0, None)
     maximum = account.maximum_bounds or ValueBounds(0, None)
     return _AccountValue(
         account.account_number,
-        _part(year_end.low_usd, half),
-        _part(year_end.high_usd, half) if year_end.high_usd is not None else None,
-        _part(maximum.low_usd, half),
-        _part(maximum.high_usd, half) if maximum.high_usd is not None else None,
-        half,
+        _share_bound(year_end.low_usd, lower_half, upper=False),
+        _share_bound(year_end.high_usd, upper_half, upper=True) if year_end.high_usd is not None else None,
+        _share_bound(maximum.low_usd, lower_half, upper=False),
+        _share_bound(maximum.high_usd, upper_half, upper=True) if maximum.high_usd is not None else None,
+        lower_half and upper_half,
         note,
     )
 
@@ -145,14 +161,16 @@ def _thresholds(household: Household) -> tuple[int | None, int | None]:
     return THRESHOLDS[(household.lives_abroad, household.filing_status == "mfj")]
 
 
-def _test(threshold: int | None, low: int, high: int | None) -> Test:
+def _test(threshold: int | None, low: Decimal, high: Decimal | None) -> Test:
     return Test(threshold, low, high, high is not None, _result(threshold, low, high))
 
 
-def _sum_upper(values: list[int | None], unresolved: bool) -> int | None:
+def _sum_bound(values: list[Decimal | None], *, upper: bool, unresolved: bool = False) -> Decimal | None:
     if unresolved or any(value is None for value in values):
         return None
-    return sum(values)
+    with localcontext() as context:
+        context.rounding = ROUND_CEILING if upper else ROUND_FLOOR
+        return sum(values, Decimal(0))
 
 
 def form8938_totals(
@@ -160,10 +178,12 @@ def form8938_totals(
 ) -> Form8938Totals:
     counted, excluded, unresolved = _select_accounts(accounts)
     values = [_account_value(account, household, intake) for account in counted]
-    year_end_sum = sum(value.year_end_low for value in values)
-    year_end_upper = _sum_upper([value.year_end_high for value in values], bool(unresolved))
-    max_upper = _sum_upper([value.maximum_high for value in values], bool(unresolved))
-    largest_max = max((value.maximum_low for value in values), default=0)
+    year_end_sum = _sum_bound([value.year_end_low for value in values], upper=False)
+    year_end_upper = _sum_bound(
+        [value.year_end_high for value in values], upper=True, unresolved=bool(unresolved)
+    )
+    max_upper = _sum_bound([value.maximum_high for value in values], upper=True, unresolved=bool(unresolved))
+    largest_max = max((value.maximum_low for value in values), default=Decimal(0))
     year_end_t, any_time_t = _thresholds(household)
     notes = [value.note for value in values if value.note]
     if household.filing_status == "mfj":

@@ -1,5 +1,7 @@
 """Form 8938 totals: indicative, separate from FBAR, every input stated rather than assumed."""
 
+from decimal import Decimal
+
 import pytest
 
 from cross_border_fbar.reconcile.accounts import AccountResult, Intake, ValueBounds
@@ -112,8 +114,8 @@ def test_separate_filers_who_are_both_specified_individuals_count_half_of_a_join
     intake = {"J": Intake("joint", True, joint_with_spouse=True)}
     t = form8938_totals([acct("J", 127_355, 100_001, ownership="joint")], household, intake)
     assert t.halved == ["J"]
-    assert t.year_end.low_usd == 50001
-    assert t.any_time.high_usd == 63678
+    assert t.year_end.low_usd == Decimal("50000.5")
+    assert t.any_time.high_usd == Decimal("63677.5")
 
 
 def test_a_joint_owner_who_is_not_a_specified_individual_leaves_the_full_value():
@@ -127,7 +129,7 @@ def test_an_unstated_joint_owner_is_counted_in_full_with_a_note():
     household = Household("mfs", lives_abroad=True, spouse_specified_individual=None)
     t = form8938_totals([acct("J", 127_355, 100_000, ownership="joint")], household, {})
     assert t.any_time.high_usd == 127_355
-    assert any(n.startswith("J: counted at full value") for n in t.notes)
+    assert any(n.startswith("J: share not established") for n in t.notes)
 
 
 def test_nothing_says_anyone_must_file():
@@ -511,3 +513,82 @@ def test_missing_exchange_rate_preserves_native_evidence_without_inventing_a_dol
     assert account.year_end_balance == Decimal(40000)
     assert account.year_end_usd is None
     assert account.year_end_bounds is None
+
+
+def test_fbar_rounding_does_not_overstate_form8938_lower_bounds():
+    from datetime import date
+
+    from test_reconcile_edges import obs
+
+    from cross_border_fbar.reconcile.accounts import reconcile
+    from cross_border_fbar.reconcile.fbar import fbar_totals
+
+    pages = [
+        obs(key, date(2025, 1, 1), date(2025, 12, 31), amount, amount, key=key, currency="USD")
+        for key, amount in [("A", Decimal("24999.10")), ("B", Decimal("25000.80"))]
+    ]
+    accounts = reconcile(pages, {key: Intake("sole", True) for key in ("A", "B")}, {}, 2025)
+    totals = form8938_totals(accounts, Household("single", False), {})
+    assert totals.year_end.low_usd == Decimal("49999.90")
+    assert totals.year_end.high_usd == Decimal("49999.90")
+    assert totals.year_end.result == "not_above"
+    assert fbar_totals(accounts).aggregate_max_usd == 50001
+
+
+@pytest.mark.parametrize("value,result", [("100000.00", "not_above"), ("100000.10", "above")])
+def test_qualifying_spouse_share_retains_cents_at_the_threshold(value, result):
+    account = acct("J", Decimal(value), Decimal(value), ownership="joint")
+    household = Household("mfs", False, spouse_specified_individual=True)
+    totals = form8938_totals([account], household, {"J": Intake("joint", True, joint_with_spouse=True)})
+    assert totals.year_end.low_usd == Decimal(value) / 2
+    assert totals.year_end.high_usd == Decimal(value) / 2
+    assert totals.year_end.result == result
+
+
+@pytest.mark.parametrize("joint_with_spouse,specified", [(None, True), (True, None), (None, None)])
+def test_unknown_spouse_share_uses_half_to_full_bounds_and_names_the_missing_input(
+    joint_with_spouse, specified
+):
+    account = acct("J", 400000, 250000, ownership="joint")
+    household = Household("mfs", True, spouse_specified_individual=specified)
+    totals = form8938_totals(
+        [account], household, {"J": Intake("joint", True, joint_with_spouse=joint_with_spouse)}
+    )
+    assert totals.year_end.low_usd == 125000
+    assert totals.year_end.high_usd == 250000
+    assert totals.any_time.low_usd == 200000
+    assert totals.any_time.high_usd == 400000
+    assert totals.year_end.result == "between"
+    assert totals.any_time.result == "between"
+    note = next(item for item in totals.notes if item.startswith("J:"))
+    if joint_with_spouse is None:
+        assert "joint owner is a spouse" in note
+    if specified is None:
+        assert "spouse is a specified individual" in note
+
+
+def test_repeating_exchange_rates_preserve_bounds_through_conversion_and_aggregation():
+    from datetime import date
+    from fractions import Fraction
+
+    from test_reconcile_edges import obs
+
+    from cross_border_fbar.rates import Rate
+    from cross_border_fbar.reconcile.accounts import reconcile
+
+    pages = [
+        obs(key, date(2025, 1, 1), date(2025, 12, 31), Decimal(1), Decimal(1), key=key, currency="EUR")
+        for key in ("A", "B", "C")
+    ]
+    accounts = reconcile(
+        pages,
+        {key: Intake("sole", True) for key in ("A", "B", "C")},
+        {"EUR": Rate("EUR", Decimal(3), "2025-12-31", "synthetic rate")},
+        2025,
+    )
+    for account in accounts:
+        assert Fraction(account.maximum_bounds.low_usd) <= Fraction(1, 3)
+        assert Fraction(account.maximum_bounds.high_usd) >= Fraction(1, 3)
+    totals = form8938_totals(accounts, Household("single", False), {})
+    assert Fraction(totals.year_end.low_usd) <= 1
+    assert Fraction(totals.year_end.high_usd) >= 1
