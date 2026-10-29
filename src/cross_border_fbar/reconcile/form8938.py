@@ -75,26 +75,9 @@ def _result(threshold: int | None, low: int, high: int | None, complete: bool) -
     return "not_above" if high <= threshold else "between"
 
 
-def form8938_totals(
-    accounts: list[AccountResult], household: Household, intake: dict[str, Intake]
-) -> Form8938Totals:
-    excluded, counted, halved, without_value = {}, [], [], []
-    for a in accounts:
-        if not a.identified:
-            continue
-        if a.financial_interest is False:
-            excluded[a.account_number] = "no financial interest (signature authority only)"
-        elif a.financial_interest is None:
-            excluded[a.account_number] = "financial interest not stated"
-        else:
-            counted.append(a)
-
-    filing = household.filing_status if household.filing_status in FILING_STATUSES else None
-    notes = []
-    year_end_sum = max_sum = largest_max = 0
-    year_end_complete = any_time_complete = True
-    # These conditions can hide an annual peak even when a December balance is readable.
-    annual_uncertainty = {
+# Conditions that can hide an annual peak even when December is readable.
+ANNUAL_UNCERTAINTY = frozenset(
+    {
         "missing_statement",
         "coverage_gap",
         "field_unreadable",
@@ -106,57 +89,104 @@ def form8938_totals(
         "possible_intraday_peak",
         "no_usable_balance",
     }
-    for a in counted:
-        half = False
-        if filing == "mfs" and a.ownership == "joint":
-            joint_with_spouse = intake.get(a.account_key, Intake("unknown")).joint_with_spouse
-            if joint_with_spouse and household.spouse_specified_individual:
-                half = True
-                halved.append(a.account_number)
-            elif joint_with_spouse is None or household.spouse_specified_individual is None:
-                notes.append(
-                    f"{a.account_number}: counted at full value; half if the joint owner is a spouse who "
-                    "is also a specified individual"
-                )
-        annual_missing = a.max_value_usd is None or any(f.code in annual_uncertainty for f in a.flags)
-        year_end_missing = a.year_end_usd is None
-        any_time_complete = any_time_complete and not annual_missing
-        year_end_complete = year_end_complete and not year_end_missing
-        if annual_missing or year_end_missing:
-            without_value.append(a.account_number)
-        if a.year_end_usd is not None:
-            year_end_sum += _part(a.year_end_usd, half)
-        if a.max_value_usd is not None:
-            max_sum += _part(a.max_value_usd, half)
-            largest_max = max(largest_max, _part(a.max_value_usd, half))
+)
 
-    if filing is None or household.lives_abroad is None:
-        year_end_t = any_time_t = None
-    else:
-        year_end_t, any_time_t = THRESHOLDS[(household.lives_abroad, filing == "mfj")]
-    if filing == "mfj":
+
+@dataclass(frozen=True)
+class _AccountValue:
+    number: str
+    year_end: int
+    maximum: int
+    year_end_complete: bool
+    annual_complete: bool
+    half: bool
+    note: str | None
+
+
+def _select_accounts(accounts: list[AccountResult]) -> tuple[list[AccountResult], dict[str, str]]:
+    counted, excluded = [], {}
+    for account in accounts:
+        if not account.identified:
+            continue
+        if account.financial_interest is False:
+            excluded[account.account_number] = "no financial interest (signature authority only)"
+        elif account.financial_interest is None:
+            excluded[account.account_number] = "financial interest not stated"
+        else:
+            counted.append(account)
+    return counted, excluded
+
+
+def _joint_share(
+    account: AccountResult, household: Household, intake: dict[str, Intake]
+) -> tuple[bool, str | None]:
+    if household.filing_status != "mfs" or account.ownership != "joint":
+        return False, None
+    joint_with_spouse = intake.get(account.account_key, Intake("unknown")).joint_with_spouse
+    if joint_with_spouse and household.spouse_specified_individual:
+        return True, None
+    if joint_with_spouse is None or household.spouse_specified_individual is None:
+        return False, (
+            f"{account.account_number}: counted at full value; half if the joint owner is a spouse who "
+            "is also a specified individual"
+        )
+    return False, None
+
+
+def _account_value(account: AccountResult, household: Household, intake: dict[str, Intake]) -> _AccountValue:
+    half, note = _joint_share(account, household, intake)
+    annual_complete = account.max_value_usd is not None and not any(
+        flag.code in ANNUAL_UNCERTAINTY for flag in account.flags
+    )
+    return _AccountValue(
+        account.account_number,
+        _part(account.year_end_usd or 0, half),
+        _part(account.max_value_usd or 0, half),
+        account.year_end_usd is not None,
+        annual_complete,
+        half,
+        note,
+    )
+
+
+def _thresholds(household: Household) -> tuple[int | None, int | None]:
+    if household.filing_status not in FILING_STATUSES or household.lives_abroad is None:
+        return None, None
+    return THRESHOLDS[(household.lives_abroad, household.filing_status == "mfj")]
+
+
+def _test(threshold: int | None, low: int, high: int, complete: bool) -> Test:
+    return Test(threshold, low, high if complete else None, complete, _result(threshold, low, high, complete))
+
+
+def form8938_totals(
+    accounts: list[AccountResult], household: Household, intake: dict[str, Intake]
+) -> Form8938Totals:
+    counted, excluded = _select_accounts(accounts)
+    values = [_account_value(account, household, intake) for account in counted]
+    year_end_sum = sum(value.year_end for value in values)
+    max_sum = sum(value.maximum for value in values)
+    largest_max = max((value.maximum for value in values), default=0)
+    year_end_t, any_time_t = _thresholds(household)
+    notes = [value.note for value in values if value.note]
+    if household.filing_status == "mfj":
         notes.append("a joint return counts both spouses' assets; only the accounts read here are included")
     notes.append("accounts only; other specified foreign financial assets are not included")
-
-    any_time_low = max(year_end_sum, largest_max)
     return Form8938Totals(
-        year_end=Test(
-            year_end_t,
-            year_end_sum,
-            year_end_sum if year_end_complete else None,
-            year_end_complete,
-            _result(year_end_t, year_end_sum, year_end_sum, year_end_complete),
+        year_end=_test(
+            year_end_t, year_end_sum, year_end_sum, all(value.year_end_complete for value in values)
         ),
-        any_time=Test(
+        any_time=_test(
             any_time_t,
-            any_time_low,
-            max_sum if any_time_complete else None,
-            any_time_complete,
-            _result(any_time_t, any_time_low, max_sum, any_time_complete),
+            max(year_end_sum, largest_max),
+            max_sum,
+            all(value.annual_complete for value in values),
         ),
-        accounts_counted=[a.account_number for a in counted],
-        accounts_without_value=without_value,
+        accounts_counted=[account.account_number for account in counted],
+        accounts_without_value=[
+            value.number for value in values if not (value.year_end_complete and value.annual_complete)
+        ],
         excluded=excluded,
-        halved=halved,
+        halved=[value.number for value in values if value.half],
         notes=notes,
     )
