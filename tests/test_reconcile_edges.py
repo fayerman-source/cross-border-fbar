@@ -381,3 +381,28 @@ def test_lower_disputed_boundary_does_not_hide_an_independently_higher_annual_pe
     assert "balance_readings_conflict" in codes(result)
     assert result.max_value.amount == D(2000)
     assert result.annual_max_complete
+
+
+def test_an_unknown_currency_cannot_leak_a_partial_maximum_into_fbar_totals():
+    from cross_border_fbar.rates import Rate
+
+    pages = [
+        obs("known", date(2025, 1, 1), date(2025, 1, 31), D(10000), D(10000), currency="EUR"),
+        obs(
+            "unknown",
+            date(2025, 12, 1),
+            date(2025, 12, 31),
+            D(100000),
+            D(100000),
+            currency=None,
+            problems=["currency"],
+        ),
+    ]
+    (account,) = reconcile(pages, SOLE, {"EUR": Rate("EUR", D(2), "2025-12-31", "synthetic rate")}, 2025)
+    assert account.max_value is None
+    assert account.max_value_usd is None
+    assert account.maximum_bounds.low_usd == 5000
+    assert account.maximum_bounds.high_usd is None
+    totals = fbar_totals([account])
+    assert totals.accounts_without_value == ["ACC1"]
+    assert totals.accounts_counted == 0

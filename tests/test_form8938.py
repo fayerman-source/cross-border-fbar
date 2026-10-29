@@ -473,7 +473,8 @@ def test_currency_is_required_on_the_statement_whose_value_is_converted(unknown_
         assert account.year_end_usd is None
         assert account.year_end_bounds is None
         assert totals.year_end.result == "incomplete"
-        assert account.max_value_usd == 500
+        assert account.max_value_usd is None
+        assert account.maximum_bounds.low_usd == 500
     else:
         assert account.year_end_usd == 30000
         assert totals.year_end.result == "not_above"

@@ -437,6 +437,7 @@ def reconcile_account(
 
     currencies = {o.currency for o in obs if o.currency}
     currency_conflict = len(currencies) > 1
+    unit_context_complete = all(o.currency is not None for o in obs)
     calc_obs = [] if currency_conflict else [o for o in obs if o.currency is not None]
     conflicts = _balance_conflicts(calc_obs)
     flags.extend(_conflict_flags(conflicts))
@@ -480,7 +481,7 @@ def reconcile_account(
             )
         )
     best_usd = usd_ceiling(best.amount, rate) if best and rate else None
-    if best and best.source.ref.startswith("row:"):
+    if best and unit_context_complete and best.source.ref.startswith("row:"):
         flags.append(
             Flag(
                 "max_not_at_month_end",
@@ -489,7 +490,7 @@ def reconcile_account(
                 [best.source],
             )
         )
-    if best and best.kind == "computed":
+    if best and unit_context_complete and best.kind == "computed":
         flags.append(
             Flag(
                 "max_from_computed_balance",
@@ -500,7 +501,7 @@ def reconcile_account(
         )
 
     intraday = [c for o, p in zip(calc_obs, prevs, strict=True) for c in _intraday(o, p, tax_year)]
-    if best and rate:
+    if best and rate and unit_context_complete:
         for upper, sources, day in intraday:
             extra = usd_ceiling(upper, rate) - best_usd
             if upper > best.amount and extra >= threshold_usd:
@@ -563,8 +564,8 @@ def reconcile_account(
         financial_interest=intake.financial_interest if intake else None,
         uploads=[o.upload for o in obs],
         duplicate_uploads=dupes,
-        max_value=best,
-        max_value_usd=best_usd,
+        max_value=best if unit_context_complete else None,
+        max_value_usd=best_usd if unit_context_complete else None,
         year_end_balance=year_end,
         year_end_usd=usd_ceiling(year_end, rate) if year_end is not None and rate else None,
         flags=flags,
