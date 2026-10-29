@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
-from decimal import ROUND_CEILING, Decimal
+from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal, localcontext
 
 from ..extract.parse import account_key, normalize_name
 from ..rates import Rate
@@ -32,6 +32,7 @@ class Intake:
     ownership: str  # sole | joint | signature_authority | unknown
     financial_interest: bool | None = None
     account_number: str = ""  # as the client gave it; shown when no statement for the account was read
+    joint_with_spouse: bool | None = None  # Form 8938 only: halves the value for some separate filers
 
 
 @dataclass
@@ -52,6 +53,12 @@ class Balance:
     day: date | None
 
 
+@dataclass(frozen=True)
+class ValueBounds:
+    low_usd: Decimal
+    high_usd: Decimal | None  # None when the evidence cannot establish a finite upper bound
+
+
 @dataclass
 class AccountResult:
     account_key: str
@@ -67,13 +74,26 @@ class AccountResult:
     max_value: Balance | None
     max_value_usd: int | None
     year_end_balance: Decimal | None
+    year_end_usd: int | None
     flags: list[Flag]
+    annual_max_complete: bool = False  # a single annual value, independent of presentation flag tolerance
+    maximum_bounds: ValueBounds | None = None
+    year_end_bounds: ValueBounds | None = None
 
 
 def usd_ceiling(amount: Decimal, rate: Rate) -> int:
     if amount <= 0:
         return 0
     return int((amount / rate.units_per_usd).to_integral_value(rounding=ROUND_CEILING))
+
+
+def usd_bound(amount: Decimal, rate: Rate, *, upper: bool) -> Decimal:
+    """Unrounded Form 8938 bounds; directed precision never overstates a lower bound."""
+    if amount <= 0:
+        return Decimal(0)
+    with localcontext() as context:
+        context.rounding = ROUND_CEILING if upper else ROUND_FLOOR
+        return amount / rate.units_per_usd
 
 
 def _in_year(day: date | None, tax_year: int) -> bool:
@@ -83,7 +103,7 @@ def _in_year(day: date | None, tax_year: int) -> bool:
 def _adjacent(prev: Observation, cur: Observation) -> bool:
     if not (prev.period_end and cur.period_start):
         return False
-    return (cur.period_start - prev.period_end).days <= 1
+    return 0 <= (cur.period_start - prev.period_end).days <= 1
 
 
 def _by_printed_name(obs: list[Observation]) -> dict[str, list[Observation]]:
@@ -121,7 +141,7 @@ def _signature(o: Observation):
     if None in (o.period_start, o.period_end, o.opening, o.closing):
         return None
     lines = tuple((ln.day, ln.amount, ln.printed_balance) for ln in o.lines)
-    return (o.period_start, o.period_end, o.opening, o.closing, lines)
+    return (o.currency, o.period_start, o.period_end, o.opening, o.closing, lines)
 
 
 def _dedupe(obs: list[Observation], flags: list[Flag]) -> tuple[list[Observation], list[str]]:
@@ -263,7 +283,10 @@ def _intraday(
 
 def _field_flags(obs: list[Observation], flags: list[Flag]) -> None:
     for o in obs:
-        for name in o.problems:
+        problems = list(o.problems)
+        if o.currency is None and "currency" not in problems:
+            problems.append("currency")
+        for name in problems:
             flags.append(
                 Flag(
                     "field_unreadable",
@@ -279,6 +302,121 @@ def _max_value(balances: list[Balance]) -> Balance | None:
     if not balances:
         return None
     return max(balances, key=lambda b: (b.amount, b.kind == "printed", not b.source.ref.startswith("row:")))
+
+
+def _closing_balance_on(observations: list[Observation], day: date) -> Decimal | None:
+    """A date-specific value requires agreement; upload and period order never break a numeric tie."""
+    amounts = {o.closing for o in observations if o.period_end == day and o.closing is not None}
+    return next(iter(amounts)) if len(amounts) == 1 else None
+
+
+def _balance_conflicts(observations: list[Observation]) -> list[tuple[date, str, list[Balance]]]:
+    """Compare equivalent boundary readings, not distinct running balances during the same day."""
+    readings: dict[tuple[date, str], list[Balance]] = defaultdict(list)
+    for observation in observations:
+        for boundary, day, amount in (
+            ("opening", observation.period_start, observation.opening),
+            ("closing", observation.period_end, observation.closing),
+        ):
+            if day is not None and amount is not None:
+                field_name = f"{boundary}_balance"
+                source = observation.sources.get(field_name, Source(observation.upload, field_name, None))
+                readings[(day, boundary)].append(Balance(amount, source, "printed", day))
+    return [
+        (day, boundary, values)
+        for (day, boundary), values in sorted(readings.items())
+        if len({value.amount for value in values}) > 1
+    ]
+
+
+def _conflict_flags(conflicts: list[tuple[date, str, list[Balance]]]) -> list[Flag]:
+    return [
+        Flag(
+            "balance_readings_conflict",
+            "review",
+            f"review {boundary} balance readings for {day}: "
+            + ", ".join(str(value) for value in sorted({reading.amount for reading in readings})),
+            [reading.source for reading in readings],
+        )
+        for day, boundary, readings in conflicts
+    ]
+
+
+def _has_balance_anchor(observations: list[Observation]) -> bool:
+    return any(
+        o.opening is not None
+        or o.closing is not None
+        or any(line.printed_balance is not None for line in o.lines)
+        for o in observations
+    )
+
+
+def _statement_numeric_complete(observation: Observation, previous: Observation | None) -> bool:
+    if observation.lines and _seed(observation, previous)[0] is None:
+        return False
+    return all(line.day is not None and line.amount is not None for line in observation.lines)
+
+
+def _annual_evidence_bounded(obs, flags, tax_year) -> bool:
+    if not obs or _uncovered(obs, tax_year):
+        return False
+    if any(o.problems or o.currency is None for o in obs):
+        return False
+    previous = [None, *obs[:-1]]
+    if any(not _statement_numeric_complete(o, p) for o, p in zip(obs, previous, strict=True)):
+        return False
+    return not any(f.code in {"arithmetic_mismatch", "continuity_break", "currency_conflict"} for f in flags)
+
+
+def _annual_point_complete(best, bounded, conflicts, intraday, maximum_bounds) -> bool:
+    if best is None or not bounded or maximum_bounds is None or maximum_bounds.high_usd is None:
+        return False
+    if any(reading.amount >= best.amount for _, _, readings in conflicts for reading in readings):
+        return False
+    return not any(upper > best.amount for upper, _, _ in intraday)
+
+
+def _maximum_bounds(balances, intraday, rate, bounded, conflicts, flags) -> ValueBounds | None:
+    if not balances or rate is None:
+        return None
+    disputed = {
+        (reading.source.upload, reading.source.ref): min(value.amount for value in readings)
+        for _, _, readings in conflicts
+        for reading in readings
+    }
+    computed_reliable = not conflicts and not any(
+        flag.code in {"arithmetic_mismatch", "continuity_break", "field_unreadable"} for flag in flags
+    )
+    known_lows = [
+        disputed.get((balance.source.upload, balance.source.ref), balance.amount)
+        for balance in balances
+        if balance.kind == "printed" or computed_reliable
+    ]
+    lower = usd_bound(max(known_lows, default=Decimal(0)), rate, upper=False)
+    # A disputed anchor can change a computed path beyond the observed point estimates.
+    has_disputed_computation = bool(conflicts) and any(balance.kind == "computed" for balance in balances)
+    upper = max([balance.amount for balance in balances] + [value for value, _, _ in intraday])
+    return ValueBounds(
+        lower, usd_bound(upper, rate, upper=True) if bounded and not has_disputed_computation else None
+    )
+
+
+def _year_end_evidence(observations, tax_year, rate) -> tuple[Decimal | None, ValueBounds | None]:
+    ending = [o for o in observations if o.period_end == date(tax_year, 12, 31)]
+    readable = [o for o in ending if o.closing is not None]
+    currencies = {o.currency for o in readable}
+    if not readable or None in currencies or len(currencies) != 1:
+        return None, None
+    upper_known = not any("closing_balance" in o.problems for o in ending)
+    value = _closing_balance_on(readable, date(tax_year, 12, 31)) if upper_known else None
+    if rate is None or rate.currency not in currencies:
+        return value, None
+    values = [o.closing for o in readable]
+    bounds = ValueBounds(
+        usd_bound(min(values), rate, upper=False),
+        usd_bound(max(values), rate, upper=True) if upper_known else None,
+    )
+    return value, bounds
 
 
 def reconcile_account(
@@ -310,8 +448,14 @@ def reconcile_account(
     _field_flags(obs, flags)
     _coverage_flags(obs, tax_year, flags)
 
-    prevs = [None, *obs[:-1]]
-    for prev, cur in zip(prevs[1:], obs[1:], strict=True):
+    currencies = {o.currency for o in obs if o.currency}
+    currency_conflict = len(currencies) > 1
+    unit_context_complete = all(o.currency is not None for o in obs)
+    calc_obs = [] if currency_conflict else [o for o in obs if o.currency is not None]
+    conflicts = _balance_conflicts(calc_obs)
+    flags.extend(_conflict_flags(conflicts))
+    prevs = [None, *calc_obs[:-1]] if calc_obs else []
+    for prev, cur in zip(prevs[1:], calc_obs[1:], strict=True):
         if (
             _adjacent(prev, cur)
             and prev.closing is not None
@@ -329,12 +473,18 @@ def reconcile_account(
 
     balances = [
         b
-        for o, p in zip(obs, prevs, strict=True)
+        for o, p in zip(calc_obs, prevs, strict=True)
         for b in _balances(o, p, flags)
         if _in_year(b.day, tax_year)
     ]
     best = _max_value(balances)
-    if best is None and identified and any(o.lines for o in obs):
+    if (
+        best is None
+        and identified
+        and not currency_conflict
+        and any(o.lines for o in calc_obs)
+        and not _has_balance_anchor(obs)
+    ):
         flags.append(
             Flag(
                 "no_balance_anchor",
@@ -344,7 +494,7 @@ def reconcile_account(
             )
         )
     best_usd = usd_ceiling(best.amount, rate) if best and rate else None
-    if best and best.source.ref.startswith("row:"):
+    if best and unit_context_complete and best.source.ref.startswith("row:"):
         flags.append(
             Flag(
                 "max_not_at_month_end",
@@ -353,7 +503,7 @@ def reconcile_account(
                 [best.source],
             )
         )
-    if best and best.kind == "computed":
+    if best and unit_context_complete and best.kind == "computed":
         flags.append(
             Flag(
                 "max_from_computed_balance",
@@ -363,10 +513,9 @@ def reconcile_account(
             )
         )
 
-    if best and rate:
-        for upper, sources, day in (
-            c for o, p in zip(obs, prevs, strict=True) for c in _intraday(o, p, tax_year)
-        ):
+    intraday = [c for o, p in zip(calc_obs, prevs, strict=True) for c in _intraday(o, p, tax_year)]
+    if best and rate and unit_context_complete:
+        for upper, sources, day in intraday:
             extra = usd_ceiling(upper, rate) - best_usd
             if upper > best.amount and extra >= threshold_usd:
                 flags.append(
@@ -385,8 +534,7 @@ def reconcile_account(
     names_flag = _institution_flag(by_name)
     if names_flag:
         flags.append(names_flag)
-    currencies = {o.currency for o in obs if o.currency}
-    if len(currencies) > 1:
+    if currency_conflict:
         flags.append(Flag("currency_conflict", "review", f"statements show {sorted(currencies)}"))
     if rate is None:
         flags.append(Flag("currency_unknown", "review", "no Treasury rate for this account's currency"))
@@ -414,22 +562,31 @@ def reconcile_account(
     elif ownership == "unknown":
         flags.append(Flag("ownership_unknown", "review", "ownership not stated at intake"))
 
-    dec = [o for o in obs if o.period_end == date(tax_year, 12, 31)]
+    year_end, year_end_bounds = _year_end_evidence([] if currency_conflict else obs, tax_year, rate)
+    bounded = _annual_evidence_bounded(obs, flags, tax_year)
+    maximum_bounds = _maximum_bounds(balances, intraday, rate, bounded, conflicts, flags)
+    annual_max_complete = _annual_point_complete(best, bounded, conflicts, intraday, maximum_bounds)
     return AccountResult(
         account_key=obs[0].account_key if obs else "",
         account_number=most_common(o.account_number for o in obs) or "",
         identified=identified,
         institutions=institutions,
-        currency=most_common(o.currency for o in obs),
+        currency=None if currency_conflict else most_common(o.currency for o in obs),
         holders=list(dict.fromkeys(o.holder for o in obs if o.holder)),
         ownership=ownership,
         financial_interest=intake.financial_interest if intake else None,
         uploads=[o.upload for o in obs],
         duplicate_uploads=dupes,
-        max_value=best,
-        max_value_usd=best_usd,
-        year_end_balance=dec[-1].closing if dec else None,
+        max_value=best if unit_context_complete else None,
+        max_value_usd=best_usd if unit_context_complete else None,
+        year_end_balance=year_end,
+        year_end_usd=usd_ceiling(year_end, rate)
+        if year_end is not None and year_end_bounds is not None
+        else None,
         flags=flags,
+        annual_max_complete=annual_max_complete,
+        maximum_bounds=maximum_bounds,
+        year_end_bounds=year_end_bounds,
     )
 
 
@@ -488,6 +645,7 @@ def _empty_result(key: str, number: str, identified: bool, intake: Intake | None
         max_value=None,
         max_value_usd=None,
         year_end_balance=None,
+        year_end_usd=None,
         flags=[flag],
     )
 

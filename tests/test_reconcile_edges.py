@@ -311,3 +311,98 @@ def test_spacing_and_case_alone_are_one_name():
     (r,) = reconcile(_named(year_of(), ["Siam  Lotus Bank", "siam lotus bank"] * 6), SOLE, RATES, 2025)
     assert "institution_names_differ" not in [f.code for f in r.flags]
     assert r.institutions == ["Siam  Lotus Bank"]
+
+
+def test_unreadable_transaction_fields_preserve_their_source_rows():
+    reading = {
+        name: {"text": text, "status": "read", "bbox": None}
+        for name, text in [
+            ("institution", "Synthetic Bank"),
+            ("currency", "USD"),
+            ("account_number", "ACC1"),
+            ("holder", "Synthetic Holder"),
+            ("period", "01.01.2025 - 31.12.2025"),
+            ("opening_balance", "1,000.00"),
+            ("closing_balance", "1,000.00"),
+        ]
+    }
+    reading["rows"] = [
+        {
+            "date_text": "unreadable",
+            "description": "Synthetic unreadable transaction",
+            "amount_text": "unreadable",
+            "amount_column": "signed",
+            "balance_text": "",
+            "row_bbox": None,
+            "amount_bbox": None,
+            "balance_bbox": None,
+        }
+    ]
+    page = observe(reading, "synthetic-unreadable")
+    assert page.problems == ["row:0:date", "row:0:amount"]
+    (account,) = reconcile([page], SOLE, RATES, 2025)
+    review_items = [flag for flag in account.flags if flag.code == "field_unreadable"]
+    assert len(review_items) == 2
+    assert all(flag.sources[0].ref == "row:0" for flag in review_items)
+    assert not account.annual_max_complete
+
+
+def test_conflicting_boundary_readings_attach_every_source_and_keep_ordinary_intraday_changes():
+    opening, closing = D(1000), D(1500)
+    page = obs(
+        "a",
+        date(2025, 1, 1),
+        date(2025, 12, 31),
+        opening,
+        closing,
+        [(date(2025, 6, 1), D(200), D(1200)), (date(2025, 6, 1), D(300), D(1500))],
+    )
+    other = obs("b", date(2025, 12, 1), date(2025, 12, 31), closing, D(1400))
+    (ordinary,) = reconcile([page], SOLE, RATES, 2025)
+    assert "balance_readings_conflict" not in codes(ordinary)
+    (disputed,) = reconcile([page, other], SOLE, RATES, 2025)
+    (flag,) = [item for item in disputed.flags if item.code == "balance_readings_conflict"]
+    assert [source.upload for source in flag.sources] == ["a", "b"]
+    assert all(source.ref == "closing_balance" for source in flag.sources)
+    assert disputed.year_end_balance is None
+
+
+def test_lower_disputed_boundary_does_not_hide_an_independently_higher_annual_peak():
+    page = obs(
+        "year",
+        date(2025, 1, 1),
+        date(2025, 12, 31),
+        D(1000),
+        D(1000),
+        [(date(2025, 1, 5), D(1000), D(2000)), (date(2025, 1, 6), D(-1000), D(1000))],
+    )
+    correction = obs("partial", date(2025, 1, 1), date(2025, 1, 31), D(900), D(1000))
+    (result,) = reconcile([page, correction], SOLE, RATES, 2025)
+    assert "balance_readings_conflict" in codes(result)
+    assert result.max_value.amount == D(2000)
+    assert result.annual_max_complete
+
+
+def test_an_unknown_currency_cannot_leak_a_partial_maximum_into_fbar_totals():
+    from cross_border_fbar.rates import Rate
+
+    pages = [
+        obs("known", date(2025, 1, 1), date(2025, 1, 31), D(10000), D(10000), currency="EUR"),
+        obs(
+            "unknown",
+            date(2025, 12, 1),
+            date(2025, 12, 31),
+            D(100000),
+            D(100000),
+            currency=None,
+            problems=["currency"],
+        ),
+    ]
+    (account,) = reconcile(pages, SOLE, {"EUR": Rate("EUR", D(2), "2025-12-31", "synthetic rate")}, 2025)
+    assert account.max_value is None
+    assert account.max_value_usd is None
+    assert account.maximum_bounds.low_usd == 5000
+    assert account.maximum_bounds.high_usd is None
+    totals = fbar_totals([account])
+    assert totals.accounts_without_value == ["ACC1"]
+    assert totals.accounts_counted == 0
