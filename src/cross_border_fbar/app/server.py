@@ -12,6 +12,7 @@ import json
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from ..llm import Client
 from .review import Review, ReviewError
@@ -110,21 +111,23 @@ class Handler(BaseHTTPRequestHandler):
         body = json.dumps(obj, ensure_ascii=False).encode()
         self._send(status, body, "application/json; charset=utf-8")
 
-    def _own_origins(self) -> set[str]:
+    def _own_hosts(self) -> set[str]:
         port = self.server.server_address[1]
-        return {f"http://127.0.0.1:{port}", f"http://localhost:{port}"}
+        return {f"127.0.0.1:{port}", f"localhost:{port}"}
 
     def _from_this_app(self, post: bool) -> bool:
         """Only this app's own page may use it. The Host must be the app's own address, which stops a
         rebound DNS name from reading it; a POST must be JSON (other sites can't send that without a
         preflight this server never answers) and carry this origin when the browser sends one."""
-        if f"http://{self.headers.get('Host', '')}" not in self._own_origins():
+        if self.headers.get("Host", "") not in self._own_hosts():
             return False
         if not post:
             return True
         origin = self.headers.get("Origin")
-        if origin is not None and origin not in self._own_origins():
-            return False
+        if origin is not None:
+            parts = urlsplit(origin)
+            if parts.scheme != "http" or parts.netloc not in self._own_hosts() or parts.path:
+                return False
         return self.headers.get("Content-Type", "").split(";")[0].strip().lower() == "application/json"
 
     def _api_get(self, path: str):
@@ -202,5 +205,5 @@ def main() -> None:
     inputs = Inputs(a.set, a.readings, a.intake or a.set / "intake.json")
     review = Review(inputs, a.review_dir)
     server = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(review, a.set))
-    print(f"FBAR review: http://127.0.0.1:{a.port}  (review state in {a.review_dir})")
+    print(f"FBAR review: open 127.0.0.1:{a.port} in a browser  (review state in {a.review_dir})")
     server.serve_forever()
