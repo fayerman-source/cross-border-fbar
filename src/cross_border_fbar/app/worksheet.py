@@ -17,8 +17,9 @@ from pathlib import Path
 from .. import rates
 from ..extract.parse import account_key
 from ..extract.snap import snap_rows
-from ..reconcile.accounts import AccountResult, Flag, Intake, reconcile
+from ..reconcile.accounts import AccountResult, Flag, Intake, reconcile, split_by_row_account
 from ..reconcile.fbar import FBAR_AGGREGATE_USD, fbar_totals
+from ..reconcile.flags import CATALOG
 from ..reconcile.observe import Source, observe
 
 SCOPE_LINE = "Balances, thresholds and review flags only. Not tax advice; every flag needs a CPA's review."
@@ -80,7 +81,14 @@ def load_observations(inp: Inputs) -> tuple[list, dict[str, str]]:
     return observations, unread
 
 
-def build(inp: Inputs, ownership_overrides: dict[str, str] | None = None, threshold_usd: int = 1000) -> dict:
+def build(
+    inp: Inputs,
+    ownership_overrides: dict[str, str] | None = None,
+    threshold_usd: int = 1000,
+    *,
+    rate_overrides: dict | None = None,
+    currency_overrides: dict | None = None,
+) -> dict:
     intake_doc = json.loads(inp.intake.read_text())
     intake = {
         account_key(a["account_number"]): Intake(
@@ -93,7 +101,22 @@ def build(inp: Inputs, ownership_overrides: dict[str, str] | None = None, thresh
         intake[key] = Intake(ownership, ownership != "signature_authority", number)
     year_rates = rates.load(inp.tax_year)
     observations, unread = load_observations(inp)
-    results = reconcile(observations, intake, year_rates, inp.tax_year, threshold_usd, unread)
+    observations = [part for page in observations for part in split_by_row_account(page)]
+    account_rates = {
+        key: rates.Rate(v["currency"], Decimal(v["units_per_usd"]), v["record_date"], v["source"], "cpa")
+        for key, v in (rate_overrides or {}).items()
+    }
+    selections = {key: v["currency"] for key, v in (currency_overrides or {}).items()}
+    results = reconcile(
+        observations,
+        intake,
+        year_rates,
+        inp.tax_year,
+        threshold_usd,
+        unread,
+        account_rates=account_rates,
+        currency_selections=selections,
+    )
     totals = fbar_totals(results)
     readings_meta = json.loads(inp.readings.read_text())
     accounts, flags = [], []
@@ -108,13 +131,26 @@ def build(inp: Inputs, ownership_overrides: dict[str, str] | None = None, thresh
                     "account": r.account_key,
                     "code": f.code,
                     "severity": f.severity,
+                    "title": CATALOG[f.code].title,
+                    "condition": CATALOG[f.code].condition,
+                    "cpa_action": CATALOG[f.code].cpa_action,
                     "message": f.message,
                     "month": f.month,
                     "extra_usd": f.extra_usd,
                     "sources": [_source(s) for s in f.sources],
                 }
             )
-        accounts.append(_account(r, year_rates, intake, acct_flags))
+        account = _account(r, year_rates, intake, acct_flags, account_rates.get(r.account_key))
+        account["currency_correction"] = (currency_overrides or {}).get(r.account_key)
+        account["observed_currencies"] = sorted(
+            {o.currency for o in observations if o.account_key == r.account_key and o.currency}
+        )
+        account["currency_review_needed"] = any(
+            observation.currency is None
+            for observation in observations
+            if observation.account_key == r.account_key
+        )
+        accounts.append(account)
     return {
         "tax_year": inp.tax_year,
         "client": intake_doc.get("client"),
@@ -137,9 +173,40 @@ def build(inp: Inputs, ownership_overrides: dict[str, str] | None = None, thresh
     }
 
 
-def _account(r: AccountResult, year_rates: dict, intake: dict, flag_ids: list[str]) -> dict:
+def _balance_view(balance) -> dict | None:
+    if balance is None:
+        return None
+    return {
+        "amount": str(balance.amount),
+        "kind": balance.kind,
+        "day": balance.day.isoformat() if balance.day else None,
+        "source": _source(balance.source),
+    }
+
+
+def _bounds_view(bounds) -> dict | None:
+    if bounds is None:
+        return None
+    return {"low": str(bounds.low_usd), "high": decimal_str(bounds.high_usd)}
+
+
+def _rate_view(currency: str | None, rate: rates.Rate | None) -> dict:
+    if rate is not None:
+        return {
+            "rate": str(rate.units_per_usd),
+            "rate_source": rate.source_url,
+            "rate_date": rate.record_date,
+            "rate_basis": rate.basis,
+        }
+    if currency == "USD":
+        return {"rate": "1", "rate_source": None, "rate_date": None, "rate_basis": "identity"}
+    return {"rate": None, "rate_source": None, "rate_date": None, "rate_basis": None}
+
+
+def _account(r: AccountResult, year_rates: dict, intake: dict, flag_ids: list[str], alternate=None) -> dict:
     rate = year_rates.get(r.currency or "")
-    m = r.max_value
+    if rate is None and alternate and alternate.currency == r.currency:
+        rate = alternate
     return {
         "key": r.account_key,
         "account_number": r.account_number,
@@ -148,18 +215,16 @@ def _account(r: AccountResult, year_rates: dict, intake: dict, flag_ids: list[st
         "currency": r.currency,
         "holders": r.holders,
         "ownership": r.ownership,
+        "financial_interest": r.financial_interest,
         "ownership_source": "intake" if r.account_key in intake else "unknown",
-        "max": None
-        if m is None
-        else {
-            "amount": str(m.amount),
-            "kind": m.kind,
-            "day": m.day.isoformat() if m.day else None,
-            "source": _source(m.source),
-        },
-        "rate": str(rate.units_per_usd) if rate else ("1" if r.currency == "USD" else None),
+        "max": _balance_view(r.max_value),
+        **_rate_view(r.currency, rate),
         "max_usd": r.max_value_usd,
-        "year_end_balance": str(r.year_end_balance) if r.year_end_balance is not None else None,
+        "year_end_balance": decimal_str(r.year_end_balance),
+        "year_end_usd": r.year_end_usd,
+        "annual_max_complete": r.annual_max_complete,
+        "maximum_bounds_usd": _bounds_view(r.maximum_bounds),
+        "year_end_bounds_usd": _bounds_view(r.year_end_bounds),
         "uploads": r.uploads,
         "flags": flag_ids,
     }

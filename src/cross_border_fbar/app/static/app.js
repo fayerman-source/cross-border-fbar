@@ -7,44 +7,6 @@ let selected = null; // key of the traced figure or chip currently shown
 
 const OWNERSHIP = { sole: "Owner", joint: "Joint owner", signature_authority: "Sig. authority", unknown: "Not stated" };
 const OWNERSHIP_LONG = { sole: "owner", joint: "joint owner", signature_authority: "signature authority only" };
-const FLAG = {
-  balance_readings_conflict: () => "Opening or closing balance readings disagree",
-  max_not_at_month_end: () => "Highest balance falls mid-month, not at a month end",
-  possible_intraday_peak: () => "Possible same-day peak above the reported maximum",
-  missing_statement: (f) => `No statement for ${f.month}`,
-  coverage_gap: () => "Days in the year no statement covers",
-  signature_authority_only: () => "Signature authority only, no financial interest",
-  institution_names_differ: () => "Statements print different bank names",
-  max_from_computed_balance: () => "Highest balance computed from the lines; not printed",
-  no_balance_anchor: () => "No balance on any document: the maximum can't be determined",
-  account_number_masked: () => "Account number partly masked: can't be matched to an account",
-  account_unidentified: () => "Account number unreadable",
-  field_unreadable: () => "A key field couldn't be read",
-  continuity_break: () => "Statements don't chain: closing ≠ next opening",
-  arithmetic_mismatch: () => "Printed balance doesn't match the lines",
-  duplicate_upload: () => "Same statement uploaded twice",
-  out_of_year_statement: () => "Statement outside the tax year (ignored)",
-  currency_unknown: () => "Currency unknown: no Treasury rate",
-  currency_conflict: () => "Statements show different currencies",
-  ownership_unknown: () => "Ownership not stated at intake",
-  no_statements: () => "Listed at intake, but no statement was read",
-  page_not_read: () => "Page couldn't be read",
-};
-
-// Show the reconciler's message only where it adds facts the title doesn't carry.
-const DETAIL = new Set(["balance_readings_conflict", "possible_intraday_peak", "arithmetic_mismatch", "continuity_break", "coverage_gap",
-  "field_unreadable", "page_not_read", "institution_names_differ", "out_of_year_statement", "currency_conflict", "duplicate_upload"]);
-const ACTION = {
-  balance_readings_conflict: "Compare every source and resolve the opening or closing balance for that date.",
-  no_balance_anchor: "Request statements showing balances for this account.",
-  missing_statement: "Request the missing statement, or confirm none exists.",
-  account_number_masked: "Match these rows to a known account, or request the full account number.",
-  signature_authority_only: "Confirm the client has signature authority but no financial interest.",
-  possible_intraday_peak: "Check whether the same-day deposit cleared before the withdrawal.",
-  no_statements: "Request the statements for this account, or confirm it had none this year.",
-  page_not_read: "Re-read the page or request a clearer copy; nothing on it is counted.",
-  institution_names_differ: "Confirm whether the bank changed (merger or rename) or one bank is printed two ways.",
-};
 
 function money(amount, ccy) {
   if (amount === null || amount === undefined) return null;
@@ -82,14 +44,27 @@ function reviewer() {
   return $("reviewer").value.trim();
 }
 
-function askNote(title) {
+function askNote(title, exchangeRate = false) {
   return new Promise((resolve) => {
     const d = $("note-dialog");
     $("note-title").textContent = title;
     $("note-text").value = "";
+    $("rate-fields").hidden = !exchangeRate;
+    for (const id of ["rate-value", "rate-source", "rate-date"]) $(id).value = "";
+    $("rate-date").value = `${state.worksheet.tax_year}-12-31`;
+    $("rate-value").required = false;
+    d.returnValue = "cancel";
     d.showModal();
     $("note-cancel").onclick = () => { d.close(); resolve(null); };
-    d.onclose = () => resolve(d.returnValue === "ok" ? $("note-text").value.trim() : null);
+    d.onclose = () => {
+      if (d.returnValue !== "ok") return resolve(null);
+      const result = { note: $("note-text").value.trim() };
+      if (exchangeRate && $("rate-value").value.trim()) result.rate = {
+        units_per_usd: $("rate-value").value.trim(), source: $("rate-source").value.trim(),
+        record_date: $("rate-date").value,
+      };
+      resolve(result);
+    };
   });
 }
 
@@ -130,7 +105,7 @@ function show(sources, key, caption) {
 }
 
 // --- rendering ---------------------------------------------------------------------------------
-const flagTitle = (f) => (FLAG[f.code] ? FLAG[f.code](f) : f.code);
+const flagTitle = (f) => f.title;
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 function render() {
@@ -239,7 +214,7 @@ function accountRow(a, signed) {
       const next = ev.target.value;
       const note = await askNote(`Change ownership of ${a.account_number} to “${OWNERSHIP_LONG[next]}”`);
       if (!note) { ev.target.value = a.ownership; return; }
-      try { state = await api("/api/ownership", { account: a.key, ownership: next, note, reviewer: reviewer() || "reviewer" }); render(); toast("Ownership corrected"); }
+      try { state = await api("/api/ownership", { account: a.key, ownership: next, note: note.note, reviewer: reviewer() || "reviewer" }); render(); toast("Ownership corrected"); }
       catch (e) { toast(e.message); ev.target.value = a.ownership; }
     } },
     ...Object.entries(OWNERSHIP).filter(([k]) => k !== "unknown" || a.ownership === "unknown")
@@ -257,12 +232,30 @@ function accountRow(a, signed) {
     el("td", { class: "bank" }, banks.length ? banks[banks.length - 1] : "—",
       banks.length > 1 ? el("span", { class: "sub" }, `also printed as ${banks.slice(0, -1).join(", ")}`) : null,
       a.holders[0] ? el("span", { class: "sub holder", title: a.holders.join("; ") }, a.holders[0]) : null),
-    el("td", {}, el("span", { class: "acct" }, a.account_number)),
+    el("td", {}, el("span", { class: "acct" }, a.account_number), currencyControl(a, signed)),
     el("td", { class: "ownership" }, select, corrected ? el("span", { class: "corrected" }, "corrected by reviewer") : null),
     el("td", { class: "num" }, figure),
     el("td", { class: "num usd" }, el("span", { class: "amount" }, usd(a.max_usd)),
-      a.rate && a.max_usd !== null ? el("span", { class: "rate" }, `@ ${a.rate} ${a.currency}/USD`) : null),
+      a.rate && a.max_usd !== null ? el("span", { class: "rate" }, `@ ${a.rate} ${a.currency}/USD`) : null,
+      a.rate_basis === "cpa" ? el("span", { class: "sub" }, `CPA-recorded, ${a.rate_date}: ${a.rate_source}`) : null),
   );
+}
+
+function currencyControl(a, signed) {
+  if (!a.identified || !a.observed_currencies.length) return null;
+  if (a.observed_currencies.length < 2 && !a.currency_review_needed && !a.currency_correction) return null;
+  return el("label", { class: "sub" }, "Currency correction (applies to all statements)",
+    el("select", { "aria-label": `Currency of ${a.account_number}`, disabled: signed,
+      onchange: async (ev) => {
+        const currency = ev.target.value;
+        if (!currency) return;
+        const note = await askNote(`Record source confirming all balances for ${a.account_number} are in ${currency}`);
+        if (!note) { render(); return; }
+        try { state = await api("/api/currency", { account: a.key, currency, note: note.note, reviewer: reviewer() || "reviewer" }); render(); }
+        catch (e) { toast(e.message); render(); }
+      } }, el("option", { value: "", selected: !a.currency_correction }, "Select currency"),
+      ...a.observed_currencies.map((c) => el("option", { value: c, selected: a.currency_correction?.currency === c }, c))),
+    a.currency_correction ? a.currency_correction.note : "Balances withheld pending review");
 }
 
 function chips(f) {
@@ -278,17 +271,17 @@ function itemRow(f, ack, signed, ws) {
   const actions = ack
     ? (signed ? null : el("button", { class: "link", onclick: async () => { state = await api("/api/reopen", { flag: f.id, reviewer: reviewer() || "reviewer" }); render(); } }, "Reopen"))
     : el("button", { class: "ack", disabled: signed, onclick: async () => {
-        const note = await askNote(`Acknowledge: ${title}`);
+        const note = await askNote(`Acknowledge: ${title}`, f.code === "currency_unknown");
         if (!note) return;
-        try { state = await api("/api/ack", { flag: f.id, note, reviewer: reviewer() || "reviewer" }); render(); toast("Acknowledged"); }
+        try { state = await api("/api/ack", { flag: f.id, ...note, reviewer: reviewer() || "reviewer" }); render(); toast("Acknowledged"); }
         catch (e) { toast(e.message); }
       } }, "Acknowledge");
   return el("li", { class: `item${ack ? " done" : ""}` },
     el("div", {},
       el("p", { class: "item-title" }, title),
       el("p", { class: "item-acct" }, acctLabel(ws, f.account)),
-      DETAIL.has(f.code) ? el("p", { class: "item-msg" }, f.message) : null,
-      ACTION[f.code] ? el("p", { class: "item-do" }, ACTION[f.code]) : null,
+      el("p", { class: "item-msg" }, f.message),
+      el("p", { class: "item-do" }, f.cpa_action),
       chips(f)),
     el("div", { class: "item-actions" }, actions),
     ack ? el("p", { class: "ack-note" }, `${ack.note} — ${ack.reviewer}`) : null);

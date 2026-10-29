@@ -143,7 +143,7 @@ def test_annual_evidence_gaps_do_not_make_the_year_end_test_incomplete(code):
     from cross_border_fbar.reconcile.accounts import Flag
 
     account = acct("A", 1000, 1000)
-    account.flags = [Flag(code, "review", "Synthetic evidence gap")]
+    account.flags = [Flag(code, "Synthetic evidence gap")]
     account.annual_max_complete = False
     account.maximum_bounds = ValueBounds(account.max_value_usd or 0, None)
     totals = form8938_totals([account], Household("single", False), {})
@@ -167,7 +167,7 @@ def test_observed_lower_bound_can_cross_threshold_despite_missing_annual_coverag
     from cross_border_fbar.reconcile.accounts import Flag
 
     account = acct("A", 80000, 1000)
-    account.flags = [Flag("missing_statement", "review", "missing January")]
+    account.flags = [Flag("missing_statement", "missing January")]
     account.annual_max_complete = False
     account.maximum_bounds = ValueBounds(account.max_value_usd or 0, None)
     totals = form8938_totals([account], Household("single", False), {})

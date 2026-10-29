@@ -1,0 +1,86 @@
+Client summary phrase review: English | Korean
+
+Reviewer: ____________________    Date: ____________________
+Record the reviewer in Last-Translator and remove fuzzy only for approved entries.
+Terminology source: IRS Pub 850 (EN-KR), September 2023: https://www.irs.gov/pub/irs-prior/p850enkr--2023.pdf
+
+1. heading (UNREVIEWED, noun phrase)
+   What your CPA reviewed | 귀하의 공인회계사 검토 항목
+
+2. account_ending (UNREVIEWED, noun phrase)
+   account ending | 계좌 끝번호
+
+3. highest_balance (UNREVIEWED, noun phrase)
+   highest balance | 최고 잔고
+
+4. reviewed (UNREVIEWED, noun phrase)
+   Items reviewed | 검토 항목
+
+5. nothing_further (UNREVIEWED, noun phrase)
+   none flagged | 지적 사항 없음
+
+6. balance_not_confirmed (UNREVIEWED, noun phrase)
+   highest balance not determined | 확정되지 않은 최고 잔고
+
+7. bank_not_named (UNREVIEWED, noun phrase)
+   bank name not available | 은행명 미기재
+
+8. excluded_items (UNREVIEWED, noun phrase)
+   Items left out of the totals | 합계에서 제외된 항목
+
+9. balance_readings_conflict (UNREVIEWED, noun phrase)
+   readings of the same opening or closing balance that disagree | 서로 일치하지 않는 귀하의 동일한 기초 또는 기말 잔고 수치
+
+10. institution_names_differ (UNREVIEWED, noun phrase)
+   the bank names printed differently on statements | 계좌 명세서에 다르게 인쇄된 은행명
+
+11. missing_statement (UNREVIEWED, noun phrase)
+   months of the year that no statement covers | 계좌 명세서가 없는 연중 월
+
+12. coverage_gap (UNREVIEWED, noun phrase)
+   days of the year that no statement covers | 계좌 명세서가 없는 연중 일
+
+13. arithmetic_mismatch (UNREVIEWED, noun phrase)
+   statement balances that did not match the transactions as read | 판독된 거래 내역과 일치하지 않는 계좌 명세서상 잔고
+
+14. field_unreadable (UNREVIEWED, noun phrase)
+   parts of a statement that could not be read, such as a date, currency or balance | 날짜, 통화 또는 잔고 등 판독할 수 없는 계좌 명세서 부분
+
+15. continuity_break (UNREVIEWED, noun phrase)
+   closing balances that did not match the next statement's opening balance | 다음 계좌 명세서의 기초 잔고와 일치하지 않는 기말 잔고
+
+16. no_balance_anchor (UNREVIEWED, noun phrase)
+   statements that list transactions but show no balance | 거래 내역만 있고 잔고 표시가 없는 계좌 명세서
+
+17. no_usable_balance (UNREVIEWED, noun phrase)
+   accounts with no readable balance for the year | 연중 판독 가능한 잔고가 없는 계좌
+
+18. possible_intraday_peak (UNREVIEWED, noun phrase)
+   the order of same-day deposits and withdrawals, which can change the highest balance | 최고 잔고를 변경할 수 있는 당일 입출금 순서
+
+19. currency_conflict (UNREVIEWED, noun phrase)
+   statements showing different currencies for this account | 귀하의 계좌에 대해 서로 다른 통화를 표시하는 계좌 명세서
+
+20. currency_unknown (UNREVIEWED, noun phrase)
+   accounts with no Treasury exchange rate, whose dollar amounts depend on a separately recorded rate | 미국 재무부 환율이 없어 별도 기록된 환율에 따른 달러 금액이 적용되는 계좌
+
+21. account_number_masked (UNREVIEWED, noun phrase)
+   rows with partly masked account numbers left out of the totals | 합계에서 제외된 일부 가려진 계좌번호가 있는 행
+
+22. account_unidentified (UNREVIEWED, noun phrase)
+   rows with unreadable account numbers left out of the totals | 합계에서 제외된 판독 불가한 계좌번호가 있는 행
+
+23. signature_authority_only (UNREVIEWED, noun phrase)
+   your authority to sign on an account owned by someone else | 타인 소유 계좌에 대한 귀하의 서명 권한
+
+24. financial_interest_unknown (UNREVIEWED, noun phrase)
+   whether you have a financial interest in accounts you can sign on | 서명 가능한 계좌에 대한 귀하의 재정적 이해관계 여부
+
+25. ownership_unknown (UNREVIEWED, noun phrase)
+   who owns the account, which has not been recorded | 기록되지 않은 계좌 소유자
+
+26. no_statements (UNREVIEWED, noun phrase)
+   accounts with no statement among the documents read | 읽은 문서 중 계좌 명세서가 없는 계좌
+
+27. page_not_read (UNREVIEWED, noun phrase)
+   pages that could not be read and were left out of the totals | 합계에서 제외된 판독 불가 페이지

@@ -34,7 +34,7 @@
                 <th scope="col">Account</th>
                 <th scope="col">Ownership</th>
                 <th scope="col" class="num">Highest balance</th>
-                <th scope="col" class="num">USD <span class="th-sub">at Treasury rate</span></th>
+                <th scope="col" class="num">USD <span class="th-sub">at recorded rate</span></th>
               </tr>
             </thead>
             <tbody id="accounts"></tbody>
@@ -100,6 +100,13 @@
   <dialog id="note-dialog">
     <form method="dialog" class="note-form">
       <h3 id="note-title">Add a note</h3>
+      <fieldset id="rate-fields" hidden>
+        <legend>Alternative rate when Treasury has none</legend>
+        <p>Leave the rate blank to retain an undetermined dollar amount.</p>
+        <label>Foreign currency units per USD <input id="rate-value" inputmode="decimal"></label>
+        <label>Verifiable source <input id="rate-source"></label>
+        <label>Rate date <input id="rate-date" type="date"></label>
+      </fieldset>
       <label>Note for the audit trail <textarea id="note-text" rows="3" required></textarea></label>
       <menu>
         <button value="cancel" type="button" id="note-cancel">Cancel</button>

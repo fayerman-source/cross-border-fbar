@@ -14,8 +14,13 @@ import json
 import re
 import threading
 import time
+from datetime import date
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+from babel.numbers import format_currency
+
+from ..reconcile.flags import CATALOG
 from . import phrases as phrase_tables
 from .phrases import LANGUAGES
 from .worksheet import Inputs, build, worksheet_hash
@@ -37,29 +42,15 @@ SUMMARY_PHRASES = {
     "account_ending": "account ending",
     "highest_balance": "highest balance",
     "reviewed": "Items reviewed",
-    "nothing_further": "nothing further to review",
-    "balance_not_confirmed": "the balance couldn't be confirmed from the documents",
-    "bank_not_named": "bank not named",
+    "nothing_further": "none flagged",
+    "balance_not_confirmed": "highest balance not determined",
+    "bank_not_named": "bank name not available",
+    "excluded_items": "Items left out of the totals",
 }
 
 # Client-facing descriptions of review items; the model translates these, never the CPA's notes.
 CLIENT_LABELS = {
-    "balance_readings_conflict": "readings of the same opening or closing balance that disagree",
-    "no_balance_anchor": "no balance appears on the documents; statements showing balances were requested",
-    "missing_statement": "one month's statement is missing",
-    "signature_authority_only": "the account is held by someone else and the client can sign on it",
-    "possible_intraday_peak": "a same-day deposit and withdrawal were checked against the highest balance",
-    "account_number_masked": "rows with a partly masked account number were matched to the client's accounts",
-    "arithmetic_mismatch": "a printed balance was checked against the transactions",
-    "continuity_break": "the balances between two statements were checked",
-    "coverage_gap": "some days of the year are not covered by a statement",
-    "institution_names_differ": "the bank name differs between statements and was checked",
-    "currency_conflict": "the currency shown on the statements was checked",
-    "currency_unknown": "the account's currency was checked against the Treasury exchange rates",
-    "ownership_unknown": "who owns the account was confirmed with the client",
-    "field_unreadable": "a part of a statement that couldn't be read was checked",
-    "no_statements": "no statement was received for this account; statements were requested",
-    "page_not_read": "a page that couldn't be read was checked",
+    code: definition.client_phrase for code, definition in CATALOG.items() if definition.severity == "review"
 }
 
 
@@ -68,7 +59,13 @@ def _translation_problem(phrases: dict, got) -> str | None:
     if not isinstance(got, dict) or set(got) != set(phrases):
         return "doesn't cover exactly the phrases asked for"
     for key, text in got.items():
-        if not isinstance(text, str) or not text.strip() or "\n" in text or re.search(r"\d", text):
+        if (
+            not isinstance(text, str)
+            or not text.strip()
+            or "\n" in text
+            or ";" in text
+            or re.search(r"\d", text)
+        ):
             return f"has an unusable translation for '{key}'"
         if len(text) > 3 * len(phrases[key]) + 20:
             return f"has a translation for '{key}' far longer than the phrase"
@@ -89,14 +86,17 @@ def _assemble(facts: dict, t: dict) -> str:
             head += f" · {t['balance_not_confirmed']}"
         items = [t[c] for c in a["review_items"]] or [t["nothing_further"]]
         lines += [head, f"  {t['reviewed']}: " + "; ".join(items)]
+    if facts["excluded_items"]:
+        lines.append(t["excluded_items"] + ": " + "; ".join(t[c] for c in facts["excluded_items"]))
     return "\n".join(lines)
 
 
-def _fmt(amount: str | None, currency: str | None) -> str | None:
+def _money(amount: str | int | None, currency: str | None, language: str = "en_US") -> str | None:
     if amount is None:
         return None
-    digits = 0 if currency == "KRW" else 2
-    return f"{float(amount):,.{digits}f} {currency or ''}".strip()
+    if not currency:
+        return None
+    return format_currency(Decimal(str(amount)), currency, format="#,##0.00 ¤¤", locale=language)
 
 
 def confined(path: Path, root: Path) -> Path:
@@ -124,8 +124,18 @@ class Review:
             if self.state_path.exists()
             else {"acks": {}, "overrides": {}, "signoff": None, "summary": None}
         )
-        self.worksheet = build(inputs, self.state["overrides"])
+        self.state.setdefault("rates", {})
+        self.state.setdefault("currencies", {})
+        self.worksheet = self._build()
         self._revalidate_signoff()
+
+    def _build(self) -> dict:
+        return build(
+            self.inputs,
+            self.state["overrides"],
+            rate_overrides=self.state["rates"],
+            currency_overrides=self.state["currencies"],
+        )
 
     def _revalidate_signoff(self) -> None:
         """A sign-off covers the figures it fingerprinted. If the readings or intake changed since,
@@ -144,17 +154,37 @@ class Review:
             )
 
     # -- views ---------------------------------------------------------------------------------
+    def _account_hash(self, key: str) -> str:
+        account = next(a for a in self.worksheet["accounts"] if a["key"] == key)
+        return worksheet_hash(
+            {
+                "client": self.worksheet["client"],
+                "tax_year": self.worksheet["tax_year"],
+                "account": account,
+                "flags": [flag for flag in self.worksheet["flags"] if flag["account"] == key],
+            }
+        )
+
+    def _ack_valid(self, flag: dict) -> bool:
+        ack = self.state["acks"].get(flag["id"])
+        return bool(ack and ack.get("account_hash") == self._account_hash(flag["account"]))
+
+    def _valid_acknowledgements(self) -> dict:
+        return {
+            flag["id"]: self.state["acks"][flag["id"]]
+            for flag in self.worksheet["flags"]
+            if self._ack_valid(flag)
+        }
+
     def open_review_flags(self) -> list[str]:
         return [
-            f["id"]
-            for f in self.worksheet["flags"]
-            if f["severity"] == "review" and f["id"] not in self.state["acks"]
+            f["id"] for f in self.worksheet["flags"] if f["severity"] == "review" and not self._ack_valid(f)
         ]
 
     def view(self) -> dict:
         return {
             "worksheet": self.worksheet,
-            "review": self.state,
+            "review": {**self.state, "acks": self._valid_acknowledgements()},
             "open_review_flags": self.open_review_flags(),
             "audit": self.audit_tail(40),
         }
@@ -175,21 +205,98 @@ class Review:
         if self.state["signoff"]:
             raise ReviewError("The worksheet is signed off; it can't be changed.")
 
-    def acknowledge(self, flag_id: str, note: str, reviewer: str) -> None:
+    def acknowledge(self, flag_id: str, note: str, reviewer: str, *, rate: dict | None = None) -> None:
         with self.lock:
             self._require_open()
-            if flag_id not in {f["id"] for f in self.worksheet["flags"]}:
+            flag = next((f for f in self.worksheet["flags"] if f["id"] == flag_id), None)
+            if flag is None:
                 raise ReviewError("That review item isn't on this worksheet.")
             if not note.strip():
                 raise ReviewError("Add a note saying what you checked.")
-            self.state["acks"][flag_id] = {"note": note.strip(), "reviewer": reviewer, "ts": time.time()}
+            account = next(a for a in self.worksheet["accounts"] if a["key"] == flag["account"])
+            if flag["code"] == "currency_conflict" and not account["currency_correction"]:
+                raise ReviewError("Select the account currency with a source note before acknowledgement.")
+            if rate is not None:
+                if flag["code"] != "currency_unknown":
+                    raise ReviewError("An alternative rate belongs to a missing Treasury rate review item.")
+                saved = self._validate_rate(rate, account)
+                self.state["rates"][account["key"]] = saved
+                self.worksheet = self._build()
+                self._audit(
+                    "record_exchange_rate", reviewer, account=account["key"], rate=saved, note=note.strip()
+                )
+            self.state["acks"][flag_id] = {
+                "note": note.strip(),
+                "reviewer": reviewer,
+                "ts": time.time(),
+                "account_hash": self._account_hash(flag["account"]),
+            }
             self._audit("acknowledge", reviewer, flag=flag_id, note=note.strip())
 
     def reopen(self, flag_id: str, reviewer: str) -> None:
         with self.lock:
             self._require_open()
+            flag = next((f for f in self.worksheet["flags"] if f["id"] == flag_id), None)
+            if flag and flag["code"] == "currency_unknown":
+                self.state["rates"].pop(flag["account"], None)
+                self.worksheet = self._build()
             self.state["acks"].pop(flag_id, None)
             self._audit("reopen", reviewer, flag=flag_id)
+
+    def _validate_rate(self, rate: dict, account: dict) -> dict:
+        try:
+            value = Decimal(str(rate["units_per_usd"]))
+            record_date = date.fromisoformat(rate["record_date"])
+            source = rate["source"]
+            if not isinstance(source, str):
+                raise ValueError("source must be text")
+            source = source.strip()
+        except (KeyError, TypeError, ValueError, InvalidOperation):
+            raise ReviewError("Enter a numeric rate, source and ISO date.") from None
+        if not value.is_finite() or value <= 0 or not source:
+            raise ReviewError("The rate must be positive and finite, with a source.")
+        if not account["currency"]:
+            raise ReviewError("Resolve the account currency before entering an exchange rate.")
+        if record_date != date(self.inputs.tax_year, 12, 31):
+            raise ReviewError("Use a verifiable rate for the last day of the tax year.")
+        return {
+            "currency": account["currency"],
+            "units_per_usd": str(value),
+            "source": source,
+            "record_date": record_date.isoformat(),
+        }
+
+    def set_currency(self, account: str, currency: str, note: str, reviewer: str) -> None:
+        with self.lock:
+            self._require_open()
+            row = next((a for a in self.worksheet["accounts"] if a["key"] == account), None)
+            if row is None or not row["identified"]:
+                raise ReviewError("Select an identified account on this worksheet.")
+            if currency not in row["observed_currencies"] or not re.fullmatch(r"[A-Z]{3}", currency):
+                raise ReviewError("Select one of the currencies printed on the account statements.")
+            if not note.strip():
+                raise ReviewError("Record a source note explaining the currency correction.")
+            before = row["currency"]
+            self.state["currencies"][account] = {
+                "currency": currency,
+                "note": note.strip(),
+                "reviewer": reviewer,
+                "ts": time.time(),
+            }
+            self.state["rates"].pop(account, None)
+            # Every acknowledgement for this account covered the previous interpretation.
+            for flag in self.worksheet["flags"]:
+                if flag["account"] == account:
+                    self.state["acks"].pop(flag["id"], None)
+            self.worksheet = self._build()
+            self._audit(
+                "correct_currency",
+                reviewer,
+                account=account,
+                before=before,
+                after=currency,
+                note=note.strip(),
+            )
 
     def set_ownership(self, account: str, ownership: str, note: str, reviewer: str) -> None:
         with self.lock:
@@ -202,7 +309,7 @@ class Review:
             if before is None:
                 raise ReviewError("That account isn't on this worksheet.")
             self.state["overrides"][account] = ownership
-            self.worksheet = build(self.inputs, self.state["overrides"])
+            self.worksheet = self._build()
             self._audit(
                 "correct_ownership",
                 reviewer,
@@ -236,22 +343,28 @@ class Review:
         return {
             "worksheet": self.worksheet,
             "signoff": self.state["signoff"],
-            "acknowledgements": self.state["acks"],
+            "acknowledgements": self._valid_acknowledgements(),
             "corrections": self.state["overrides"],
             "audit": self.audit_tail(10_000),
         }
 
     # -- client summary ------------------------------------------------------------------------
-    def summary_facts(self) -> dict:
+    def summary_facts(self, language: str = "en_US") -> dict:
         """Only the signed figures, formatted, with plain descriptions of what was reviewed.
 
         The CPA's acknowledgement notes are internal working-paper notes and are not passed on;
         account numbers are reduced to their last four digits; statement contents are not included.
         """
         ws = self.worksheet
-        facts = []
+        facts, excluded = [], []
         for a in ws["accounts"]:
             if not a["identified"]:
+                excluded.extend(
+                    f["code"]
+                    for f in ws["flags"]
+                    if f["id"] in a["flags"]
+                    and f["code"] in {"account_number_masked", "account_unidentified", "page_not_read"}
+                )
                 continue
             reviews = [f for f in ws["flags"] if f["id"] in a["flags"] and f["severity"] == "review"]
             digits = re.sub(r"\D", "", a["account_number"])
@@ -261,12 +374,17 @@ class Review:
                     "bank": a["institutions"][-1] if a["institutions"] else None,
                     "account_ending": digits[-4:],
                     "currency": a["currency"],
-                    "highest_balance": _fmt(amount, a["currency"]),
-                    "highest_balance_usd": f"${a['max_usd']:,}" if a["max_usd"] is not None else None,
+                    "highest_balance": _money(amount, a["currency"], language),
+                    "highest_balance_usd": _money(a["max_usd"], "USD", language),
                     "review_items": list(dict.fromkeys(f["code"] for f in reviews)),
                 }
             )
-        return {"client": ws["client"], "tax_year": ws["tax_year"], "accounts": facts}
+        return {
+            "client": ws["client"],
+            "tax_year": ws["tax_year"],
+            "accounts": facts,
+            "excluded_items": list(dict.fromkeys(excluded)),
+        }
 
     def draft_summary(self, translate, language: str = "ko") -> dict:
         """translate(phrases, language, fresh) -> (translations, meta). Runs only after sign-off.
@@ -279,21 +397,27 @@ class Review:
             raise ReviewError("Sign off before drafting the client summary.")
         if language not in LANGUAGES:
             raise ReviewError(f"No client language {language!r}.")
-        facts = self.summary_facts()
-        codes = {c for a in facts["accounts"] for c in a["review_items"]}
+        facts = self.summary_facts(language)
+        codes = {c for a in facts["accounts"] for c in a["review_items"]} | set(facts["excluded_items"])
         if codes - set(CLIENT_LABELS):
             raise ReviewError(f"No client wording for {sorted(codes - set(CLIENT_LABELS))}.")
         phrases = {**SUMMARY_PHRASES, **{c: CLIENT_LABELS[c] for c in sorted(codes)}}
         known = phrase_tables.reviewed(language, phrases)
-        missing = {k: v for k, v in phrases.items() if k not in known}
-        meta, problem, new = {"model": None, "source": f"reviewed table ({language})"}, None, {}
+        catalog_drafts = {k: v for k, v in phrase_tables.drafts(language, phrases).items() if k not in known}
+        missing = {k: v for k, v in phrases.items() if k not in known and k not in catalog_drafts}
+        meta, problem, new = {"model": None, "source": f"gettext catalog ({language})"}, None, {}
         if missing:
             new, meta = translate(missing, LANGUAGES[language], fresh=self.state["summary"] is not None)
             problem = _translation_problem(missing, new)
+            if problem:
+                new = {}
+        unreviewed = {**catalog_drafts, **new}
+        if not problem:
+            problem = _translation_problem(phrases, {**known, **unreviewed})
         self.state["summary"] = {
-            "text": None if problem else _assemble(facts, {**known, **new}),
+            "text": None if problem else _assemble(facts, {**known, **unreviewed}),
             "language": language,
-            "unreviewed": {k: new[k] for k in missing} if not problem else {},
+            "unreviewed": unreviewed if not problem else {},
             "meta": meta,
             "approved": None,
             "blocked": problem,
@@ -302,7 +426,7 @@ class Review:
             "draft_summary",
             self.state["signoff"]["reviewer"],
             model=meta.get("model"),
-            unreviewed=sorted(missing),
+            unreviewed=sorted(unreviewed),
             blocked=problem,
         )
         return self.state["summary"]
