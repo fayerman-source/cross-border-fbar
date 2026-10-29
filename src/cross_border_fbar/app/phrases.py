@@ -1,6 +1,6 @@
 """Gettext catalogs of fixed client phrases, with explicit human review status.
 
-    python -m cross_border_fbar.app.phrases --refresh --printout docs/korean-review.txt
+    python -m cross_border_fbar.app.phrases --refresh --printout
 
 Last-Translator names the human reviewer. Clear each entry's fuzzy flag only after
 reviewing it. A changed English msgid is always unreviewed, even with that header.
@@ -18,6 +18,7 @@ from babel.messages.pofile import read_po, write_po
 PHRASES_DIR = Path(__file__).parent / "translations"
 LANGUAGES = {"ko": "Korean"}
 TABLE_FILES = {code: f"{code}.po" for code in LANGUAGES}
+PRINTOUT_FILES = {"ko": Path("docs/korean-review.txt")}
 GLOSSARY = "https://www.irs.gov/pub/irs-prior/p850enkr--2023.pdf"
 
 
@@ -101,9 +102,11 @@ def sync(language: str, phrases: dict[str, str] | None = None) -> Catalog:
             previous_id=[old.id] if old else [],
             auto_comments=["label: noun phrase, plural-safe, no semicolon"],
         )
-    for message in list(catalog):
-        if message.id and message.context not in phrases:
-            catalog.delete(message.id, context=message.context)
+    obsolete = [
+        (message.id, message.context) for message in catalog if message.id and message.context not in phrases
+    ]
+    for message_id, context in obsolete:
+        catalog.delete(message_id, context=context)
     return catalog
 
 
@@ -146,19 +149,31 @@ def printout(language: str) -> str:
     return "\n".join(lines)
 
 
+def write_printout(language: str, root: Path | None = None) -> Path:
+    """Write only the language's fixed project document, including symlink confinement."""
+    from .review import confined
+
+    relative = PRINTOUT_FILES.get(language)
+    if relative is None:
+        raise ValueError(f"no printout for client language {language!r}")
+    path = confined(relative, root or Path.cwd())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(printout(language))
+    return path
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--language", default="ko", choices=LANGUAGES)
     parser.add_argument("--refresh", action="store_true", help="one live translation call")
-    parser.add_argument("--printout", type=Path)
+    parser.add_argument("--printout", action="store_true", help="write the fixed review document under docs/")
     args = parser.parse_args()
     if args.refresh:
         build(args.language)
     else:
         save(args.language, sync(args.language))
     if args.printout:
-        args.printout.parent.mkdir(parents=True, exist_ok=True)
-        args.printout.write_text(printout(args.language))
+        write_printout(args.language)
     else:
         print(printout(args.language))
 

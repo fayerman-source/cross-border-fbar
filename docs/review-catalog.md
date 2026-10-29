@@ -9,7 +9,7 @@ The Korean gettext catalog is `src/cross_border_fbar/app/translations/ko.po`. Ea
 Give `docs/korean-review.txt` to the native reviewer. It contains numbered English | Korean pairs and review status. After incorporating the review into the `.po` file, record the human's name in `Last-Translator` and remove fuzzy only for approved entries. Regenerate the printout without an API call:
 
 ```
-uv run python -m cross_border_fbar.app.phrases --printout docs/korean-review.txt
+uv run python -m cross_border_fbar.app.phrases --printout
 ```
 
 `--refresh` deliberately records a new translation of all phrases in one call and resets their review status. Terminology follows IRS Publication 850 (EN-KR), September 2023, where terms exist. The current draft awaits the founder's native reviewer; no human review is claimed.

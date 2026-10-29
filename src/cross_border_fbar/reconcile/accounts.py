@@ -453,7 +453,7 @@ def reconcile_account(
 
     currencies = {o.currency for o in obs if o.currency}
     currency_conflict = len(currencies) > 1
-    currency_ready = not currency_conflict or currency_selection is not None
+    currency_ready = not currency_conflict or bool(currency_selection)
     effective_obs = (
         [
             replace(
@@ -673,6 +673,15 @@ def _empty_result(key: str, number: str, identified: bool, intake: Intake | None
     )
 
 
+def _selected_account_rate(key, observations, rates, tax_year, account_rates, currency_selections):
+    selected = (currency_selections or {}).get(key) or None
+    currency = selected or most_common(observation.currency for observation in observations)
+    alternate = (account_rates or {}).get(key)
+    if alternate and alternate.currency != currency:
+        alternate = None
+    return selected, _rate_for(currency, rates, tax_year) or alternate
+
+
 def reconcile(
     observations: list[Observation],
     intake: dict[str, Intake],
@@ -695,12 +704,7 @@ def reconcile(
         (groups[o.account_key] if o.account_key else unidentified).append(o)
     results = []
     for key, obs in sorted(groups.items()):
-        selected = (currency_selections or {}).get(key)
-        alternate = (account_rates or {}).get(key)
-        currency = selected or most_common(o.currency for o in obs)
-        if alternate and alternate.currency != currency:
-            alternate = None
-        rate = _rate_for(currency, rates, tax_year) or alternate
+        selected, rate = _selected_account_rate(key, obs, rates, tax_year, account_rates, currency_selections)
         identified = not key.startswith("masked:")
         results.append(
             reconcile_account(

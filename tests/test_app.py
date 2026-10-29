@@ -132,7 +132,8 @@ def test_summary_is_assembled_only_from_fixed_phrases_and_signed_figures(review,
 )
 def test_a_translation_that_adds_anything_is_held_back(signed, bad):
     s = signed.draft_summary(lambda phrases, language, fresh: (bad(phrases), {"model": "fake"}))
-    assert s["blocked"] and s["text"] is None
+    assert s["blocked"]
+    assert s["text"] is None
     with pytest.raises(ReviewError, match="can't be released"):
         signed.approve_summary("A. Rivera", confirm_unreviewed=True)
 
@@ -172,7 +173,8 @@ def test_a_reviewed_table_needs_no_model_call_and_stale_entries_are_retranslated
         raise AssertionError("a reviewed table needs no translation")
 
     s = signed.draft_summary(no_call)
-    assert s["unreviewed"] == {} and s["text"].startswith("[heading]")
+    assert s["unreviewed"] == {}
+    assert s["text"].startswith("[heading]")
     signed.approve_summary("A. Rivera")
     catalog.delete(SUMMARY_PHRASES["heading"], context="heading")
     catalog.add("an older English heading", "[heading]", context="heading")
@@ -310,10 +312,12 @@ def test_failed_pages_and_accounts_without_statements_block_sign_off(inputs, tmp
     codes = {(f["code"], f["account"]) for f in ws["flags"]}
     assert ("page_not_read", "unread:pages/kr-checking_2025-03-p1.png") in codes
     (page_flag,) = [f for f in ws["flags"] if f["code"] == "page_not_read"]
-    assert page_flag["severity"] == "review" and "HTTP 503" in page_flag["message"]
+    assert page_flag["severity"] == "review"
+    assert "HTTP 503" in page_flag["message"]
     assert page_flag["sources"][0]["upload"] == "pages/kr-checking_2025-03-p1.png"
     (kr,) = [a for a in ws["accounts"] if a["account_number"] == "110-482-913746"]
-    assert kr["max"] is None and kr["identified"]
+    assert kr["max"] is None
+    assert kr["identified"]
     assert [f["code"] for f in ws["flags"] if f["account"] == kr["key"]] == ["no_statements"]
     assert "110-482-913746" in ws["totals"]["accounts_without_value"]
     assert "pages/kr-checking_2025-03-p1.png" in ws["totals"]["unidentified_uploads"]
@@ -357,7 +361,8 @@ def test_a_sign_off_is_invalidated_when_the_client_changes(inputs, tmp_path):
     changed = tmp_path / "intake-client.json"
     changed.write_text(json.dumps(intake))
     again = Review(Inputs(inputs.set_dir, inputs.readings, changed), tmp_path / "rv", root=tmp_path)
-    assert again.state["signoff"] is None and again.state["summary"] is None
+    assert again.state["signoff"] is None
+    assert again.state["summary"] is None
     with pytest.raises(ReviewError):
         again.export()
 
@@ -465,7 +470,8 @@ def test_currency_selection_is_audited_and_required_before_acknowledgement(input
         review.set_currency(account["key"], "KRW", "", "CPA")
     review.set_currency(account["key"], "KRW", "Synthetic bank confirms currency label error", "CPA")
     account = next(a for a in review.worksheet["accounts"] if a["key"] == flag["account"])
-    assert account["currency"] == "KRW" and account["max_usd"] == 199100
+    assert account["currency"] == "KRW"
+    assert account["max_usd"] == 199100
     assert account["currency_correction"]["reviewer"] == "CPA"
     assert review.audit_tail(1)[0]["action"] == "correct_currency"
     assert worksheet_hash(review.worksheet) != before_hash
@@ -501,7 +507,8 @@ def test_alternative_rate_acknowledgement_recomputes_persists_and_reopens(inputs
         (Decimal(account["max"]["amount"]) / Decimal("2.5")).to_integral_value(rounding=ROUND_CEILING)
     )
     assert account["rate_source"] == rate["source"]
-    assert account["rate_date"] == "2025-12-31" and account["rate_basis"] == "cpa"
+    assert account["rate_date"] == "2025-12-31"
+    assert account["rate_basis"] == "cpa"
     assert review.audit_tail(2)[0]["rate"]["units_per_usd"] == "2.5"
     again = Review(review.inputs, review.dir, root=tmp_path)
     assert again.worksheet == review.worksheet
@@ -604,7 +611,8 @@ def test_unreviewed_catalog_drafts_are_reused_but_need_explicit_approval(signed,
         raise AssertionError("current catalog drafts need no extra translation call")
 
     summary = signed.draft_summary(no_call)
-    assert summary["unreviewed"] and summary["text"].startswith("[heading]")
+    assert summary["unreviewed"]
+    assert summary["text"].startswith("[heading]")
     with pytest.raises(ReviewError, match="haven't been reviewed"):
         signed.approve_summary("CPA")
     signed.approve_summary("CPA", confirm_unreviewed=True)
@@ -631,3 +639,47 @@ def test_updated_figures_reopen_previously_acknowledged_account_flags(inputs, tm
     assert other_reviews
     assert set(other_reviews) <= set(review.open_review_flags())
     assert flag["id"] not in review.open_review_flags()
+
+
+def test_printout_uses_the_fixed_project_document_and_rejects_path_arguments(tmp_path, monkeypatch):
+    import sys
+
+    monkeypatch.setattr(phrase_tables, "printout", lambda language: "English | Korean")
+    target = phrase_tables.write_printout("ko", root=tmp_path)
+    assert target == tmp_path / "docs" / "korean-review.txt"
+    assert target.read_text() == "English | Korean"
+    monkeypatch.setattr(sys, "argv", ["phrases", "--printout", "../../outside.txt"])
+    with pytest.raises(SystemExit) as error:
+        phrase_tables.main()
+    assert error.value.code == 2
+
+
+@pytest.mark.parametrize("link_kind", ["directory", "file"])
+def test_printout_cannot_follow_symlinks_outside_the_project(tmp_path, link_kind):
+    workspace = tmp_path / "workspace"
+    outside = tmp_path / "outside"
+    workspace.mkdir()
+    outside.mkdir()
+    docs = workspace / "docs"
+    if link_kind == "directory":
+        docs.symlink_to(outside, target_is_directory=True)
+    else:
+        docs.mkdir()
+        (docs / "korean-review.txt").symlink_to(outside / "overwritten.txt")
+    with pytest.raises(ValueError, match="outside"):
+        phrase_tables.write_printout("ko", root=workspace)
+    assert list(outside.iterdir()) == []
+
+
+def test_catalog_sync_removes_multiple_obsolete_entries_without_mutating_its_iterator(tmp_path, monkeypatch):
+    from babel.messages.catalog import Catalog
+
+    monkeypatch.setattr(phrase_tables, "PHRASES_DIR", tmp_path)
+    catalog = Catalog(locale="ko", last_translator="", fuzzy=False)
+    catalog.add("old first", "첫째", context="first")
+    catalog.add("old second", "둘째", context="second")
+    phrase_tables.save("ko", catalog)
+    updated = phrase_tables.sync("ko", {"current": "current label"})
+    assert [(message.context, message.id) for message in updated if message.id] == [
+        ("current", "current label")
+    ]

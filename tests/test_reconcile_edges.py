@@ -474,3 +474,16 @@ def test_currency_conflicts_keep_the_currency_source_from_every_statement():
     (flag,) = [item for item in account.flags if item.code == "currency_conflict"]
     assert [source.upload for source in flag.sources] == ["eur", "krw"]
     assert all(source.ref == "currency" for source in flag.sources)
+
+
+def test_an_empty_currency_selection_does_not_release_conflicting_currency_values():
+    from cross_border_fbar.reconcile.accounts import reconcile_account
+
+    pages = [
+        obs("eur", date(2025, 1, 1), date(2025, 1, 31), D(1000), D(1000), currency="EUR"),
+        obs("krw", date(2025, 2, 1), date(2025, 2, 28), D(1000), D(1000), currency="KRW"),
+    ]
+    account = reconcile_account(pages, SOLE["ACC1"], RATES["EUR"], 2025, 1000, currency_selection="")
+    assert account.max_value is None
+    assert account.max_value_usd is None
+    assert account.year_end_balance is None

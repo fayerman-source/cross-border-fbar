@@ -168,11 +168,40 @@ def build(
     }
 
 
+def _balance_view(balance) -> dict | None:
+    if balance is None:
+        return None
+    return {
+        "amount": str(balance.amount),
+        "kind": balance.kind,
+        "day": balance.day.isoformat() if balance.day else None,
+        "source": _source(balance.source),
+    }
+
+
+def _bounds_view(bounds) -> dict | None:
+    if bounds is None:
+        return None
+    return {"low": str(bounds.low_usd), "high": decimal_str(bounds.high_usd)}
+
+
+def _rate_view(currency: str | None, rate: rates.Rate | None) -> dict:
+    if rate is not None:
+        return {
+            "rate": str(rate.units_per_usd),
+            "rate_source": rate.source_url,
+            "rate_date": rate.record_date,
+            "rate_basis": rate.basis,
+        }
+    if currency == "USD":
+        return {"rate": "1", "rate_source": None, "rate_date": None, "rate_basis": "identity"}
+    return {"rate": None, "rate_source": None, "rate_date": None, "rate_basis": None}
+
+
 def _account(r: AccountResult, year_rates: dict, intake: dict, flag_ids: list[str], alternate=None) -> dict:
-    rate = year_rates.get(r.currency or "") or (
-        alternate if alternate and alternate.currency == r.currency else None
-    )
-    m = r.max_value
+    rate = year_rates.get(r.currency or "")
+    if rate is None and alternate and alternate.currency == r.currency:
+        rate = alternate
     return {
         "key": r.account_key,
         "account_number": r.account_number,
@@ -182,34 +211,14 @@ def _account(r: AccountResult, year_rates: dict, intake: dict, flag_ids: list[st
         "holders": r.holders,
         "ownership": r.ownership,
         "ownership_source": "intake" if r.account_key in intake else "unknown",
-        "max": None
-        if m is None
-        else {
-            "amount": str(m.amount),
-            "kind": m.kind,
-            "day": m.day.isoformat() if m.day else None,
-            "source": _source(m.source),
-        },
-        "rate": str(rate.units_per_usd) if rate else ("1" if r.currency == "USD" else None),
-        "rate_source": rate.source_url if rate else None,
-        "rate_date": rate.record_date if rate else None,
-        "rate_basis": rate.basis if rate else ("identity" if r.currency == "USD" else None),
+        "max": _balance_view(r.max_value),
+        **_rate_view(r.currency, rate),
         "max_usd": r.max_value_usd,
-        "year_end_balance": str(r.year_end_balance) if r.year_end_balance is not None else None,
+        "year_end_balance": decimal_str(r.year_end_balance),
         "year_end_usd": r.year_end_usd,
         "annual_max_complete": r.annual_max_complete,
-        "maximum_bounds_usd": None
-        if r.maximum_bounds is None
-        else {
-            "low": str(r.maximum_bounds.low_usd),
-            "high": None if r.maximum_bounds.high_usd is None else str(r.maximum_bounds.high_usd),
-        },
-        "year_end_bounds_usd": None
-        if r.year_end_bounds is None
-        else {
-            "low": str(r.year_end_bounds.low_usd),
-            "high": None if r.year_end_bounds.high_usd is None else str(r.year_end_bounds.high_usd),
-        },
+        "maximum_bounds_usd": _bounds_view(r.maximum_bounds),
+        "year_end_bounds_usd": _bounds_view(r.year_end_bounds),
         "uploads": r.uploads,
         "flags": flag_ids,
     }
