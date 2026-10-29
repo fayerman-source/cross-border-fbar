@@ -495,3 +495,19 @@ def test_an_absent_currency_also_requires_source_review_instead_of_account_wide_
     assert any(
         flag.code == "field_unreadable" and flag.sources[0].ref == "currency" for flag in account.flags
     )
+
+
+def test_missing_exchange_rate_preserves_native_evidence_without_inventing_a_dollar_value():
+    from datetime import date
+    from decimal import Decimal
+
+    from test_reconcile_edges import obs
+
+    from cross_border_fbar.reconcile.accounts import reconcile
+
+    page = obs("native", date(2025, 1, 1), date(2025, 12, 31), Decimal(40000), Decimal(40000), currency="INR")
+    (account,) = reconcile([page], {"ACC1": Intake("sole", True)}, {}, 2025)
+    assert account.max_value.amount == Decimal(40000)
+    assert account.year_end_balance == Decimal(40000)
+    assert account.year_end_usd is None
+    assert account.year_end_bounds is None

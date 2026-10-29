@@ -391,15 +391,16 @@ def _maximum_bounds(balances, intraday, rate, bounded, conflicts, flags) -> Valu
 
 
 def _year_end_evidence(observations, tax_year, rate) -> tuple[Decimal | None, ValueBounds | None]:
-    if rate is None:
-        return None, None
     ending = [o for o in observations if o.period_end == date(tax_year, 12, 31)]
     readable = [o for o in ending if o.closing is not None]
-    if not readable or any(o.currency != rate.currency for o in readable):
+    currencies = {o.currency for o in readable}
+    if not readable or None in currencies or len(currencies) != 1:
         return None, None
-    values = [o.closing for o in readable]
     upper_known = not any("closing_balance" in o.problems for o in ending)
     value = _closing_balance_on(readable, date(tax_year, 12, 31)) if upper_known else None
+    if rate is None or rate.currency not in currencies:
+        return value, None
+    values = [o.closing for o in readable]
     bounds = ValueBounds(
         usd_ceiling(min(values), rate), usd_ceiling(max(values), rate) if upper_known else None
     )
@@ -567,7 +568,9 @@ def reconcile_account(
         max_value=best if unit_context_complete else None,
         max_value_usd=best_usd if unit_context_complete else None,
         year_end_balance=year_end,
-        year_end_usd=usd_ceiling(year_end, rate) if year_end is not None and rate else None,
+        year_end_usd=year_end_bounds.low_usd
+        if year_end is not None and year_end_bounds is not None
+        else None,
         flags=flags,
         annual_max_complete=annual_max_complete,
         maximum_bounds=maximum_bounds,
