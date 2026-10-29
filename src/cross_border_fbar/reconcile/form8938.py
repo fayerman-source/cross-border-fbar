@@ -59,6 +59,7 @@ class Form8938Totals:
     excluded: dict[str, str]  # account number -> why it isn't counted
     halved: list[str]  # joint with a spouse filing separately, both specified individuals
     notes: list[str] = field(default_factory=list)
+    unresolved_accounts: dict[str, str] = field(default_factory=dict)
 
 
 def _part(usd: int, half: bool) -> int:
@@ -86,18 +87,23 @@ class _AccountValue:
     note: str | None
 
 
-def _select_accounts(accounts: list[AccountResult]) -> tuple[list[AccountResult], dict[str, str]]:
-    counted, excluded = [], {}
+def _select_accounts(
+    accounts: list[AccountResult],
+) -> tuple[list[AccountResult], dict[str, str], dict[str, str]]:
+    counted, excluded, unresolved = [], {}, {}
     for account in accounts:
         if not account.identified:
+            label = account.account_number or ", ".join(account.uploads) or account.account_key
+            unresolved[label] = "account could not be identified or page could not be read"
             continue
         if account.financial_interest is False:
-            excluded[account.account_number] = "no financial interest (signature authority only)"
+            excluded[account.account_number] = "no financial interest"
         elif account.financial_interest is None:
             excluded[account.account_number] = "financial interest not stated"
+            unresolved[account.account_number] = "financial interest not stated"
         else:
             counted.append(account)
-    return counted, excluded
+    return counted, excluded, unresolved
 
 
 def _joint_share(
@@ -143,7 +149,7 @@ def _test(threshold: int | None, low: int, high: int, complete: bool) -> Test:
 def form8938_totals(
     accounts: list[AccountResult], household: Household, intake: dict[str, Intake]
 ) -> Form8938Totals:
-    counted, excluded = _select_accounts(accounts)
+    counted, excluded, unresolved = _select_accounts(accounts)
     values = [_account_value(account, household, intake) for account in counted]
     year_end_sum = sum(value.year_end for value in values)
     max_sum = sum(value.maximum for value in values)
@@ -155,13 +161,16 @@ def form8938_totals(
     notes.append("accounts only; other specified foreign financial assets are not included")
     return Form8938Totals(
         year_end=_test(
-            year_end_t, year_end_sum, year_end_sum, all(value.year_end_complete for value in values)
+            year_end_t,
+            year_end_sum,
+            year_end_sum,
+            not unresolved and all(value.year_end_complete for value in values),
         ),
         any_time=_test(
             any_time_t,
             max(year_end_sum, largest_max),
             max_sum,
-            all(value.annual_complete for value in values),
+            not unresolved and all(value.annual_complete for value in values),
         ),
         accounts_counted=[account.account_number for account in counted],
         accounts_without_value=[
@@ -170,4 +179,5 @@ def form8938_totals(
         excluded=excluded,
         halved=[value.number for value in values if value.half],
         notes=notes,
+        unresolved_accounts=unresolved,
     )

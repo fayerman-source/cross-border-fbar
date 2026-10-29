@@ -42,11 +42,12 @@ def test_signature_authority_and_unstated_interest_are_not_counted():
     )
     assert t.accounts_counted == ["A"]
     assert t.excluded == {
-        "PARENTS": "no financial interest (signature authority only)",
+        "PARENTS": "no financial interest",
         "ASK": "financial interest not stated",
     }
     assert t.year_end.low_usd == 90000
-    assert t.any_time.high_usd == 100000
+    assert t.any_time.low_usd == 100000
+    assert t.any_time.high_usd is None
 
 
 @pytest.mark.parametrize(
@@ -223,3 +224,51 @@ def test_mixed_currency_accounts_withhold_all_native_and_dollar_values():
     totals = form8938_totals([account], Household("single", False), {})
     assert totals.year_end.result == "incomplete"
     assert totals.any_time.result == "incomplete"
+
+
+@pytest.mark.parametrize(
+    "unknown",
+    [
+        acct("ASK", 900000, 900000, interest=None),
+        acct("MASKED", 900000, 900000, identified=False),
+    ],
+)
+def test_unresolved_accounts_make_both_tests_incomplete_without_adding_their_values(unknown):
+    totals = form8938_totals([acct("A", 1000, 1000), unknown], Household("single", False), {})
+    assert totals.year_end.low_usd == 1000
+    assert totals.any_time.low_usd == 1000
+    assert totals.year_end.result == "incomplete"
+    assert totals.any_time.result == "incomplete"
+    assert totals.accounts_counted == ["A"]
+    assert unknown.account_number in totals.unresolved_accounts
+
+
+def test_an_unread_page_is_named_by_upload_and_never_added_to_totals():
+    page = acct("PAGE", 900000, 900000, identified=False)
+    page.account_number = ""
+    page.uploads = ["pages/synthetic-unread.png"]
+    totals = form8938_totals([acct("A", 1000, 1000), page], Household("single", False), {})
+    assert totals.year_end.result == "incomplete"
+    assert list(totals.unresolved_accounts) == ["pages/synthetic-unread.png"]
+    assert totals.year_end.low_usd == 1000
+
+
+def test_known_no_interest_accounts_do_not_make_the_tests_incomplete():
+    totals = form8938_totals(
+        [acct("A", 1000, 1000), acct("PARENTS", 900000, 900000, interest=False)],
+        Household("single", False),
+        {},
+    )
+    assert totals.year_end.result == "not_above"
+    assert totals.any_time.result == "not_above"
+    assert not totals.unresolved_accounts
+
+
+def test_known_lower_bound_above_threshold_survives_unresolved_account_identity():
+    totals = form8938_totals(
+        [acct("A", 80000, 60000), acct("UNREAD", 1, 1, identified=False)], Household("single", False), {}
+    )
+    assert totals.year_end.result == "above"
+    assert totals.any_time.result == "above"
+    assert not totals.year_end.complete
+    assert not totals.any_time.complete
