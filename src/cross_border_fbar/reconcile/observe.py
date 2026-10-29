@@ -113,6 +113,12 @@ def observe(reading: dict, upload: str, snapped: dict | None = None) -> Observat
         for n in KEY_FIELDS
         if (reading[n]["status"] != "absent" or reading[n]["text"].strip()) and parsed[n] is None
     ]
+    for line in lines:
+        for field_name, field_value in (("date", line.day), ("amount", line.amount)):
+            if field_value is None:
+                name = f"row:{line.index}:{field_name}"
+                problems.append(name)
+                sources[name] = line.source
     return Observation(
         upload=upload,
         institution=value("institution").strip(),

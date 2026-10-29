@@ -272,3 +272,32 @@ def test_known_lower_bound_above_threshold_survives_unresolved_account_identity(
     assert totals.any_time.result == "above"
     assert not totals.year_end.complete
     assert not totals.any_time.complete
+
+
+@pytest.mark.parametrize("kind", ["amount", "date", "anchor"])
+def test_missing_transaction_evidence_never_produces_a_complete_annual_bound(kind):
+    from datetime import date
+    from decimal import Decimal
+
+    from test_reconcile_edges import obs
+
+    from cross_border_fbar.reconcile.accounts import reconcile
+
+    amount = None if kind == "amount" else Decimal(1000)
+    day = None if kind == "date" else date(2025, 5, 1)
+    opening = None if kind == "anchor" else Decimal(1000)
+    page = obs(
+        "year",
+        date(2025, 1, 1),
+        date(2025, 12, 31),
+        opening,
+        Decimal(1000),
+        [(day, amount, None)],
+        currency="USD",
+    )
+    (account,) = reconcile([page], {"ACC1": Intake("sole", True)}, {}, 2025)
+    assert account.max_value_usd is not None
+    assert not account.annual_max_complete
+    totals = form8938_totals([account], Household("single", False), {})
+    assert totals.any_time.result == "incomplete"
+    assert totals.year_end.result == "not_above"

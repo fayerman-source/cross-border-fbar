@@ -311,3 +311,37 @@ def test_spacing_and_case_alone_are_one_name():
     (r,) = reconcile(_named(year_of(), ["Siam  Lotus Bank", "siam lotus bank"] * 6), SOLE, RATES, 2025)
     assert "institution_names_differ" not in [f.code for f in r.flags]
     assert r.institutions == ["Siam  Lotus Bank"]
+
+
+def test_unreadable_transaction_fields_preserve_their_source_rows():
+    reading = {
+        name: {"text": text, "status": "read", "bbox": None}
+        for name, text in [
+            ("institution", "Synthetic Bank"),
+            ("currency", "USD"),
+            ("account_number", "ACC1"),
+            ("holder", "Synthetic Holder"),
+            ("period", "01.01.2025 - 31.12.2025"),
+            ("opening_balance", "1,000.00"),
+            ("closing_balance", "1,000.00"),
+        ]
+    }
+    reading["rows"] = [
+        {
+            "date_text": "unreadable",
+            "description": "Synthetic unreadable transaction",
+            "amount_text": "unreadable",
+            "amount_column": "signed",
+            "balance_text": "",
+            "row_bbox": None,
+            "amount_bbox": None,
+            "balance_bbox": None,
+        }
+    ]
+    page = observe(reading, "synthetic-unreadable")
+    assert page.problems == ["row:0:date", "row:0:amount"]
+    (account,) = reconcile([page], SOLE, RATES, 2025)
+    review_items = [flag for flag in account.flags if flag.code == "field_unreadable"]
+    assert len(review_items) == 2
+    assert all(flag.sources[0].ref == "row:0" for flag in review_items)
+    assert not account.annual_max_complete

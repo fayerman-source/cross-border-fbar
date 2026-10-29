@@ -284,11 +284,20 @@ def _max_value(balances: list[Balance]) -> Balance | None:
     return max(balances, key=lambda b: (b.amount, b.kind == "printed", not b.source.ref.startswith("row:")))
 
 
+def _statement_numeric_complete(observation: Observation, previous: Observation | None) -> bool:
+    if observation.lines and _seed(observation, previous)[0] is None:
+        return False
+    return all(line.day is not None and line.amount is not None for line in observation.lines)
+
+
 def _annual_complete(obs, best, intraday, flags, tax_year) -> bool:
     """An annual upper bound requires complete numeric evidence, regardless of review flag tolerance."""
     if best is None or _uncovered(obs, tax_year):
         return False
     if any(o.problems for o in obs):
+        return False
+    previous = [None, *obs[:-1]]
+    if any(not _statement_numeric_complete(o, p) for o, p in zip(obs, previous, strict=True)):
         return False
     if any(f.code in {"arithmetic_mismatch", "continuity_break", "currency_conflict"} for f in flags):
         return False
