@@ -742,6 +742,11 @@ def reconcile(
     for upload, reason in sorted((unread_pages or {}).items()):
         flag = Flag("page_not_read", f"page couldn't be read: {reason}", [Source(upload, "page", None)])
         results.append(_empty_result(f"unread:{upload}", "", False, None, [upload], flag))
+    _classification_review_flags(results)
+    return results
+
+
+def _classification_review_flags(results):
     for result in results:
         if not result.identified:
             continue
@@ -755,4 +760,3 @@ def reconcile(
                     "authority_interest_review", "signature authority and financial interest are both stated"
                 )
             )
-    return results

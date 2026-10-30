@@ -113,6 +113,27 @@ class ReviewError(Exception):
     pass
 
 
+def _account_context(worksheet, key):
+    matches = []
+
+    def collect(value, path):
+        if isinstance(value, dict):
+            if value.get("key") == key or value.get("account") == key:
+                matches.append((path, value))
+                return
+            for name, child in value.items():
+                if name == key:
+                    matches.append((f"{path}/{name}", child))
+                else:
+                    collect(child, f"{path}/{name}")
+        elif isinstance(value, list):
+            for child in value:
+                collect(child, path)
+
+    collect(worksheet, "worksheet")
+    return matches
+
+
 class Review:
     def __init__(self, inputs: Inputs, review_dir: Path, root: Path | None = None):
         self.inputs = inputs
@@ -164,23 +185,7 @@ class Review:
         # Discover complete account-keyed objects instead of maintaining per-field allowlists.
         # Lists keep their structural path rather than an index, so another account's insertion
         # doesn't invalidate this account's review.
-        matches = []
-
-        def collect(value, path):
-            if isinstance(value, dict):
-                if value.get("key") == key or value.get("account") == key:
-                    matches.append((path, value))
-                    return
-                for name, child in value.items():
-                    if name == key:
-                        matches.append((f"{path}/{name}", child))
-                    else:
-                        collect(child, f"{path}/{name}")
-            elif isinstance(value, list):
-                for child in value:
-                    collect(child, path)
-
-        collect(self.worksheet, "worksheet")
+        matches = _account_context(self.worksheet, key)
         panel = self.worksheet["form8938"]
         # Exclude only account containers and aggregate results; new shared fields count by default.
         shared = {

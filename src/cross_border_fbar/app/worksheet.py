@@ -82,6 +82,17 @@ def load_observations(inp: Inputs) -> tuple[list, dict[str, str]]:
     return observations, unread
 
 
+def _effective_intake(document, ownership_overrides, interest_overrides):
+    intake = dict(document.accounts)
+    for key, ownership in (ownership_overrides or {}).items():
+        stated = intake.get(key, Intake("unknown"))
+        intake[key] = replace(stated, ownership=ownership)
+    for key, correction in (interest_overrides or {}).items():
+        stated = intake.get(key, Intake("unknown"))
+        intake[key] = replace(stated, financial_interest=correction["value"])
+    return intake
+
+
 def build(
     inp: Inputs,
     ownership_overrides: dict[str, str] | None = None,
@@ -93,13 +104,7 @@ def build(
     ownership_details: dict | None = None,
 ) -> dict:
     intake_doc = IntakeDocument.from_dict(json.loads(inp.intake.read_text()))
-    intake = dict(intake_doc.accounts)
-    for key, ownership in (ownership_overrides or {}).items():
-        stated = intake.get(key, Intake("unknown"))
-        intake[key] = replace(stated, ownership=ownership)
-    for key, correction in (interest_overrides or {}).items():
-        stated = intake.get(key, Intake("unknown"))
-        intake[key] = replace(stated, financial_interest=correction["value"])
+    intake = _effective_intake(intake_doc, ownership_overrides, interest_overrides)
     year_rates = rates.load(inp.tax_year)
     observations, unread = load_observations(inp)
     observations = [part for page in observations for part in split_by_row_account(page)]

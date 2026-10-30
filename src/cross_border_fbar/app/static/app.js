@@ -150,7 +150,10 @@ function renderAccounts(signed) {
 function exactUsd(value, unknown) {
   if (value === null || value === undefined) return unknown;
   const [whole, fraction] = value.split(".");
-  return `$${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}${fraction === undefined ? "" : `.${fraction}`}`;
+  const groups = [];
+  for (let end = whole.length; end > 0; end -= 3) groups.push(whole.slice(Math.max(0, end - 3), end));
+  const decimals = fraction === undefined ? "" : "." + fraction;
+  return "$" + groups.reverse().join(",") + decimals;
 }
 
 function form8938Sources(row, field, label) {
@@ -168,7 +171,7 @@ function form8938Account(row, panel) {
   const children = [el("h4", {}, displayName),
     el("p", {}, labels[row.inclusion], row.reason ? ` · ${row.reason}` : "")];
   if (row.year_end) {
-    children.push(el("p", {}, `${labels[row.share]}${row.share_note ? ` · ${row.share_note}` : ""}`));
+    children.push(el("p", {}, labels[row.share] + (row.share_note ? " · " + row.share_note : "")));
     for (const [field, label] of [["year_end", labels.year_end], ["maximum", labels.maximum_sources]]) {
       const range = row[field];
       children.push(el("p", { class: "bound-values" }, `${label}: ${exactUsd(range.display_low_usd, labels.unknown)} to ${exactUsd(range.display_high_usd, labels.unknown)}`));
@@ -199,8 +202,8 @@ function form8938Account(row, panel) {
   }
   children.push(el("p", {}, `Classification: ${row.ownership}; financial interest: ${String(row.financial_interest ?? labels.missing_intake)}. `,
     `Intake: ${panel.intake_source || labels.missing_intake}. `,
-    stated ? `Joint with spouse: ${String(stated.joint_with_spouse ?? labels.missing_intake)}. Corrections: see audit trail.` : "No account intake record."));
-  children.push(...row.reviews.map((note) => el("p", { class: "hint" }, note)),
+    stated ? `Joint with spouse: ${String(stated.joint_with_spouse ?? labels.missing_intake)}. Corrections: see audit trail.` : "No account intake record."),
+    ...row.reviews.map((note) => el("p", { class: "hint" }, note)),
     form8938Sources(row, "upload_sources", "Uploaded pages"),
     form8938Sources(row, "year_end_sources", labels.year_end_sources),
     form8938Sources(row, "maximum_sources", labels.maximum_sources));
