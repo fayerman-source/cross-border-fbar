@@ -255,13 +255,17 @@ def test_an_unread_page_is_named_by_upload_and_never_added_to_totals():
     page.uploads = ["pages/synthetic-unread.png"]
     totals = form8938_totals([acct("A", 1000, 1000), page], Household("single", False), {})
     assert totals.year_end.result == "incomplete"
-    assert list(totals.unresolved_accounts) == ["pages/synthetic-unread.png"]
+    assert list(totals.unresolved_accounts) == [page.account_key]
+    assert page.uploads == ["pages/synthetic-unread.png"]
     assert totals.year_end.low_usd == 1000
 
 
 def test_known_no_interest_accounts_do_not_make_the_tests_incomplete():
     totals = form8938_totals(
-        [acct("A", 1000, 1000), acct("PARENTS", 900000, 900000, interest=False)],
+        [
+            acct("A", 1000, 1000),
+            acct("PARENTS", 900000, 900000, ownership="signature_authority", interest=False),
+        ],
         Household("single", False),
         {},
     )
@@ -592,3 +596,26 @@ def test_repeating_exchange_rates_preserve_bounds_through_conversion_and_aggrega
     totals = form8938_totals(accounts, Household("single", False), {})
     assert Fraction(totals.year_end.low_usd) <= 1
     assert Fraction(totals.year_end.high_usd) >= 1
+
+
+@pytest.mark.parametrize(
+    "status,ownership", [(None, "joint"), ("mfs", "unknown"), ("mfs", "signature_authority")]
+)
+def test_unknown_status_or_ownership_does_not_overstate_a_joint_spouse_lower_bound(status, ownership):
+    account = acct("J", 300_000, 200_000, ownership=ownership)
+    totals = form8938_totals([account], Household(status, True, True), {})
+    assert totals.year_end.low_usd == 100_000
+    assert totals.year_end.high_usd == 200_000
+    assert totals.any_time.low_usd == 150_000
+    assert totals.any_time.high_usd == 300_000
+    assert any("share not established" in note for note in totals.notes)
+
+
+@pytest.mark.parametrize("ownership", ["sole", "joint"])
+def test_conflicting_owner_and_no_interest_is_unresolved_instead_of_excluded(ownership):
+    conflicting = acct("QUESTION", 900_000, 800_000, ownership=ownership, interest=False)
+    totals = form8938_totals([acct("A", 1000, 1000), conflicting], Household("single", False), {})
+    assert totals.year_end.low_usd == 1000
+    assert totals.year_end.high_usd is None
+    assert totals.year_end.result == "incomplete"
+    assert totals.unresolved_accounts["QUESTION"] == "ownership and financial interest need clarification"

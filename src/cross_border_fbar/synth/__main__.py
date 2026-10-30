@@ -211,6 +211,11 @@ def generate(out: Path, seed: int, png: bool, dpi: int, threshold_usd: int) -> d
     intake = {
         "client": truth["client"]["name"],
         "source": "synthetic intake call script (fictional)",
+        "household": {
+            "filing_status": "mfs",
+            "lives_abroad": True,
+            "spouse_specified_individual": False,
+        },
         "accounts": [
             {
                 "account_number": a["account_number"],

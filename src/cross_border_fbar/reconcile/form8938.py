@@ -24,7 +24,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal, localcontext
 
-from .accounts import AccountResult, Intake, ValueBounds
+from .accounts import AccountResult, ValueBounds
+from .intake import FILING_STATUSES, Household, Intake
 
 # (lives_abroad, joint_return) -> (last day of the year, any time during the year), each "more than".
 THRESHOLDS = {
@@ -33,16 +34,6 @@ THRESHOLDS = {
     (True, False): (200_000, 300_000),
     (True, True): (400_000, 600_000),
 }
-FILING_STATUSES = {"single", "mfj", "mfs", "hoh", "qss"}
-
-
-@dataclass
-class Household:
-    """What the client or CPA states; statements don't say it."""
-
-    filing_status: str | None = None  # single | mfj | mfs | hoh | qss
-    lives_abroad: bool | None = None  # foreign tax home and a presence-abroad test met; the CPA decides
-    spouse_specified_individual: bool | None = None  # only matters when filing separately
 
 
 @dataclass
@@ -64,6 +55,7 @@ class Form8938Totals:
     halved: list[str]  # joint with a spouse filing separately, both specified individuals
     notes: list[str] = field(default_factory=list)
     unresolved_accounts: dict[str, str] = field(default_factory=dict)
+    contributions: list[_AccountValue] = field(default_factory=list)
 
 
 def _share_bound(usd: Decimal, half: bool, *, upper: bool) -> Decimal:
@@ -85,6 +77,7 @@ def _result(threshold: int | None, low: Decimal, high: Decimal | None) -> str:
 
 @dataclass(frozen=True)
 class _AccountValue:
+    key: str
     number: str
     year_end_low: Decimal
     year_end_high: Decimal | None
@@ -100,14 +93,15 @@ def _select_accounts(
     counted, excluded, unresolved = [], {}, {}
     for account in accounts:
         if not account.identified:
-            label = account.account_number or ", ".join(account.uploads) or account.account_key
-            unresolved[label] = "account could not be identified or page could not be read"
+            unresolved[account.account_key] = "account could not be identified or page could not be read"
             continue
-        if account.financial_interest is False:
-            excluded[account.account_number] = "no financial interest"
+        if account.ownership in {"sole", "joint"} and account.financial_interest is False:
+            unresolved[account.account_key] = "ownership and financial interest need clarification"
+        elif account.financial_interest is False:
+            excluded[account.account_key] = "no financial interest"
         elif account.financial_interest is None:
-            excluded[account.account_number] = "financial interest not stated"
-            unresolved[account.account_number] = "financial interest not stated"
+            excluded[account.account_key] = "financial interest not stated"
+            unresolved[account.account_key] = "financial interest not stated"
         else:
             counted.append(account)
     return counted, excluded, unresolved
@@ -116,15 +110,26 @@ def _select_accounts(
 def _joint_share(
     account: AccountResult, household: Household, intake: dict[str, Intake]
 ) -> tuple[bool, bool, str | None]:
-    if household.filing_status != "mfs" or account.ownership != "joint":
+    # Unknown filing status or ownership can still be a separately filing joint spouse.
+    # Do not overstate a lower bound just because a necessary intake answer is absent.
+    if household.filing_status in FILING_STATUSES - {"mfs"} or account.ownership == "sole":
         return False, False, None
     joint_with_spouse = intake.get(account.account_key, Intake("unknown")).joint_with_spouse
     specified = household.spouse_specified_individual
     if joint_with_spouse is False or specified is False:
         return False, False, None
-    if joint_with_spouse is True and specified is True:
+    if (
+        household.filing_status == "mfs"
+        and account.ownership == "joint"
+        and joint_with_spouse is True
+        and specified is True
+    ):
         return True, True, None
     missing = []
+    if household.filing_status not in FILING_STATUSES:
+        missing.append("filing status")
+    if account.ownership != "joint":
+        missing.append("whether the account is jointly owned")
     if joint_with_spouse is None:
         missing.append("whether the joint owner is a spouse")
     if specified is None:
@@ -145,6 +150,7 @@ def _account_value(account: AccountResult, household: Household, intake: dict[st
     year_end = account.year_end_bounds or ValueBounds(0, None)
     maximum = account.maximum_bounds or ValueBounds(0, None)
     return _AccountValue(
+        account.account_key,
         account.account_number,
         _share_bound(year_end.low_usd, lower_half, upper=False),
         _share_bound(year_end.high_usd, upper_half, upper=True) if year_end.high_usd is not None else None,
@@ -192,12 +198,13 @@ def form8938_totals(
     return Form8938Totals(
         year_end=_test(year_end_t, year_end_sum, year_end_upper),
         any_time=_test(any_time_t, max(year_end_sum, largest_max), max_upper),
-        accounts_counted=[account.account_number for account in counted],
+        accounts_counted=[account.account_key for account in counted],
         accounts_without_value=[
-            value.number for value in values if value.year_end_high is None or value.maximum_high is None
+            value.key for value in values if value.year_end_high is None or value.maximum_high is None
         ],
         excluded=excluded,
-        halved=[value.number for value in values if value.half],
+        halved=[value.key for value in values if value.half],
         notes=notes,
         unresolved_accounts=unresolved,
+        contributions=values,
     )
