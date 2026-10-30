@@ -10,17 +10,18 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from pathlib import Path
 
 from .. import rates
-from ..extract.parse import account_key
 from ..extract.snap import snap_rows
 from ..reconcile.accounts import AccountResult, Flag, Intake, reconcile, split_by_row_account
 from ..reconcile.fbar import FBAR_AGGREGATE_USD, fbar_totals
 from ..reconcile.flags import CATALOG
+from ..reconcile.intake import IntakeDocument
 from ..reconcile.observe import Source, observe
+from .form8938 import build_panel
 
 SCOPE_LINE = "Balances, thresholds and review flags only. Not tax advice; every flag needs a CPA's review."
 
@@ -88,17 +89,17 @@ def build(
     *,
     rate_overrides: dict | None = None,
     currency_overrides: dict | None = None,
+    interest_overrides: dict | None = None,
+    ownership_details: dict | None = None,
 ) -> dict:
-    intake_doc = json.loads(inp.intake.read_text())
-    intake = {
-        account_key(a["account_number"]): Intake(
-            a["ownership"], a.get("financial_interest"), a["account_number"]
-        )
-        for a in intake_doc["accounts"]
-    }
+    intake_doc = IntakeDocument.from_dict(json.loads(inp.intake.read_text()))
+    intake = dict(intake_doc.accounts)
     for key, ownership in (ownership_overrides or {}).items():
-        number = intake[key].account_number if key in intake else ""
-        intake[key] = Intake(ownership, ownership != "signature_authority", number)
+        stated = intake.get(key, Intake("unknown"))
+        intake[key] = replace(stated, ownership=ownership)
+    for key, correction in (interest_overrides or {}).items():
+        stated = intake.get(key, Intake("unknown"))
+        intake[key] = replace(stated, financial_interest=correction["value"])
     year_rates = rates.load(inp.tax_year)
     observations, unread = load_observations(inp)
     observations = [part for page in observations for part in split_by_row_account(page)]
@@ -141,6 +142,8 @@ def build(
                 }
             )
         account = _account(r, year_rates, intake, acct_flags, account_rates.get(r.account_key))
+        if r.account_key in (ownership_overrides or {}):
+            account["ownership_source"] = "review_correction"
         account["currency_correction"] = (currency_overrides or {}).get(r.account_key)
         account["observed_currencies"] = sorted(
             {o.currency for o in observations if o.account_key == r.account_key and o.currency}
@@ -151,9 +154,25 @@ def build(
             if observation.account_key == r.account_key
         )
         accounts.append(account)
+    panel = build_panel(results, intake_doc, intake, _source)
+    account_views = {account["key"]: account for account in accounts}
+    for row in panel["accounts"]:
+        account = account_views[row["key"]]
+        row["rate"] = {
+            "currency": account["currency"],
+            "units_per_usd": account["rate"],
+            "date": account["rate_date"],
+            "source": account["rate_source"],
+            "basis": account["rate_basis"],
+        }
+    panel["corrections"] = {
+        "ownership": ownership_details or {},
+        "financial_interest": interest_overrides or {},
+    }
     return {
         "tax_year": inp.tax_year,
-        "client": intake_doc.get("client"),
+        "client": intake_doc.client,
+        "form8938": panel,
         "scope": SCOPE_LINE,
         "reader": {"model": readings_meta.get("model"), "prompt": readings_meta.get("prompt")},
         "rates": {

@@ -50,7 +50,9 @@ SUMMARY_PHRASES = {
 
 # Client-facing descriptions of review items; the model translates these, never the CPA's notes.
 CLIENT_LABELS = {
-    code: definition.client_phrase for code, definition in CATALOG.items() if definition.severity == "review"
+    code: definition.client_phrase
+    for code, definition in CATALOG.items()
+    if definition.severity == "review" and not definition.preparer_only
 }
 
 
@@ -126,6 +128,8 @@ class Review:
         )
         self.state.setdefault("rates", {})
         self.state.setdefault("currencies", {})
+        self.state.setdefault("interest", {})
+        self.state.setdefault("ownership_details", {})
         self.worksheet = self._build()
         self._revalidate_signoff()
 
@@ -135,6 +139,8 @@ class Review:
             self.state["overrides"],
             rate_overrides=self.state["rates"],
             currency_overrides=self.state["currencies"],
+            interest_overrides=self.state["interest"],
+            ownership_details=self.state["ownership_details"],
         )
 
     def _revalidate_signoff(self) -> None:
@@ -155,15 +161,46 @@ class Review:
 
     # -- views ---------------------------------------------------------------------------------
     def _account_hash(self, key: str) -> str:
-        account = next(a for a in self.worksheet["accounts"] if a["key"] == key)
-        return worksheet_hash(
-            {
-                "client": self.worksheet["client"],
-                "tax_year": self.worksheet["tax_year"],
-                "account": account,
-                "flags": [flag for flag in self.worksheet["flags"] if flag["account"] == key],
+        # Discover complete account-keyed objects instead of maintaining per-field allowlists.
+        # Lists keep their structural path rather than an index, so another account's insertion
+        # doesn't invalidate this account's review.
+        matches = []
+
+        def collect(value, path):
+            if isinstance(value, dict):
+                if value.get("key") == key or value.get("account") == key:
+                    matches.append((path, value))
+                    return
+                for name, child in value.items():
+                    if name == key:
+                        matches.append((f"{path}/{name}", child))
+                    else:
+                        collect(child, f"{path}/{name}")
+            elif isinstance(value, list):
+                for child in value:
+                    collect(child, path)
+
+        collect(self.worksheet, "worksheet")
+        panel = self.worksheet["form8938"]
+        # Exclude only account containers and aggregate results; new shared fields count by default.
+        shared = {
+            k: v for k, v in self.worksheet.items() if k not in {"accounts", "flags", "totals", "form8938"}
+        }
+        shared_panel = {
+            k: v
+            for k, v in panel.items()
+            if k
+            not in {
+                "accounts",
+                "stated_accounts",
+                "effective_accounts",
+                "corrections",
+                "year_end",
+                "any_time",
+                "notes",
             }
-        )
+        }
+        return worksheet_hash({"shared": shared, "panel": shared_panel, "account_context": matches})
 
     def _ack_valid(self, flag: dict) -> bool:
         ack = self.state["acks"].get(flag["id"])
@@ -309,6 +346,12 @@ class Review:
             if before is None:
                 raise ReviewError("That account isn't on this worksheet.")
             self.state["overrides"][account] = ownership
+            self.state["ownership_details"][account] = {
+                "value": ownership,
+                "note": note.strip(),
+                "reviewer": reviewer,
+                "ts": time.time(),
+            }
             self.worksheet = self._build()
             self._audit(
                 "correct_ownership",
@@ -316,6 +359,33 @@ class Review:
                 account=account,
                 before=before,
                 after=ownership,
+                note=note.strip(),
+            )
+
+    def set_financial_interest(self, account: str, value: bool | None, note: str, reviewer: str) -> None:
+        with self.lock:
+            self._require_open()
+            if value is not None and type(value) is not bool:
+                raise ReviewError("Financial interest must be true, false or unknown.")
+            if not note.strip():
+                raise ReviewError("Record the source of the financial interest correction.")
+            row = next((a for a in self.worksheet["accounts"] if a["key"] == account), None)
+            if row is None or not row["identified"]:
+                raise ReviewError("Select an identified account on this worksheet.")
+            before = row["financial_interest"]
+            self.state["interest"][account] = {
+                "value": value,
+                "note": note.strip(),
+                "reviewer": reviewer,
+                "ts": time.time(),
+            }
+            self.worksheet = self._build()
+            self._audit(
+                "correct_financial_interest",
+                reviewer,
+                account=account,
+                before=before,
+                after=value,
                 note=note.strip(),
             )
 
@@ -366,7 +436,13 @@ class Review:
                     and f["code"] in {"account_number_masked", "account_unidentified", "page_not_read"}
                 )
                 continue
-            reviews = [f for f in ws["flags"] if f["id"] in a["flags"] and f["severity"] == "review"]
+            reviews = [
+                f
+                for f in ws["flags"]
+                if f["id"] in a["flags"]
+                and f["severity"] == "review"
+                and not CATALOG[f["code"]].preparer_only
+            ]
             digits = re.sub(r"\D", "", a["account_number"])
             amount = a["max"]["amount"] if a["max"] else None
             facts.append(

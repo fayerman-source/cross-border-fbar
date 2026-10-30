@@ -19,8 +19,9 @@ from pathlib import Path
 from .. import rates
 from ..extract.parse import account_key
 from ..extract.snap import snap_rows
-from ..reconcile.accounts import Intake, reconcile
+from ..reconcile.accounts import reconcile
 from ..reconcile.fbar import fbar_totals
+from ..reconcile.intake import IntakeDocument
 from ..reconcile.observe import observe
 
 RESULTS = Path(__file__).resolve().parents[3] / "results"
@@ -76,10 +77,7 @@ def evaluate(set_dir: Path, model: str) -> dict:
             continue
         observations.append(observe(page["reading"], upload, snap_rows(page["reading"], image)))
 
-    intake = {
-        account_key(a["account_number"]): Intake(a["ownership"], a["financial_interest"], a["account_number"])
-        for a in truth["accounts"]
-    }
+    intake = IntakeDocument.from_dict({"accounts": truth["accounts"]}).accounts
     results = reconcile(
         observations,
         intake,

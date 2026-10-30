@@ -11,6 +11,7 @@ class FlagDefinition:
     cpa_action: str
     title: str
     client_phrase: str
+    preparer_only: bool = False
 
 
 CATALOG = MappingProxyType(
@@ -156,6 +157,22 @@ CATALOG = MappingProxyType(
             "Confirm and record whether your client has financial interest.",
             "Financial interest not recorded",
             "whether you have a financial interest in accounts you can sign on",
+        ),
+        "ownership_interest_conflict": FlagDefinition(
+            "review",
+            "Intake or correction states sole or joint ownership and no financial interest.",
+            "Review the stated classification and correct the relevant fact with its source.",
+            "Ownership and financial interest need clarification",
+            "",
+            preparer_only=True,
+        ),
+        "authority_interest_review": FlagDefinition(
+            "review",
+            "Signature authority and financial interest are both stated.",
+            "Review the stated classification and its source; both facts can coexist.",
+            "Signature authority and financial interest",
+            "",
+            preparer_only=True,
         ),
         "ownership_unknown": FlagDefinition(
             "review",

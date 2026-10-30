@@ -165,6 +165,9 @@ class Handler(BaseHTTPRequestHandler):
             "/api/ownership": lambda: review.set_ownership(
                 body["account"], body["ownership"], str(body.get("note", "")), who
             ),
+            "/api/interest": lambda: review.set_financial_interest(
+                body["account"], body["value"], str(body.get("note", "")), who
+            ),
             "/api/signoff": lambda: review.sign_off(who, str(body.get("initials", ""))),
             "/api/summary/draft": lambda: review.draft_summary(translate_phrases),
             "/api/summary/approve": lambda: review.approve_summary(

@@ -23,17 +23,8 @@ from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal, localcontext
 from ..extract.parse import account_key, normalize_name
 from ..rates import Rate
 from .flags import CATALOG
+from .intake import Intake
 from .observe import Observation, Source, most_common
-
-
-@dataclass(frozen=True)
-class Intake:
-    """What the client or CPA states about an account; statements rarely say it."""
-
-    ownership: str  # sole | joint | signature_authority | unknown
-    financial_interest: bool | None = None
-    account_number: str = ""  # as the client gave it; shown when no statement for the account was read
-    joint_with_spouse: bool | None = None  # Form 8938 only: halves the value for some separate filers
 
 
 @dataclass
@@ -87,6 +78,8 @@ class AccountResult:
     annual_max_complete: bool = False  # a single annual value, independent of presentation flag tolerance
     maximum_bounds: ValueBounds | None = None
     year_end_bounds: ValueBounds | None = None
+    year_end_sources: list[Source] = field(default_factory=list)
+    maximum_sources: list[Source] = field(default_factory=list)
 
 
 def usd_ceiling(amount: Decimal, rate: Rate) -> int:
@@ -403,6 +396,26 @@ def _maximum_bounds(balances, intraday, rate, bounded, conflicts, flags) -> Valu
     )
 
 
+def _evidence_sources(observations, tax_year, *, year_end):
+    """Candidate evidence, including unreadable fields and conflicting readings.
+
+    Annual bounds can depend on anchors and every transaction, not just the largest printed balance.
+    Year-end evidence uses its own period, currency and closing fields, never a maximum's source.
+    """
+    sources = {}
+    for observation in observations:
+        if year_end and observation.period_end not in (None, date(tax_year, 12, 31)):
+            continue
+        names = ("period", "currency", "closing_balance") if year_end else tuple(observation.sources)
+        for name in names:
+            source = observation.sources.get(name, Source(observation.upload, name, None))
+            sources[(source.upload, source.ref)] = source
+        if not year_end:
+            for line in observation.lines:
+                sources[(line.source.upload, line.source.ref)] = line.source
+    return list(sources.values())
+
+
 def _year_end_evidence(observations, tax_year, rate) -> tuple[Decimal | None, ValueBounds | None]:
     ending = [o for o in observations if o.period_end == date(tax_year, 12, 31)]
     readable = [o for o in ending if o.closing is not None]
@@ -610,6 +623,8 @@ def reconcile_account(
         annual_max_complete=annual_max_complete,
         maximum_bounds=maximum_bounds,
         year_end_bounds=year_end_bounds,
+        year_end_sources=_evidence_sources(obs, tax_year, year_end=True),
+        maximum_sources=_evidence_sources(obs, tax_year, year_end=False),
     )
 
 
@@ -727,4 +742,17 @@ def reconcile(
     for upload, reason in sorted((unread_pages or {}).items()):
         flag = Flag("page_not_read", f"page couldn't be read: {reason}", [Source(upload, "page", None)])
         results.append(_empty_result(f"unread:{upload}", "", False, None, [upload], flag))
+    for result in results:
+        if not result.identified:
+            continue
+        if result.ownership in {"sole", "joint"} and result.financial_interest is False:
+            result.flags.append(
+                Flag("ownership_interest_conflict", "ownership and financial interest need clarification")
+            )
+        elif result.ownership == "signature_authority" and result.financial_interest is True:
+            result.flags.append(
+                Flag(
+                    "authority_interest_review", "signature authority and financial interest are both stated"
+                )
+            )
     return results

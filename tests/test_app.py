@@ -65,13 +65,15 @@ def test_sign_off_needs_every_review_item_and_then_freezes(review):
     assert actions[-1] == "sign_off"
 
 
-def test_ownership_correction_recomputes_and_adds_its_review_item(review):
+def test_ownership_correction_preserves_financial_interest_and_shows_review(review):
     acct = next(a for a in review.worksheet["accounts"] if a["ownership"] == "sole" and a["max"])
-    before = len(review.open_review_flags())
     review.set_ownership(acct["key"], "signature_authority", "client clarified by email", "A. Rivera")
+    row = next(a for a in review.worksheet["form8938"]["accounts"] if a["key"] == acct["key"])
     codes = {f["code"] for f in review.worksheet["flags"] if f["account"] == acct["key"]}
-    assert "signature_authority_only" in codes
-    assert len(review.open_review_flags()) == before + 1
+    assert "signature_authority_only" not in codes
+    assert row["financial_interest"] is True
+    assert row["inclusion"] == "included"
+    assert any("signature authority and financial interest" in note for note in row["reviews"])
     assert review.audit_tail(1)[0]["after"] == "signature_authority"
 
 
@@ -287,7 +289,9 @@ def test_every_flag_emitted_anywhere_is_in_the_catalog_and_no_catalog_entry_is_d
                 assert isinstance(node.args[0], ast.Constant), f"dynamic flag code in {path}"
                 raised.add(node.args[0].value)
     assert raised == set(CATALOG)
-    assert CLIENT_LABELS == {k: v.client_phrase for k, v in CATALOG.items() if v.severity == "review"}
+    assert CLIENT_LABELS == {
+        k: v.client_phrase for k, v in CATALOG.items() if v.severity == "review" and not v.preparer_only
+    }
     for definition in CATALOG.values():
         assert ";" not in definition.client_phrase
         assert "the client" not in definition.client_phrase
@@ -297,7 +301,7 @@ def test_every_flag_emitted_anywhere_is_in_the_catalog_and_no_catalog_entry_is_d
                 definition.condition,
                 definition.cpa_action,
                 definition.title,
-                definition.client_phrase,
+                definition.client_phrase or definition.preparer_only,
             )
         )
 
@@ -750,3 +754,117 @@ def test_unreadable_currency_keeps_a_correction_available_with_one_observed_unit
     corrected = next(row for row in review.worksheet["accounts"] if row["key"] == account["key"])
     assert corrected["max_usd"] == 199100
     assert corrected["currency_correction"]["note"] == "currency verified from the synthetic source"
+
+
+def test_form8938_panel_uses_distinct_evidence_and_account_keys(inputs):
+    panel = build(inputs)["form8938"]
+    assert panel["household"]["filing_status"] == "mfs"
+    assert panel["intake_source"] == "synthetic intake call script (fictional)"
+    checking = next(row for row in panel["accounts"] if row["number"] == "110-482-913746")
+    assert checking["key"] in panel["effective_accounts"]
+    assert checking["inclusion"] == "included"
+    assert checking["rate"]["units_per_usd"] == "1443.75"
+    assert checking["rate"]["source"]
+    assert checking["year_end_sources"]
+    assert all("2025-12" in source["upload"] for source in checking["year_end_sources"])
+    assert any(source["ref"] == "closing_balance" for source in checking["year_end_sources"])
+    assert any("2025-03" in source["upload"] for source in checking["maximum_sources"])
+    assert isinstance(panel["year_end"]["low_usd"], str)
+    assert panel["year_end"]["high_usd"] is None
+    assert any(row["uploads"] for row in panel["accounts"] if row["inclusion"] == "unresolved")
+
+
+def test_field_corrections_preserve_other_intake_facts_and_record_source(inputs, tmp_path):
+    doc = json.loads(inputs.intake.read_text())
+    account = next(a for a in doc["accounts"] if a["ownership"] == "joint")
+    account["joint_with_spouse"] = True
+    account["review_metadata"] = "retained"
+    path = tmp_path / "intake.json"
+    path.write_text(json.dumps(doc))
+    review = Review(Inputs(inputs.set_dir, inputs.readings, path), tmp_path / "review", root=tmp_path)
+    key = next(
+        k
+        for k, item in review.worksheet["form8938"]["effective_accounts"].items()
+        if item["account_number"] == account["account_number"]
+    )
+    review.set_ownership(key, "signature_authority", "corrected from synthetic intake", "CPA")
+    effective = review.worksheet["form8938"]["effective_accounts"][key]
+    assert effective["financial_interest"] is True
+    assert effective["joint_with_spouse"] is True
+    assert effective["metadata"]["review_metadata"] == "retained"
+    assert (
+        review.worksheet["form8938"]["corrections"]["ownership"][key]["note"]
+        == "corrected from synthetic intake"
+    )
+    flag = next(f for f in review.worksheet["flags"] if f["code"] == "authority_interest_review")
+    assert flag["id"] in review.open_review_flags()
+    assert "authority_interest_review" not in str(review.summary_facts())
+
+
+def test_conflicting_ownership_and_interest_needs_review_until_source_correction(review):
+    account = next(a for a in review.worksheet["accounts"] if a["ownership"] == "signature_authority")
+    review.set_ownership(account["key"], "sole", "synthetic source changed", "CPA")
+    row = next(a for a in review.worksheet["form8938"]["accounts"] if a["key"] == account["key"])
+    assert row["inclusion"] == "unresolved"
+    assert any(f["code"] == "ownership_interest_conflict" for f in review.worksheet["flags"])
+    review.set_financial_interest(account["key"], True, "ownership confirmed from intake", "CPA")
+    row = next(a for a in review.worksheet["form8938"]["accounts"] if a["key"] == account["key"])
+    assert row["inclusion"] == "included"
+    assert review.worksheet["form8938"]["corrections"]["financial_interest"][account["key"]]["note"]
+    assert all(f["code"] != "ownership_interest_conflict" for f in review.worksheet["flags"])
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [("filing_status", "single"), ("lives_abroad", False), ("spouse_specified_individual", True)],
+)
+def test_each_household_change_invalidates_signed_worksheet(inputs, tmp_path, field, value):
+    doc = json.loads(inputs.intake.read_text())
+    path = tmp_path / "intake.json"
+    path.write_text(json.dumps(doc))
+    local_inputs = Inputs(inputs.set_dir, inputs.readings, path)
+    review = Review(local_inputs, tmp_path / "review", root=tmp_path)
+    for fid in review.open_review_flags():
+        review.acknowledge(fid, "reviewed", "CPA")
+    review.sign_off("CPA", "CP")
+    doc["household"][field] = value
+    path.write_text(json.dumps(doc))
+    restarted = Review(local_inputs, review.dir, root=tmp_path)
+    assert restarted.state["signoff"] is None
+    assert restarted.state["invalidated_signoffs"]
+
+
+def test_acknowledgement_reopens_when_derived_8938_account_row_changes(review):
+    import copy
+
+    flag_id = review.open_review_flags()[0]
+    review.acknowledge(flag_id, "reviewed prior context", "CPA")
+    flag = next(item for item in review.worksheet["flags"] if item["id"] == flag_id)
+    row = next(item for item in review.worksheet["form8938"]["accounts"] if item["key"] == flag["account"])
+    original = copy.deepcopy(row)
+    for field in original:
+        row[field] = {"changed": field}
+        assert flag_id in review.open_review_flags(), field
+        row[field] = copy.deepcopy(original[field])
+        assert flag_id not in review.open_review_flags(), field
+
+
+def test_account_correction_reopens_only_that_accounts_acknowledgements(review):
+    flags = review.worksheet["flags"]
+    first = next(f for f in flags if f["severity"] == "review")
+    second = next(f for f in flags if f["severity"] == "review" and f["account"] != first["account"])
+    review.acknowledge(first["id"], "reviewed A", "CPA")
+    review.acknowledge(second["id"], "reviewed B", "CPA")
+    row = next(a for a in review.worksheet["form8938"]["accounts"] if a["key"] == first["account"])
+    row["reason"] = "changed account A context"
+    assert first["id"] in review.open_review_flags()
+    assert second["id"] not in review.open_review_flags()
+    review.worksheet["form8938"]["household"]["filing_status"] = "single"
+    assert second["id"] in review.open_review_flags()
+
+
+def test_new_shared_worksheet_context_invalidates_existing_acknowledgement(review):
+    flag_id = review.open_review_flags()[0]
+    review.acknowledge(flag_id, "reviewed before new context", "CPA")
+    review.worksheet["new_shared_context"] = {"added_fact": "material"}
+    assert flag_id in review.open_review_flags()

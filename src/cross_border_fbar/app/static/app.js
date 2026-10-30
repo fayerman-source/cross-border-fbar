@@ -6,7 +6,7 @@ let state = null;
 let selected = null; // key of the traced figure or chip currently shown
 
 const OWNERSHIP = { sole: "Owner", joint: "Joint owner", signature_authority: "Sig. authority", unknown: "Not stated" };
-const OWNERSHIP_LONG = { sole: "owner", joint: "joint owner", signature_authority: "signature authority only" };
+const OWNERSHIP_LONG = { sole: "owner", joint: "joint owner", signature_authority: "signature authority" };
 
 function money(amount, ccy) {
   if (amount === null || amount === undefined) return null;
@@ -113,6 +113,7 @@ function render() {
   renderHeader(signed);
   renderAccounts(signed);
   renderItems(signed);
+  renderForm8938();
   renderSignoff(signed);
   renderAudit();
 }
@@ -143,6 +144,91 @@ function renderAccounts(signed) {
   const r0 = Object.values(ws.rates)[0] || { record_date: "", source: "#" };
   $("rate-note").replaceChildren(`Treasury Reporting Rates of Exchange, ${r0.record_date}, foreign units per USD; USD rounded up. `,
     el("a", { href: r0.source, target: "_blank", rel: "noopener" }, "Source query"));
+}
+
+// Form 8938 values are server-calculated Decimal strings. Never coerce them to Number.
+function exactUsd(value, unknown) {
+  if (value === null || value === undefined) return unknown;
+  const [whole, fraction] = value.split(".");
+  return `$${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}${fraction === undefined ? "" : `.${fraction}`}`;
+}
+
+function form8938Sources(row, field, label) {
+  const sources = row[field];
+  return el("details", {}, el("summary", {}, `${label} (${sources.length})`),
+    sources.length ? el("ul", { class: "evidence-list" }, ...sources.map((source, index) =>
+      el("li", {}, el("button", { type: "button", class: "source", onclick: () =>
+        show([source], `8938-${row.key}-${field}-${index}`, label) }, source.wp))))
+      : el("p", {}, "No source line available — review missing evidence."));
+}
+
+function form8938Account(row, panel) {
+  const labels = panel.labels;
+  const displayName = row.number || row.uploads.join(", ") || row.key;
+  const children = [el("h4", {}, displayName),
+    el("p", {}, labels[row.inclusion], row.reason ? ` · ${row.reason}` : "")];
+  if (row.year_end) {
+    children.push(el("p", {}, `${labels[row.share]}${row.share_note ? ` · ${row.share_note}` : ""}`));
+    for (const [field, label] of [["year_end", labels.year_end], ["maximum", labels.maximum_sources]]) {
+      const range = row[field];
+      children.push(el("p", { class: "bound-values" }, `${label}: ${exactUsd(range.display_low_usd, labels.unknown)} to ${exactUsd(range.display_high_usd, labels.unknown)}`));
+    }
+  }
+  if (row.rate.units_per_usd) {
+    children.push(el("p", {}, `Exchange rate: ${row.rate.units_per_usd} ${row.rate.currency || "units"}/USD · ${row.rate.date || "identity"} · ${row.rate.basis || "recorded"} · source: ${row.rate.source || "USD identity"}`));
+  } else children.push(el("p", {}, "Exchange rate unavailable — review."));
+  const stated = panel.effective_accounts[row.key];
+  const corrections = [panel.corrections.ownership[row.key], panel.corrections.financial_interest[row.key]]
+    .filter(Boolean).map((c) => `Correction: ${c.value ?? "unknown"} — ${c.note} (${c.reviewer})`);
+  children.push(...corrections.map((note) => el("p", { class: "hint" }, note)));
+  if (row.identified) {
+    children.push(el("label", {}, "Financial interest correction ", el("select", {
+      "aria-label": `Financial interest of ${row.number}`, disabled: !!state.review.signoff,
+      onchange: async (ev) => {
+        const chosen = ev.target.value;
+        if (!chosen) return;
+        const note = await askNote(`Record source for financial interest of ${row.number}`);
+        if (!note) { render(); return; }
+        try { state = await api("/api/interest", { account: row.key, value: chosen === "unknown" ? null : chosen === "yes", note: note.note, reviewer: reviewer() || "reviewer" }); render(); }
+        catch (e) { toast(e.message); render(); }
+      }
+    }, el("option", { value: "", selected: true }, "Select correction"),
+    el("option", { value: "yes" }, "Financial interest stated"),
+    el("option", { value: "no" }, "No financial interest stated"),
+    el("option", { value: "unknown" }, "Financial interest unknown"))));
+  }
+  children.push(el("p", {}, `Classification: ${row.ownership}; financial interest: ${String(row.financial_interest ?? labels.missing_intake)}. `,
+    `Intake: ${panel.intake_source || labels.missing_intake}. `,
+    stated ? `Joint with spouse: ${String(stated.joint_with_spouse ?? labels.missing_intake)}. Corrections: see audit trail.` : "No account intake record."));
+  children.push(...row.reviews.map((note) => el("p", { class: "hint" }, note)),
+    form8938Sources(row, "upload_sources", "Uploaded pages"),
+    form8938Sources(row, "year_end_sources", labels.year_end_sources),
+    form8938Sources(row, "maximum_sources", labels.maximum_sources));
+  return el("details", { class: "form8938-account" }, el("summary", {}, `${displayName} · ${labels[row.inclusion]}`), ...children);
+}
+
+function renderForm8938() {
+  const panel = state.worksheet.form8938;
+  if (!panel) return;
+  const labels = panel.labels;
+  $("form8938-title").textContent = labels.title;
+  const facts = Object.entries(panel.household_labels).map(([key, label]) =>
+    el("li", {}, `${label}: ${panel.household[key] ?? labels.missing_intake}`));
+  const tests = [["year_end", labels.year_end], ["any_time", labels.any_time]].map(([key, label]) => {
+    const test = panel[key];
+    return el("tr", {}, el("th", { scope: "row" }, label),
+      el("td", { class: "bound-values" }, exactUsd(test.display_low_usd, labels.unknown)),
+      el("td", { class: "bound-values" }, exactUsd(test.display_high_usd, labels.unknown)),
+      el("td", {}, exactUsd(test.threshold_usd, labels.missing_intake)), el("td", {}, test.text));
+  });
+  $("form8938-content").replaceChildren(el("p", {}, labels.scope), el("p", {}, labels.intake),
+    el("p", {}, `Intake source: ${panel.intake_source || labels.missing_intake}`), el("ul", {}, ...facts),
+    el("div", { class: "table-wrap" }, el("table", {}, el("thead", {}, el("tr", {},
+      ...["Test", labels.lower, labels.upper, labels.threshold, labels.review].map((text) => el("th", { scope: "col" }, text)))),
+    el("tbody", {}, ...tests))), el("p", {}, labels.annual), el("p", {}, labels.precision),
+    el("p", {}, labels.year_end_formula), el("p", {}, labels.any_time_formula),
+    ...panel.notes.map((note) => el("p", { class: "hint" }, note)),
+    ...panel.accounts.map((row) => form8938Account(row, panel)));
 }
 
 function renderItems(signed) {
@@ -266,6 +352,14 @@ function chips(f) {
   }));
 }
 
+function classificationContext(panel, account) {
+  const stated = panel.stated_accounts[account];
+  const intake = stated ? `Stated ownership: ${stated.ownership}; financial interest: ${stated.financial_interest ?? "not stated"}. ` : "No account intake record. ";
+  const changes = [panel.corrections.ownership[account], panel.corrections.financial_interest[account]]
+    .filter(Boolean).map((c) => `Correction: ${c.value ?? "unknown"} — ${c.note} (${c.reviewer}). `);
+  return el("p", { class: "hint" }, `Intake source: ${panel.intake_source || "not stated"}. `, intake, ...changes);
+}
+
 function itemRow(f, ack, signed, ws) {
   const title = flagTitle(f);
   const actions = ack
@@ -282,6 +376,8 @@ function itemRow(f, ack, signed, ws) {
       el("p", { class: "item-acct" }, acctLabel(ws, f.account)),
       el("p", { class: "item-msg" }, f.message),
       el("p", { class: "item-do" }, f.cpa_action),
+      ws.form8938 && ["ownership_interest_conflict", "authority_interest_review"].includes(f.code)
+        ? classificationContext(ws.form8938, f.account) : null,
       chips(f)),
     el("div", { class: "item-actions" }, actions),
     ack ? el("p", { class: "ack-note" }, `${ack.note} — ${ack.reviewer}`) : null);
