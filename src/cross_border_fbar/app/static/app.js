@@ -153,7 +153,8 @@ function exactUsd(value, unknown) {
   const groups = [];
   for (let end = whole.length; end > 0; end -= 3) groups.push(whole.slice(Math.max(0, end - 3), end));
   const decimals = fraction === undefined ? "" : "." + fraction;
-  return "$" + groups.reverse().join(",") + decimals;
+  groups.reverse();
+  return "$" + groups.join(",") + decimals;
 }
 
 function form8938Sources(row, field, label) {

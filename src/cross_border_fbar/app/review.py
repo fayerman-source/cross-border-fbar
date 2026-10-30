@@ -113,25 +113,24 @@ class ReviewError(Exception):
     pass
 
 
-def _account_context(worksheet, key):
-    matches = []
-
-    def collect(value, path):
-        if isinstance(value, dict):
-            if value.get("key") == key or value.get("account") == key:
-                matches.append((path, value))
-                return
-            for name, child in value.items():
-                if name == key:
-                    matches.append((f"{path}/{name}", child))
-                else:
-                    collect(child, f"{path}/{name}")
-        elif isinstance(value, list):
-            for child in value:
-                collect(child, path)
-
-    collect(worksheet, "worksheet")
-    return matches
+def _account_context(value, key, path="worksheet"):
+    if isinstance(value, dict):
+        if value.get("key") == key or value.get("account") == key:
+            return [(path, value)]
+        matches = []
+        for name, child in value.items():
+            child_path = f"{path}/{name}"
+            if name == key:
+                matches.append((child_path, child))
+            else:
+                matches.extend(_account_context(child, key, child_path))
+        return matches
+    if isinstance(value, list):
+        matches = []
+        for child in value:
+            matches.extend(_account_context(child, key, path))
+        return matches
+    return []
 
 
 class Review:
