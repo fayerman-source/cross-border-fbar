@@ -182,6 +182,8 @@ def _validate_array(value, schema, path):
 def _validate_schema(value, schema, path="reading"):
     """Reject malformed provider responses before adding a page to the review set."""
     kind = schema.get("type")
+    if kind not in ("object", "array", "string", "integer"):
+        raise ValueError(f"{path} has unsupported schema type {kind!r}")
     if kind == "object":
         _validate_object(value, schema, path)
     elif kind == "array":

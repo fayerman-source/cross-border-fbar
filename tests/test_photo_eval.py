@@ -6,7 +6,7 @@ import pytest
 from PIL import Image
 
 from cross_border_fbar.app.worksheet import Inputs, build
-from cross_border_fbar.eval.photo import _case, _rectify, run
+from cross_border_fbar.eval.photo import _case, _rectify, _validate_schema, run
 from cross_border_fbar.extract.page import FIELD_NAMES
 from cross_border_fbar.llm import Client, SpendCapExceeded
 
@@ -43,6 +43,12 @@ def test_manifest_cannot_read_answer_key_outside_its_directory(tmp_path, referen
     )
     with pytest.raises(ValueError, match="within the manifest directory"):
         _case(manifest, "s", 1)
+
+
+@pytest.mark.parametrize("kind", [None, "number", "boolean", "null", ["string", "null"]])
+def test_unsupported_schema_types_fail_closed(kind):
+    with pytest.raises(ValueError, match="unsupported schema type"):
+        _validate_schema("anything", {"type": kind})
 
 
 @pytest.fixture
