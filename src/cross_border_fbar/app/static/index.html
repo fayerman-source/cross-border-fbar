@@ -33,7 +33,7 @@
                 <th scope="col">Bank</th>
                 <th scope="col">Account</th>
                 <th scope="col">Ownership</th>
-                <th scope="col" class="num">Highest balance</th>
+                <th scope="col" class="num">Highest observed balance</th>
                 <th scope="col" class="num">USD <span class="th-sub">at recorded rate</span></th>
               </tr>
             </thead>
@@ -68,6 +68,13 @@
         <p class="hint" id="signoff-hint"></p>
         <div id="after-signoff" hidden>
           <p class="signed" id="signed-line"></p>
+          <section aria-labelledby="remaining-title">
+            <h3 id="remaining-title">Acknowledged items still present</h3>
+            <p class="hint">Acknowledging an item records review; it does not necessarily resolve the limitation.</p>
+            <ul id="remaining-items"></ul>
+            <h3>Open determinations</h3>
+            <ul id="open-determinations"></ul>
+          </section>
           <p><a href="/api/export" id="export" download="fbar-worksheet-signed.json">Download signed worksheet (JSON)</a></p>
           <div class="client-summary">
             <h3>Client summary in Korean</h3>

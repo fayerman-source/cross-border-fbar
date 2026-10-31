@@ -1,13 +1,15 @@
 """Edge cases from an independent review of the reconciliation (PR #3). Each one failed before its fix."""
 
+from dataclasses import replace
 from datetime import date, timedelta
 from decimal import Decimal as D
 
 import pytest
 
 from cross_border_fbar import rates
-from cross_border_fbar.reconcile.accounts import Intake, reconcile
+from cross_border_fbar.reconcile.accounts import Flag, Intake, reconcile
 from cross_border_fbar.reconcile.fbar import fbar_totals
+from cross_border_fbar.reconcile.flags import CATALOG, FlagDefinition
 from cross_border_fbar.reconcile.observe import Line, Observation, Source, observe, parse_currency
 
 RATES = rates.load(2025)
@@ -104,8 +106,38 @@ def test_unidentified_pages_are_not_counted_in_the_aggregate():
     totals = fbar_totals(results)
     assert totals.aggregate_max_usd == 3526  # 3000 / 0.851, rounded up, counted once
     assert len(totals.unidentified_uploads) == 4
-    assert not totals.above_aggregate_threshold
+    assert totals.above_aggregate_threshold is None
+    assert "unidentified_accounts_or_pages" in totals.threshold_review_reasons
     assert all("account_unidentified" in codes(r) for r in results if not r.identified)
+
+
+def test_below_threshold_is_undetermined_with_missing_values_or_review_items():
+    (known,) = reconcile(year_of(), SOLE, RATES, 2025)
+    assert fbar_totals([known]).above_aggregate_threshold is False
+    missing = replace(known, account_number="ACC2", account_key="ACC2", max_value_usd=None, flags=[])
+    totals = fbar_totals([known, missing])
+    assert totals.above_aggregate_threshold is None
+    assert totals.accounts_without_value == ["ACC2"]
+    assert "accounts_without_value" in totals.threshold_review_reasons
+    gap = replace(known, flags=[Flag("missing_statement", "missing month")])
+    assert fbar_totals([gap]).above_aggregate_threshold is None
+    assert "review_items" in fbar_totals([gap]).threshold_review_reasons
+    above = replace(known, max_value_usd=10001)
+    assert fbar_totals([above, missing]).above_aggregate_threshold is True
+    benign_review = replace(known, flags=[Flag("institution_names_differ", "two names")])
+    assert fbar_totals([benign_review]).above_aggregate_threshold is False
+    authority_review = replace(known, flags=[Flag("signature_authority_only", "signature authority")])
+    assert fbar_totals([authority_review]).above_aggregate_threshold is False
+
+
+def test_every_catalog_flag_explicitly_classifies_aggregate_risk():
+    from inspect import Parameter, signature
+
+    assert signature(FlagDefinition).parameters["may_raise_aggregate"].default is Parameter.empty
+    assert all(type(definition.may_raise_aggregate) is bool for definition in CATALOG.values())
+    assert CATALOG["missing_statement"].may_raise_aggregate
+    assert CATALOG["arithmetic_mismatch"].may_raise_aggregate
+    assert not CATALOG["signature_authority_only"].may_raise_aggregate
 
 
 def test_a_tie_prefers_the_printed_period_end_over_a_line():

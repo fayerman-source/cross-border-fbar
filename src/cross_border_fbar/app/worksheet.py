@@ -230,6 +230,7 @@ def build(
             "threshold_usd": FBAR_AGGREGATE_USD,
             "above_threshold": totals.above_aggregate_threshold,
             "crossing_depends_on_flags": totals.crossing_depends_on_flags,
+            "threshold_review_reasons": totals.threshold_review_reasons,
             "accounts_without_value": totals.accounts_without_value,
             "unidentified_uploads": totals.unidentified_uploads,
         },
