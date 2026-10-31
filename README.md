@@ -1,8 +1,10 @@
 # cross-border-fbar
 
-A local preparer prototype that turns recorded readings of fictional foreign bank statements into an FBAR review worksheet, with figures linked to source pages and lines.
+A local preparer prototype that turns readings of fictional foreign bank statements into an FBAR review worksheet, with figures linked to source pages and lines.
 
-**Status:** early prototype; synthetic data only. The worksheet opens a prepared set and recorded model readings. A command-line photo-evaluation runner can read a new synthetic image or PDF page with Meta Muse Spark, record the response, optionally score it, and add it to a worksheet-ready set. There is no drag-and-drop upload. Live calls require a key and use a shared local spend cap. The open-weights Meta Muse Glimmer model was evaluated separately on the same clean synthetic pages. See [EVAL.md](EVAL.md) for the exact results and limitations.
+**Status:** early prototype; synthetic data only. The worksheet opens prepared, recorded readings; a command-line runner can also read a new synthetic image or PDF page with Meta Muse Spark and add it to a review set. There is no browser upload. New capture locations are unverified and shown without highlights.
+
+**Capture test:** one flatbed scan and one WhatsApp-forwarded photo for each of three synthetic pages. Each condition scored 17/18 header fields and returned 19/19 rows; the one mismatch was the Thai institution name. The same source layouts appeared in the clean evaluation, and capture box placement was not scored. See [EVAL.md](EVAL.md) for per-language counts, costs, and limits.
 
 **Scope:** balances, thresholds and review flags only. It does not give tax advice or say whether anyone must file. The separate Form 8938 panel is indicative and not independently validated.
 
@@ -10,7 +12,7 @@ A local preparer prototype that turns recorded readings of fictional foreign ban
 
 This repository was created on October 27, 2026, after the hackathon kickoff. The synthetic statement generator, model-reading and evaluation pipeline, deterministic reconciliation, review worksheet, audit/sign-off, Korean-summary workflow, indicative Form 8938 panel, and single-page photo-evaluation runner were built during the event. The project uses new work in this repository; see commit history for dates.
 
-Not yet complete: physical photo/scan accuracy testing; native-speaker review of the full Korean phrase catalog; a browser upload flow; voice intake; and the submission video. The clean synthetic replay is not evidence of photographed-document accuracy. Fifteen of 27 Korean phrases have been reviewed; 12 remain unreviewed, including terminology changes and one potentially truncated transcription to confirm. The Korean draft requires explicit preparer approval.
+Not yet complete: broader physical-capture and unseen-layout testing; native-speaker review of the full Korean phrase catalog; a browser upload flow; voice intake; and the submission video. Fifteen of 27 Korean phrases have been reviewed; 12 remain unreviewed, including terminology changes and one potentially truncated transcription to confirm. The Korean draft requires explicit preparer approval.
 
 ## License and model attribution
 
