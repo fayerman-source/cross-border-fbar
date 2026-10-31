@@ -133,10 +133,12 @@ def printout(language: str) -> str:
     catalog = load(language)
     phrases = current_phrases()
     known = reviewed(language, phrases)
+    reviewer = catalog.last_translator.strip() or "____________________"
+    review_date = catalog.revision_date.strftime("%Y-%m-%d") if known else "____________________"
     lines = [
         "Client summary phrase review: English | Korean",
         "",
-        "Reviewer: ____________________    Date: ____________________",
+        f"Reviewer: {reviewer}    Date: {review_date}",
         "Record the reviewer in Last-Translator and remove fuzzy only for approved entries.",
         f"Terminology source: IRS Pub 850 (EN-KR), September 2023: {GLOSSARY}",
         "",
@@ -146,6 +148,8 @@ def printout(language: str) -> str:
         text = message.string if message else "[translation needed]"
         status = "reviewed" if key in known else "UNREVIEWED"
         lines += [f"{n}. {key} ({status}, noun phrase)", f"   {english} | {text}", ""]
+        if message:
+            lines.extend(f"   {note}" for note in message.user_comments if note.startswith("Review note:"))
     return "\n".join(lines)
 
 
