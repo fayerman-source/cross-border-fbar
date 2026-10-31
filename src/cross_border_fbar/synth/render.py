@@ -7,8 +7,14 @@ ground truth can score boxes directly.
 
 from __future__ import annotations
 
+import hashlib
+import os
+import struct
+import tempfile
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
+from functools import lru_cache
+from io import BytesIO
 from pathlib import Path
 
 from fpdf import FPDF
@@ -125,22 +131,69 @@ def _month_end(year: int, month: int) -> date:
 
 
 FONT_FILES = {"latin": "NotoSans-VF.ttf", "kr": "NotoSansKR-VF.ttf", "th": "NotoSansThai-VF.ttf"}
-FONT_CACHE = Path(__file__).resolve().parents[3] / ".cache" / "fonts"
+FONT_CACHE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "cross-border-fbar" / "fonts"
+
+
+@lru_cache(maxsize=8)
+def _font_snapshot(path: Path, size: int, mtime_ns: int, ctime_ns: int) -> tuple[bytes, str]:
+    """Read each unchanged source once; detect replacement or modification during the read."""
+    data = path.read_bytes()
+    stat = path.stat()
+    if (stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns) != (size, mtime_ns, ctime_ns):
+        raise RuntimeError("source font changed while it was being read")
+    return data, hashlib.sha256(data).hexdigest()
+
+
+@lru_cache(maxsize=128)
+def _valid_cached_font(path: Path, size: int, mtime_ns: int) -> bool:
+    """Validate a cache entry once per file revision, including table bounds and character map."""
+    from fontTools.ttLib import TTFont, TTLibError
+
+    try:
+        with TTFont(path, lazy=True, checkChecksums=2) as font:
+            if any(table.offset + table.length > size for table in font.reader.tables.values()):
+                return False
+            for tag in font.reader.keys():
+                font.reader[tag]  # Validate each table checksum before trusting the cached file.
+            return bool(font.getBestCmap()) and font["head"].unitsPerEm > 0
+    except (OSError, ValueError, KeyError, EOFError, AssertionError, TTLibError, struct.error):
+        return False
 
 
 def static_font(fonts: Path, family: str, weight: int) -> Path:
-    """A static instance of a variable font, built once and cached.
+    """Create a content- and tool-version-keyed font instance, publishing it atomically.
 
     Instancing the Korean variable font takes several seconds, so doing it per
     statement made a full run take many minutes.
     """
-    out = FONT_CACHE / f"{family}-{weight}.ttf"
-    if not out.exists():
-        from fontTools.ttLib import TTFont
-        from fontTools.varLib import instancer
+    import fontTools
+    from fontTools.ttLib import TTFont
+    from fontTools.varLib import instancer
 
-        out.parent.mkdir(parents=True, exist_ok=True)
-        instancer.instantiateVariableFont(TTFont(fonts / FONT_FILES[family]), {"wght": weight}).save(out)
+    source = fonts / FONT_FILES[family]
+    stat = source.stat()
+    source_bytes, source_digest = _font_snapshot(source, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+    digest = hashlib.sha256(
+        source_digest.encode() + b"\0" + fontTools.__version__.encode() + b"\0instance-v1-no-timestamps"
+    ).hexdigest()
+    out = FONT_CACHE / f"{family}-{digest}-{weight}.ttf"
+    if out.exists():
+        stat = out.stat()
+        if _valid_cached_font(out, stat.st_size, stat.st_mtime_ns):
+            return out
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix="font-", suffix=".ttf", dir=out.parent)
+    os.close(fd)
+    temporary = Path(tmp_name)
+    try:
+        with TTFont(BytesIO(source_bytes), recalcTimestamp=False) as source_font:
+            instancer.instantiateVariableFont(source_font, {"wght": weight}).save(temporary)
+        stat = temporary.stat()
+        if not _valid_cached_font(temporary, stat.st_size, stat.st_mtime_ns):
+            raise ValueError("generated font instance is invalid")
+        os.replace(temporary, out)
+    finally:
+        temporary.unlink(missing_ok=True)
     return out
 
 

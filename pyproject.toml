@@ -14,6 +14,8 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "build>=1.2",
+    "hatchling>=1.27",
     "pytest>=8",
     "ruff>=0.6",
 ]

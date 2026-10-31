@@ -1,52 +1,51 @@
 Client summary phrase review: English | Korean
 
-Reviewer: native Korean speaker    Date: 2026-10-30
+Reviewer: native Korean speaker    Date: 2026-10-31
 Record the reviewer in Last-Translator and remove fuzzy only for approved entries.
 Terminology source: IRS Pub 850 (EN-KR), September 2023: https://www.irs.gov/pub/irs-prior/p850enkr--2023.pdf
 
 1. heading (reviewed, noun phrase)
-   What your CPA reviewed | 귀하의 공인회계사 검토 항목
+   What your CPA reviewed | 공인회계사가 검토한 항목
 
 2. account_ending (reviewed, noun phrase)
-   account ending | 계좌 끝번호
+   account ending | 계좌 끝자리
 
-3. highest_balance (UNREVIEWED, noun phrase)
+3. highest_balance (reviewed, noun phrase)
    highest observed balance | 확인된 최고 잔액
 
 4. reviewed (reviewed, noun phrase)
    Items reviewed | 검토 항목
 
 5. nothing_further (reviewed, noun phrase)
-   none flagged | 지적 사항 없음
+   none flagged | 지적된 사항 없음
 
-6. balance_not_confirmed (UNREVIEWED, noun phrase)
-   highest observed balance not determined | 확인된 최고 잔액 산정 불가
+6. balance_not_confirmed (reviewed, noun phrase)
+   highest balance could not be established from the documents read | 검토한 서류로는 최고 잔액을 확인할 수 없음
 
 7. bank_not_named (reviewed, noun phrase)
-   bank name not available | 은행명 미기재
+   bank name not available | 은행명 확인 불가
 
 8. excluded_items (reviewed, noun phrase)
-   Items left out of the totals | 합계에서 제외된 항목
+   Items left out of the totals | 합계 산정에서 제외된 항목
 
 9. balance_readings_conflict (reviewed, noun phrase)
-   readings of the same opening or closing balance that disagree | 동일한 시작 또는 마감 잔액이 서로 다르게 표시된 경우
+   readings of the same opening or closing balance that disagree | 동일한 기초 잔액 또는 마감 잔액이 서로 다르게 판독된 경우
 
 10. institution_names_differ (reviewed, noun phrase)
-   the bank names printed differently on statements | 거래명세서에 다르게 표기된 은행명
+   the bank names printed differently on statements | 거래명세서마다 다르게 표기된 은행명
 
-11. missing_statement (UNREVIEWED, noun phrase)
+11. missing_statement (reviewed, noun phrase)
    months of the year that no statement covers | 거래명세서에서 확인되지 않는 월
 
-12. coverage_gap (UNREVIEWED, noun phrase)
-   days of the year that no statement covers | 거래명세서에 포함되지 않는 날짜들
+12. coverage_gap (reviewed, noun phrase)
+   days of the year that no statement covers | 거래명세서에서 확인되지 않는 날짜
 
-13. arithmetic_mismatch (UNREVIEWED, noun phrase)
-   statement balances that did not match the transactions as read | 확인된 거래내역과 거래명세서상의 잔액이 일치하지 않는 경우
+13. arithmetic_mismatch (reviewed, noun phrase)
+   statement balances that did not match the transactions as read | 판독된 거래 내역과 일치하지 않는 거래명세서상의 잔액
 
-14. field_unreadable (UNREVIEWED, noun phrase)
-   parts of a statement that could not be read, such as a date, currency or balance | 날짜, 통화 또는 잔액 등 내용을 판독할 수 없는 거래명세서의 일부 항목
+14. field_unreadable (reviewed, noun phrase)
+   parts of a statement that could not be read, such as a date, currency or balance | 날짜, 통화 또는 잔액 등 판독할 수 없는 거래명세서의 일부 내용
 
-   Review note: Transcription may be truncated; confirm item 14 with reviewer.
 15. continuity_break (reviewed, noun phrase)
    closing balances that did not match the next statement's opening balance | 다음 거래명세서의 기초 잔액과 일치하지 않는 마감 잔액
 
@@ -65,14 +64,12 @@ Terminology source: IRS Pub 850 (EN-KR), September 2023: https://www.irs.gov/pub
 20. currency_unknown (reviewed, noun phrase)
    accounts with no Treasury exchange rate, whose dollar amounts depend on a separately recorded rate | 미 재무부 환율이 적용되지 않아 별도로 기록된 환율을 기준으로 달러 금액을 산정해야 하는 계좌
 
-21. account_number_masked (UNREVIEWED, noun phrase)
-   rows with partly masked account numbers left out of the totals | 일부 숫자가 가려진 계좌번호가 있어 합계 산정에서 제외된 열
+21. account_number_masked (reviewed, noun phrase)
+   rows with partly masked account numbers left out of the totals | 일부 숫자가 가려진 계좌번호가 있어 합계 산정에서 제외된 행
 
-   Review note: Confirm rows versus columns with reviewer.
-22. account_unidentified (UNREVIEWED, noun phrase)
-   rows with unreadable account numbers left out of the totals | 계좌번호를 판독할 수 없어 합계 산정에서 제외된 열
+22. account_unidentified (reviewed, noun phrase)
+   rows with unreadable account numbers left out of the totals | 계좌번호를 판독할 수 없어 합계 산정에서 제외된 행
 
-   Review note: Confirm rows versus columns with reviewer.
 23. signature_authority_only (reviewed, noun phrase)
    your authority to sign on an account owned by someone else | 타인 명의 계좌에 대한 서명 권한
 

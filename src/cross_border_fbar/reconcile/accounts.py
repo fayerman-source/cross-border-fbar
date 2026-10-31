@@ -516,8 +516,8 @@ def reconcile_account(
         flags.append(
             Flag(
                 "no_balance_anchor",
-                "transactions only: no balance appears on any document, so "
-                "the maximum can't be determined; request statements showing balances",
+                "transactions only: no balance appears in the documents read, so the maximum "
+                "could not be established; request statements showing balances",
             )
         )
     elif (

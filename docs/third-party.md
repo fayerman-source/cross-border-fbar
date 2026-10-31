@@ -4,7 +4,7 @@ The repository's original code is Apache-2.0. Third-party files and dependencies
 
 ## Fonts included in this repository
 
-- Noto Sans: [OFL and copyright](../fonts/OFL.txt); Noto Sans KR: [OFL and copyright](../fonts/OFL-notosanskr.txt); Noto Sans Thai: [OFL and copyright](../fonts/OFL-notosansthai.txt).
+- Noto Sans: [OFL and copyright](../src/cross_border_fbar/fonts/OFL.txt); Noto Sans KR: [OFL and copyright](../src/cross_border_fbar/fonts/OFL-notosanskr.txt); Noto Sans Thai: [OFL and copyright](../src/cross_border_fbar/fonts/OFL-notosansthai.txt).
 - Barlow Condensed: [OFL and copyright](../src/cross_border_fbar/app/static/fonts/OFL-barlowcondensed.txt).
 - IBM Plex Mono: [OFL and copyright](../src/cross_border_fbar/app/static/fonts/OFL-ibmplexmono.txt), including reserved name Plex.
 - Nanum Pen Script: [OFL and copyright](../src/cross_border_fbar/app/static/fonts/OFL-nanumpenscript.txt), including reserved Nanum names.

@@ -19,7 +19,7 @@ from .review import Review, ReviewError
 from .worksheet import Inputs
 
 STATIC = Path(__file__).parent / "static"
-FONTS_DIR = (Path(__file__).resolve().parents[3] / "fonts").resolve()
+FONTS_DIR = (Path(__file__).resolve().parents[1] / "fonts").resolve()
 PHRASES_PROMPT = (Path(__file__).parent / "prompts" / "client_phrases_v3.md").read_text()
 SUMMARY_MODEL = "muse-spark-1.3"
 

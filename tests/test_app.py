@@ -189,6 +189,22 @@ def test_a_reviewed_table_needs_no_model_call_and_stale_entries_are_retranslated
     assert list(s["unreviewed"]) == ["heading"]
 
 
+def test_first_summary_uses_actual_reviewed_catalog_without_model_or_key(review, monkeypatch):
+    import socket
+
+    from cross_border_fbar import llm
+
+    monkeypatch.delenv("MODEL_API_KEY", raising=False)
+    monkeypatch.setattr(llm, "_api_key", lambda: pytest.fail("API key was accessed"))
+    monkeypatch.setattr(socket, "create_connection", lambda *a, **k: pytest.fail("network was used"))
+    for flag_id in review.open_review_flags():
+        review.acknowledge(flag_id, "reviewed synthetic evidence", "CPA")
+    review.sign_off("CPA", "CP")
+    summary = review.draft_summary(lambda *a, **k: pytest.fail("model was called"))
+    assert summary["unreviewed"] == {}
+    assert summary["text"]
+
+
 def test_the_committed_korean_table_covers_every_phrase_with_current_english():
     """Changing an English phrase or adding a review flag makes the table stale; this fails until it is
     translated and reviewed again."""

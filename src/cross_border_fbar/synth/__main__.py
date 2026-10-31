@@ -20,7 +20,7 @@ from .render import LAYOUTS, render_compiled, render_statement
 from .truth import account_truth, household_totals, major, to_usd_ceiling
 
 TAX_YEAR = 2025
-FONTS = Path(__file__).resolve().parents[3] / "fonts"
+FONTS = Path(__file__).resolve().parents[1] / "fonts"
 GENERATOR_VERSION = "0.1.0"
 
 

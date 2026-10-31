@@ -337,7 +337,7 @@ function accountRow(a, signed) {
         el("span", { class: "figure" }, el("span", { class: "amount" }, money(m.amount, a.currency)), el("span", { class: "ccy" }, a.currency)),
         el("span", { class: "wp" }, m.source.wp),
         m.kind === "computed" ? el("span", { class: "kind" }, "computed from lines") : null)
-    : el("span", { class: "unknown" }, a.identified ? "can't be determined" : "not counted");
+    : el("span", { class: "unknown" }, a.identified ? "could not be established from the documents read" : "not counted");
   const banks = a.institutions;
   return el("tr", { class: a.identified ? "" : "unidentified" },
     el("td", { class: "bank" }, banks.length ? banks[banks.length - 1] : "—",

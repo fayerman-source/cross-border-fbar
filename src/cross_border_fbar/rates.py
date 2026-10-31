@@ -6,6 +6,9 @@ typed in or recalled by a model: they come from Treasury's API and are saved wit
 the exact query URL and fetch time.
 
     python -m cross_border_fbar.rates fetch 2025 KRW EUR THB
+
+Bundled rates are read from the installed package. Fetch writes a separate file under the current
+workspace's data/ directory; pass that path to load() to use it without modifying the installation.
 """
 
 from __future__ import annotations
@@ -26,7 +29,7 @@ DATASET_PAGE = (
 )
 # ISO code -> Treasury's country_currency_desc label.
 TREASURY_LABELS = {"KRW": "Korea-Won", "EUR": "Euro Zone-Euro", "THB": "Thailand-Baht", "INR": "India-Rupee"}
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+DATA_DIR = Path(__file__).resolve().parent / "data"
 
 
 @dataclass(frozen=True)
@@ -95,10 +98,12 @@ def main(argv: list[str]) -> None:
         sys.exit("usage: python -m cross_border_fbar.rates fetch <year> <ISO> [<ISO> ...]")
     year, currencies = int(argv[1]), argv[2:]
     doc = fetch(year, currencies)
-    out = rates_path(year)
+    # Fetching writes to the current workspace, never into a potentially read-only installation.
+    out = Path.cwd() / "data" / f"treasury_rates_{year}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(doc, indent=2) + "\n")
     print(f"wrote {out}: " + ", ".join(f"{c} {r['units_per_usd']}" for c, r in doc["rates"].items()))
+    print(f"Load explicitly with rates.load({year}, path=Path({str(out)!r})).")
 
 
 if __name__ == "__main__":

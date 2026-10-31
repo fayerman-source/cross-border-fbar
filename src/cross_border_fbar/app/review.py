@@ -43,7 +43,7 @@ SUMMARY_PHRASES = {
     "highest_balance": "highest observed balance",
     "reviewed": "Items reviewed",
     "nothing_further": "none flagged",
-    "balance_not_confirmed": "highest observed balance not determined",
+    "balance_not_confirmed": "highest balance could not be established from the documents read",
     "bank_not_named": "bank name not available",
     "excluded_items": "Items left out of the totals",
 }
