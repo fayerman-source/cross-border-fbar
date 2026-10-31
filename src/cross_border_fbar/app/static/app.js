@@ -135,11 +135,13 @@ function renderAccounts(signed) {
   const ws = state.worksheet;
   $("accounts").replaceChildren(...ws.accounts.map((a) => accountRow(a, signed)));
   const t = ws.totals;
-  const notes = [`${t.above_threshold ? "above" : "not above"} the $${t.threshold_usd.toLocaleString("en-US")} FBAR aggregate threshold — review`];
+  const threshold = `$${t.threshold_usd.toLocaleString("en-US")} FBAR aggregate threshold`;
+  const outcome = t.above_threshold === null ? `result against the ${threshold} is undetermined` : `observed total ${t.above_threshold ? "above" : "not above"} the ${threshold}`;
+  const notes = [`${outcome} — review`];
   if (t.accounts_without_value.length) notes.push(`${plural(t.accounts_without_value.length, "account")} without a determinable balance not included`);
   if (t.unidentified_uploads.length) notes.push("unidentified rows not counted");
   $("aggregate").replaceChildren(
-    el("td", { colspan: 4 }, el("span", { class: "label" }, "Aggregate of highest balances"), el("span", { class: "threshold" }, notes.join(" · "))),
+    el("td", { colspan: 4 }, el("span", { class: "label" }, "Aggregate of highest observed balances"), el("span", { class: "threshold" }, notes.join(" · "))),
     el("td", { class: "num" }, el("span", { class: "amount" }, usd(t.aggregate_usd))),
   );
   const r0 = Object.values(ws.rates)[0] || { record_date: "", source: "#" };
@@ -239,7 +241,7 @@ function renderForm8938() {
 function renderItems(signed) {
   const ws = state.worksheet;
   const open = state.open_review_flags;
-  $("open-count").textContent = open.length ? `${open.length} open` : "all reviewed";
+  $("open-count").textContent = open.length ? `${open.length} open` : "all acknowledged";
   $("open-count").classList.toggle("clear", open.length === 0);
   const reviewFlags = ws.flags.filter((f) => f.severity === "review");
   $("items").replaceChildren(...reviewFlags.map((f) => itemRow(f, state.review.acks[f.id], signed, ws)));
@@ -263,6 +265,14 @@ function renderSignoff(signed) {
   const so = state.review.signoff;
   $("signed-line").replaceChildren(el("span", { class: "initials" }, so.initials),
     ` Signed off by ${so.reviewer}, ${so.ts}. Fingerprint ${so.hash.slice(0, 12)}.`);
+  const remaining = state.remaining_review_items;
+  $("remaining-items").replaceChildren(...(remaining.length
+    ? remaining.map((f) => el("li", {}, `${flagTitle(f)} · ${acctLabel(state.worksheet, f.account)} — ${f.message}`))
+    : [el("li", {}, "No acknowledged review items remain on this worksheet.")]));
+  const determinations = state.open_determinations;
+  $("open-determinations").replaceChildren(...(determinations.length
+    ? determinations.map((d) => el("li", {}, `${d.label ? `${d.label}: ` : ""}${d.message}${d.accounts?.length ? ` Accounts: ${d.accounts.join(", ")}.` : ""}${d.uploads?.length ? ` Pages: ${d.uploads.join(", ")}.` : ""}${d.scope ? ` ${d.scope}` : ""}`))
+    : [el("li", {}, "No open determinations are recorded in this worksheet.")]));
   renderSummary(state.review.summary);
 }
 
@@ -313,7 +323,7 @@ function accountRow(a, signed) {
   const key = `max:${a.key}`;
   const figure = m
     ? el("button", { class: "traced", "data-key": key, "aria-pressed": "false",
-        onclick: () => show([m.source], key, `Highest balance, ${a.account_number}`) },
+        onclick: () => show([m.source], key, `Highest observed balance, ${a.account_number}`) },
         el("span", { class: "figure" }, el("span", { class: "amount" }, money(m.amount, a.currency)), el("span", { class: "ccy" }, a.currency)),
         el("span", { class: "wp" }, m.source.wp),
         m.kind === "computed" ? el("span", { class: "kind" }, "computed from lines") : null)

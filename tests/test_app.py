@@ -726,6 +726,68 @@ def test_export_contains_current_acknowledgements_and_preserves_history_in_the_a
     assert any(entry.get("flag") == flag["id"] for entry in exported["audit"])
 
 
+def test_acknowledged_limitation_remains_visible_after_signoff_and_in_export(review):
+    limitation = next(f for f in review.worksheet["flags"] if f["code"] == "missing_statement")
+    assert review.view()["remaining_review_items"] == []
+    for flag_id in review.open_review_flags():
+        review.acknowledge(flag_id, "limitation acknowledged", "CPA")
+    review.sign_off("CPA", "CP")
+    visible = review.view()["remaining_review_items"]
+    document = review.export()
+    exported = document["remaining_review_items"]
+    assert visible == exported
+    assert {item["id"] for item in exported} == {
+        flag["id"] for flag in review.worksheet["flags"] if flag["severity"] == "review"
+    }
+    assert document["figure_labels"]["max"] == "highest observed balance"
+    item = next(f for f in exported if f["id"] == limitation["id"])
+    assert item["code"] == "missing_statement"
+    assert item["message"] == limitation["message"]
+    assert item["acknowledgement"]["note"] == "limitation acknowledged"
+    restarted = Review(review.inputs, review.dir, root=review.dir.parent)
+    assert restarted.view()["remaining_review_items"] == exported
+    assert restarted.export()["remaining_review_items"] == exported
+    determinations = document["open_determinations"]
+    assert determinations == review.view()["open_determinations"] == restarted.export()["open_determinations"]
+    assert any(d["kind"] == "form8938_year_end" and d["result"] == "incomplete" for d in determinations)
+    assert any(d["kind"] == "fbar_missing_values" and d["accounts"] for d in determinations)
+
+
+def test_open_determinations_include_threshold_uncertainty_and_unidentified_account_labels():
+    review = Review.__new__(Review)
+    incomplete = {"result": "incomplete", "upper_known": False, "text": "Incomplete — review"}
+    review.worksheet = {
+        "totals": {
+            "above_threshold": None,
+            "threshold_review_reasons": ["accounts_without_value"],
+            "crossing_depends_on_flags": False,
+            "accounts_without_value": ["ACC2"],
+            "unidentified_uploads": [],
+        },
+        "form8938": {
+            "year_end": incomplete,
+            "any_time": incomplete,
+            "labels": {"year_end": "Year end", "any_time": "Any time", "scope": "Indicative only."},
+            "accounts": [
+                {
+                    "number": "",
+                    "key": "unread:1",
+                    "uploads": ["pages/unknown.png"],
+                    "inclusion": "unresolved",
+                },
+                {"number": "", "key": "unread:2", "uploads": [], "inclusion": "unresolved"},
+            ],
+        },
+    }
+    determinations = review.open_determinations()
+    assert any(
+        d["kind"] == "fbar_threshold" and d["reasons"] == ["accounts_without_value"] for d in determinations
+    )
+    year_end = next(d for d in determinations if d["kind"] == "form8938_year_end")
+    assert year_end["accounts"] == ["pages/unknown.png", "unread:2"]
+    assert "Upper bound is unknown" in year_end["message"]
+
+
 def test_a_rejected_redraft_replaces_the_previous_draft_with_a_persisted_blocked_state(signed):
     previous = signed.draft_summary(tokens)
     assert previous["text"]

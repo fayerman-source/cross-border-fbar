@@ -40,10 +40,10 @@ OUT_OF_SCOPE = re.compile(
 SUMMARY_PHRASES = {
     "heading": "What your CPA reviewed",
     "account_ending": "account ending",
-    "highest_balance": "highest balance",
+    "highest_balance": "highest observed balance",
     "reviewed": "Items reviewed",
     "nothing_further": "none flagged",
-    "balance_not_confirmed": "highest balance not determined",
+    "balance_not_confirmed": "highest observed balance not determined",
     "bank_not_named": "bank name not available",
     "excluded_items": "Items left out of the totals",
 }
@@ -222,11 +222,83 @@ class Review:
             f["id"] for f in self.worksheet["flags"] if f["severity"] == "review" and not self._ack_valid(f)
         ]
 
+    def remaining_review_items(self) -> list[dict]:
+        """Acknowledgement records review; it does not prove a still-present flag was resolved."""
+        acknowledgements = self._valid_acknowledgements()
+        return [
+            {**flag, "acknowledgement": acknowledgements.get(flag["id"])}
+            for flag in self.worksheet["flags"]
+            if flag["severity"] == "review"
+        ]
+
+    def open_determinations(self) -> list[dict]:
+        """Surface unfinished comparisons and incomplete evidence alongside signed review items."""
+        out = []
+        totals = self.worksheet["totals"]
+        if totals["above_threshold"] is None:
+            out.append(
+                {
+                    "kind": "fbar_threshold",
+                    "message": "Below-threshold result is undetermined; exclusions or review may change it.",
+                    "reasons": totals["threshold_review_reasons"],
+                }
+            )
+        elif totals["crossing_depends_on_flags"]:
+            out.append(
+                {"kind": "fbar_threshold", "message": "FBAR threshold comparison depends on review items."}
+            )
+        if totals["accounts_without_value"]:
+            out.append(
+                {
+                    "kind": "fbar_missing_values",
+                    "message": "Accounts without a determinable value are excluded from the aggregate.",
+                    "accounts": totals["accounts_without_value"],
+                }
+            )
+        if totals["unidentified_uploads"]:
+            out.append(
+                {
+                    "kind": "fbar_unidentified",
+                    "message": "Unidentified rows or pages are excluded from the aggregate.",
+                    "uploads": totals["unidentified_uploads"],
+                }
+            )
+        panel = self.worksheet["form8938"]
+        for period, bound in (("year_end", "year_end"), ("any_time", "maximum")):
+            comparison = panel[period]
+            if comparison["result"] in ("above", "not_above") and comparison["upper_known"]:
+                continue
+            accounts = [
+                a["number"] or ", ".join(a.get("uploads", [])) or a["key"]
+                for a in panel["accounts"]
+                if a["inclusion"] != "excluded"
+                and (
+                    a["inclusion"] == "unresolved"
+                    or a.get("share") == "uncertain_share"
+                    or a.get(bound, {}).get("high_usd") is None
+                    or bool(a.get("reviews"))
+                )
+            ]
+            out.append(
+                {
+                    "kind": "form8938_" + period,
+                    "label": "Form 8938 · " + panel["labels"][period],
+                    "result": comparison["result"],
+                    "message": comparison["text"]
+                    + (" Upper bound is unknown." if not comparison["upper_known"] else ""),
+                    "accounts": accounts,
+                    "scope": panel["labels"]["scope"],
+                }
+            )
+        return out
+
     def view(self) -> dict:
         return {
             "worksheet": self.worksheet,
             "review": {**self.state, "acks": self._valid_acknowledgements()},
             "open_review_flags": self.open_review_flags(),
+            "remaining_review_items": self.remaining_review_items() if self.state["signoff"] else [],
+            "open_determinations": self.open_determinations() if self.state["signoff"] else [],
             "audit": self.audit_tail(40),
         }
 
@@ -416,8 +488,15 @@ class Review:
             raise ReviewError("The worksheet changed after sign-off; review and sign off again.")
         return {
             "worksheet": self.worksheet,
+            "figure_labels": {
+                "max": "highest observed balance",
+                "max_usd": "highest observed balance in USD",
+                "aggregate_usd": "aggregate of highest observed balances in USD",
+            },
             "signoff": self.state["signoff"],
             "acknowledgements": self._valid_acknowledgements(),
+            "remaining_review_items": self.remaining_review_items(),
+            "open_determinations": self.open_determinations(),
             "corrections": self.state["overrides"],
             "audit": self.audit_tail(10_000),
         }

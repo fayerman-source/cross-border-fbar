@@ -45,19 +45,19 @@ msgstr "계좌 끝번호"
 #. label: noun phrase, plural-safe, no semicolon
 msgctxt "currency_unknown"
 msgid "accounts with no Treasury exchange rate, whose dollar amounts depend on a separately recorded rate"
-msgstr "미국 재무부 환율이 없어 별도 기록된 환율에 따른 달러 금액이 적용되는 계좌"
+msgstr "미 재무부 환율이 적용되지 않아 별도로 기록된 환율을 기준으로 달러 금액을 산정해야 하는 계좌"
 
+# Reviewed by native Korean speaker on 2026-10-30.
 #. label: noun phrase, plural-safe, no semicolon
-#, fuzzy
 msgctxt "no_usable_balance"
 msgid "accounts with no readable balance for the year"
-msgstr "연중 판독 가능한 잔액이 없는 계좌"
+msgstr "해당 연도의 잔액을 판독할 수 없는 계좌"
 
+# Reviewed by native Korean speaker on 2026-10-30.
 #. label: noun phrase, plural-safe, no semicolon
-#, fuzzy
 msgctxt "no_statements"
 msgid "accounts with no statement among the documents read"
-msgstr "읽은 문서 중 거래명세서가 없는 계좌"
+msgstr "검토한 문서 중 거래명세서가 확인되지 않은 계좌"
 
 # Reviewed by native Korean speaker on 2026-10-30.
 #. label: noun phrase, plural-safe, no semicolon
@@ -65,11 +65,11 @@ msgctxt "bank_not_named"
 msgid "bank name not available"
 msgstr "은행명 미기재"
 
+# Reviewed by native Korean speaker on 2026-10-30.
 #. label: noun phrase, plural-safe, no semicolon
-#, fuzzy
 msgctxt "continuity_break"
 msgid "closing balances that did not match the next statement's opening balance"
-msgstr "다음 거래명세서의 기초 잔액과 일치하지 않는 기말 잔액"
+msgstr "다음 거래명세서의 기초 잔액과 일치하지 않는 마감 잔액"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
@@ -77,17 +77,19 @@ msgctxt "coverage_gap"
 msgid "days of the year that no statement covers"
 msgstr "거래명세서에 포함되지 않는 날짜들"
 
+# | msgid "highest balance"
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "highest_balance"
-msgid "highest balance"
-msgstr "최고 잔액"
+msgid "highest observed balance"
+msgstr "확인된 최고 잔액"
 
+# | msgid "highest balance not determined"
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "balance_not_confirmed"
-msgid "highest balance not determined"
-msgstr "확정되지 않은 최고 잔액"
+msgid "highest observed balance not determined"
+msgstr "확인된 최고 잔액 산정 불가"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
@@ -105,7 +107,7 @@ msgstr "지적 사항 없음"
 #. label: noun phrase, plural-safe, no semicolon
 msgctxt "page_not_read"
 msgid "pages that could not be read and were left out of the totals"
-msgstr "합계에서 제외된 판독 불가 페이지"
+msgstr "판독할 수 없어 합계 산정에서 제외된 페이지"
 
 # Review note: Transcription may be truncated; confirm item 14 with reviewer.
 #. label: noun phrase, plural-safe, no semicolon
@@ -120,17 +122,19 @@ msgctxt "balance_readings_conflict"
 msgid "readings of the same opening or closing balance that disagree"
 msgstr "동일한 시작 또는 마감 잔액이 서로 다르게 표시된 경우"
 
-# Reviewed by native Korean speaker on 2026-10-30.
+# Review note: Confirm rows versus columns with reviewer.
 #. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
 msgctxt "account_number_masked"
 msgid "rows with partly masked account numbers left out of the totals"
-msgstr "합계에서 제외된 일부 가려진 계좌번호가 있는 행"
+msgstr "일부 숫자가 가려진 계좌번호가 있어 합계 산정에서 제외된 열"
 
-# Reviewed by native Korean speaker on 2026-10-30.
+# Review note: Confirm rows versus columns with reviewer.
 #. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
 msgctxt "account_unidentified"
 msgid "rows with unreadable account numbers left out of the totals"
-msgstr "합계에서 제외된 판독 불가한 계좌번호가 있는 행"
+msgstr "계좌번호를 판독할 수 없어 합계 산정에서 제외된 열"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
@@ -138,17 +142,17 @@ msgctxt "arithmetic_mismatch"
 msgid "statement balances that did not match the transactions as read"
 msgstr "확인된 거래내역과 거래명세서상의 잔액이 일치하지 않는 경우"
 
+# Reviewed by native Korean speaker on 2026-10-30.
 #. label: noun phrase, plural-safe, no semicolon
-#, fuzzy
 msgctxt "currency_conflict"
 msgid "statements showing different currencies for this account"
-msgstr "귀하의 계좌에 대해 서로 다른 통화를 표시하는 거래명세서"
+msgstr "해당 계좌의 거래 내역이 서로 다른 통화로 표시된 거래명세서"
 
+# Reviewed by native Korean speaker on 2026-10-30.
 #. label: noun phrase, plural-safe, no semicolon
-#, fuzzy
 msgctxt "no_balance_anchor"
 msgid "statements that list transactions but show no balance"
-msgstr "거래 내역만 있고 잔액 표시가 없는 거래명세서"
+msgstr "거래 내역은 표시되어 있지만 잔액은 표시되지 않은 거래명세서"
 
 # Reviewed by native Korean speaker on 2026-10-30.
 #. label: noun phrase, plural-safe, no semicolon
@@ -156,26 +160,26 @@ msgctxt "institution_names_differ"
 msgid "the bank names printed differently on statements"
 msgstr "거래명세서에 다르게 표기된 은행명"
 
+# Reviewed by native Korean speaker on 2026-10-30.
 #. label: noun phrase, plural-safe, no semicolon
-#, fuzzy
 msgctxt "possible_intraday_peak"
 msgid "the order of same-day deposits and withdrawals, which can change the highest balance"
-msgstr "최고 잔액을 변경할 수 있는 당일 입출금 순서"
+msgstr "최고 잔액에 영향을 줄 수 있는 당일 입금 및 출금 순서"
 
 # Reviewed by native Korean speaker on 2026-10-30.
 #. label: noun phrase, plural-safe, no semicolon
 msgctxt "financial_interest_unknown"
 msgid "whether you have a financial interest in accounts you can sign on"
-msgstr "서명 가능한 계좌에 대한 귀하의 재정적 이해관계 여부"
+msgstr "서명 권한이 있는 계좌에 대한 재정적 이해관계 여부"
 
 # Reviewed by native Korean speaker on 2026-10-30.
 #. label: noun phrase, plural-safe, no semicolon
 msgctxt "ownership_unknown"
 msgid "who owns the account, which has not been recorded"
-msgstr "기록되지 않은 계좌 소유자"
+msgstr "계좌 소유자가 누구인지 기록되지 않은 경우"
 
 # Reviewed by native Korean speaker on 2026-10-30.
 #. label: noun phrase, plural-safe, no semicolon
 msgctxt "signature_authority_only"
 msgid "your authority to sign on an account owned by someone else"
-msgstr "타인 소유 계좌에 대한 귀하의 서명 권한"
+msgstr "타인 명의 계좌에 대한 서명 권한"

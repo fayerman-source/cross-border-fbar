@@ -33,7 +33,7 @@ Replay uses the model responses recorded in `recordings/`, keyed by a hash of th
 - 47 monthly statements: Korean 23, German 12 in two layouts, Thai 12.
 - One 2-page compiled transaction list covering several accounts, with no balances. Its layout is modeled on a real Korean compiled list; its content is entirely synthetic.
 
-One run. Recording cost $0.45 for the 26 pages not already recorded; median latency is about 10 s per page.
+One recorded run per page; median latency is about 10 s per page. The 49 per-page recorded costs in the current replay sum to **$0.87**. An earlier write-up reported $0.45 for the 26 pages newly recorded in one batch, excluding the other pages; its $0.76 total was inconsistent with the current recorded costs. The $0.45 batch figure was not independently reconstructed from these replay results.
 
 ### Extraction
 
@@ -87,7 +87,7 @@ The same 49 pages and the same prompt v3, read by Meta's open-weights model on t
 | Actual review workload | 7 items: 6 expected, 1 additional from a misread | 6 items: 6 expected, 0 additional |
 | Household aggregate | $373,618 (key: $373,618) | $373,618 |
 | Median time per page | 344 s | ~10 s |
-| Cost | $0 model-token charge (4.9 h on the GPU; hardware and electricity excluded) | $0.76 model charges |
+| Cost | $0 model-token charge (4.9 h on the GPU; hardware and electricity excluded) | $0.87 recorded model charges |
 
 What the gaps are:
 - **Header fields:** on 8 pages Glimmer returned the right header text but labeled every field `absent`. The strict field score counts those as misses. The reconciliation now uses text that is present whatever its label, which recovered the end-to-end result.
@@ -101,7 +101,7 @@ Box placement changes from run to run, and snapping has had to change with it:
 - **Run 2:** 187/240 raw. The anchor rule snapped one page confidently onto the wrong lines; the column-pattern rule replaced it.
 - **Run 3 (prompt v3):** the model compressed row spacing on one German page by 16%. The fallback path's ±15% scale guard excluded the right alignment, so it snapped confidently wrong again. The guard is now ±35%, and the fallback must also sit near the model's rows.
 
-Earlier detail: an earlier run (prompt v1, before pages printed a currency line) placed 209/240 raw row boxes in the right row; this run placed 187/240. The direction and size of the drift differed between runs. The first snapping rule assumed the first row drifts least. It reached 239/240 on run 1 but snapped one page confidently onto the wrong lines on run 2 (218/240). The column-pattern rule above reaches 240/240 on run 2. Treat box placement as variable, and judge snapping on data it wasn't tuned on. The physical captures below were not scored for box placement.
+The current clean-run snapped result is 278/280; snapping was revised after inspecting failures and is in-sample. The capture test below did not score box placement.
 
 ## Physical capture test: Muse Spark (Oct 30, 2026)
 
@@ -109,16 +109,16 @@ One live Standard-mode call per capture, with no retries or tuning against this 
 
 | Language | Condition | Header values | Rows returned | Dates | Amounts | Balances | Row accounts | Extra rows | Unreadable header fields | Review items | Cost |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Korean | Flatbed scan | 6/6 | 12/12 | 12/12 | 12/12 | 12/12 | 12/12 | 0 | 0/7 | 13 | $0.02615225 |
-| Korean | WhatsApp-forwarded photo | 6/6 | 12/12 | 12/12 | 12/12 | 12/12 | 12/12 | 0 | 0/7 | 13 | $0.02459975 |
-| German | Flatbed scan | 6/6 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 0 | 0/7 | 13 | $0.02553600 |
-| German | WhatsApp-forwarded photo | 6/6 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 0 | 0/7 | 13 | $0.03112045 |
-| Thai | Flatbed scan | 5/6 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 0 | 0/7 | 14 | $0.01795520 |
-| Thai | WhatsApp-forwarded photo | 5/6 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 0 | 0/7 | 14 | $0.04426995 |
-| **All scans** | Flatbed scan | **17/18** | **19/19** | **19/19** | **19/19** | **19/19** | **19/19** | **0** | **0/21** | **40** | **$0.06964345** |
-| **All photos** | WhatsApp-forwarded photo | **17/18** | **19/19** | **19/19** | **19/19** | **19/19** | **19/19** | **0** | **0/21** | **40** | **$0.09999015** |
+| Korean | Flatbed scan | 6/6 | 12/12 | 12/12 | 12/12 | 12/12 | 12/12 | 0 | 0/7 | 13 | $0.03 |
+| Korean | WhatsApp-forwarded photo | 6/6 | 12/12 | 12/12 | 12/12 | 12/12 | 12/12 | 0 | 0/7 | 13 | $0.02 |
+| German | Flatbed scan | 6/6 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 0 | 0/7 | 13 | $0.03 |
+| German | WhatsApp-forwarded photo | 6/6 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 0 | 0/7 | 13 | $0.03 |
+| Thai | Flatbed scan | 5/6 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 0 | 0/7 | 14 | $0.02 |
+| Thai | WhatsApp-forwarded photo | 5/6 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 0 | 0/7 | 14 | $0.04 |
+| **All scans** | Flatbed scan | **17/18** | **19/19** | **19/19** | **19/19** | **19/19** | **19/19** | **0** | **0/21** | **40** | **$0.07** |
+| **All photos** | WhatsApp-forwarded photo | **17/18** | **19/19** | **19/19** | **19/19** | **19/19** | **19/19** | **0** | **0/21** | **40** | **$0.10** |
 
-Total calculated token cost was **$0.16963360**, not independently reconciled to a provider invoice. The six-field header score covers bank, currency, account number, holder, opening and closing balances. Period is separate: all six parsed to the printed period. The row schema has no explicit unreadable status; the abstention counts above cover seven header statuses per capture. Row descriptions were not scored.
+Total calculated token cost was **$0.17** (about $0.03 per page), not independently reconciled to a provider invoice. Individual and aggregate amounts are rounded independently to cents, so displayed rows may not sum to the displayed total. The six-field header score covers bank, currency, account number, holder, opening and closing balances. Period is separate: all six parsed to the printed period. The row schema has no explicit unreadable status; the abstention counts above cover seven header statuses per capture. Row descriptions were not scored.
 
 **Thai institution mismatch:** both captures returned `Siam Lotus Bank` where the answer key expects `ธนาคารสยามโลตัส`. The English name is also printed on the page. The strict scorer counts both as misses; it was not changed for this test.
 
@@ -129,7 +129,7 @@ No page corners were supplied: photo **and scan** box placement was not scored, 
 ## What these numbers do not show
 
 - **Small physical set.** Only three previously used synthetic pages were tested, each as a scan and a WhatsApp-forwarded photo; no new layouts were tested and capture box placement was not scored.
-- **Snapping was revised after seeing this run's failures.** Its 240/240 is in-sample.
+- **Snapping was revised after seeing failures.** The current clean-run result of 278/280 is in-sample.
 - **One recorded run per model on the current clean set.** These are not repeated-run reliability estimates.
 - **No intentionally unreadable document fields in the clean set.** Expected absent fields are scored; abstention on genuinely unreadable input is not yet established.
 - **Same author.** The answer key and the reconciliation were written separately but by the same author, so a shared misunderstanding of the rules would not show up here.
