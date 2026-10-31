@@ -5,7 +5,8 @@
 - Every call is priced before it is sent, assuming every allowed output token is
   used, and refused if it could push the shared ledger past the cap. Admission
   is atomic: under a file lock, the call reserves its worst case in the ledger,
-  so concurrent threads and processes see each other's in-flight spend.
+  so concurrent threads and processes see each other's in-flight spend. A failed
+  call keeps its reservation because the provider may still bill an unknown amount.
 - Responses are recorded under recordings/, keyed by a hash of the exact
   request, so the eval re-runs offline and without a key ("replay").
 
@@ -18,6 +19,7 @@ import contextlib
 import fcntl
 import hashlib
 import json
+import math
 import os
 import time
 import urllib.error
@@ -29,12 +31,13 @@ from pathlib import Path
 BASE_URL = "https://api.meta.ai/v1"
 CONFIG_DIR = Path.home() / ".config" / "fbar"
 RECORDINGS = Path(__file__).resolve().parents[2] / "recordings"
+MAX_SPEND_USD = 50.0
 
 # USD per 1M tokens, Standard mode (https://dev.meta.ai/docs/pricing-rate-limits, read 2026-10-26).
 PRICES = {
     "muse-spark-1.3": {"input": 1.25, "cached": 0.15, "output": 4.25},
     "muse-wonder-1.0": {"input": 4.00, "cached": 0.20, "output": 20.00},
-    # Meta's open-weights model on hardware we control: no per-token cost, nothing leaves the machine.
+    # Meta open weights on a GPU host reached through an SSH tunnel: no per-token model charge.
     "muse-glimmer": {"input": 0.0, "cached": 0.0, "output": 0.0},
 }
 # Self-hosted models are served by llama.cpp (OpenAI-compatible); reached through an SSH tunnel by default.
@@ -77,6 +80,23 @@ def cost_usd(model: str, usage: dict) -> float:
     return ((prompt - cached) * p["input"] + cached * p["cached"] + output * p["output"]) / 1e6
 
 
+def _validated_usage(data: dict) -> dict:
+    """Do not release a paid call's reservation without reliable token counts."""
+    usage = data.get("usage")
+    if not isinstance(usage, dict):
+        raise ValueError("missing or invalid token usage; spend reservation retained")
+    prompt, output = usage.get("prompt_tokens"), usage.get("completion_tokens")
+    details = usage.get("prompt_tokens_details")
+    if details is None:
+        details = {}
+    if not isinstance(details, dict):
+        raise ValueError("invalid token usage details; spend reservation retained")
+    cached = details.get("cached_tokens", 0)
+    if any(type(n) is not int or n < 0 for n in (prompt, output, cached)) or cached > prompt:
+        raise ValueError("invalid token counts; spend reservation retained")
+    return usage
+
+
 class Client:
     def __init__(
         self,
@@ -88,7 +108,13 @@ class Client:
         if mode not in ("replay", "live", "auto"):
             raise ValueError(mode)
         self.mode = mode
-        self.cap_usd = cap_usd if cap_usd is not None else float(os.environ.get("FBAR_SPEND_CAP_USD", "20"))
+        self.cap_usd = (
+            cap_usd
+            if cap_usd is not None
+            else float(os.environ.get("FBAR_SPEND_CAP_USD", str(MAX_SPEND_USD)))
+        )
+        if not math.isfinite(self.cap_usd) or not 0 <= self.cap_usd <= MAX_SPEND_USD:
+            raise ValueError(f"spend cap must be between $0 and ${MAX_SPEND_USD:.2f}")
         self.ledger = ledger or Path(os.environ.get("FBAR_SPEND_LEDGER", CONFIG_DIR / "spend_ledger.jsonl"))
         self.recordings = recordings
 
@@ -160,11 +186,12 @@ class Client:
             started = time.time()
             data = self._post(body)
             latency = time.time() - started
-            usage = data.get("usage") or {}
+            usage = _validated_usage(data)
             cost = cost_usd(model, usage)
             content = data["choices"][0]["message"]["content"]
         except BaseException:
-            self._settle(rid, worst, None)  # a failed call costs nothing we can measure; free the budget
+            # An interrupted or failed request may still be billed. Keep the reservation until
+            # its actual outcome can be reconciled; assuming zero could exceed the local cap.
             raise
         self._settle(
             rid,

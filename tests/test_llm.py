@@ -105,14 +105,35 @@ def test_concurrent_calls_cannot_overshoot_the_cap(tmp_path, monkeypatch):
     assert results.count("ok") == 1
 
 
-def test_failed_call_releases_its_reservation(client, monkeypatch):
+def test_failed_call_keeps_its_reservation_until_cost_is_known(client, monkeypatch):
     def boom(body):
         raise RuntimeError("HTTP 500")
 
     monkeypatch.setattr(client, "_post", boom)
     with pytest.raises(RuntimeError):
         client.chat("muse-spark-1.3", [{"role": "user", "content": "x"}], max_tokens=100)
-    assert client.spent_usd() == pytest.approx(0, abs=1e-9)
+    assert client.spent_usd() > 0
+    assert json.loads(client.ledger.read_text().splitlines()[0])["kind"] == "reservation"
+
+
+@pytest.mark.parametrize(
+    "usage",
+    [
+        None,
+        {},
+        {"prompt_tokens": True, "completion_tokens": 1},
+        {"prompt_tokens": 1, "completion_tokens": -1},
+        {"prompt_tokens": 1, "completion_tokens": 1, "prompt_tokens_details": {"cached_tokens": 2}},
+    ],
+)
+def test_invalid_usage_keeps_reservation_and_does_not_record_a_replay(client, monkeypatch, usage):
+    response = fake_response()
+    response["usage"] = usage
+    monkeypatch.setattr(client, "_post", lambda body: response)
+    with pytest.raises(ValueError, match="reservation retained"):
+        client.chat("muse-spark-1.3", [{"role": "user", "content": "x"}], max_tokens=100)
+    assert client.spent_usd() > 0
+    assert not list(client.recordings.rglob("*.json"))
 
 
 def test_self_hosted_model_never_receives_the_api_key(client, monkeypatch):

@@ -174,6 +174,14 @@ CATALOG = MappingProxyType(
             "",
             preparer_only=True,
         ),
+        "photo_location_unverified": FlagDefinition(
+            "review",
+            "A new physical capture has not had source locations independently verified.",
+            "Review the actual page and verify the reading and location before relying on it.",
+            "Photo source location not verified",
+            "",
+            preparer_only=True,
+        ),
         "ownership_unknown": FlagDefinition(
             "review",
             "No account ownership classification is recorded.",

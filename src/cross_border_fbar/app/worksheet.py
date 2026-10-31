@@ -7,6 +7,7 @@ the exact line on the page image it came from.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import re
@@ -68,18 +69,39 @@ def page_image(set_dir: Path, statement_id: str, page: int) -> Path:
     return image
 
 
-def load_observations(inp: Inputs) -> tuple[list, dict[str, str]]:
+def load_observations(inp: Inputs) -> tuple[list, dict[str, str], set[str]]:
     """Observations from the pages that were read, and each page that wasn't (upload -> reason)."""
     readings = json.loads(inp.readings.read_text())
-    observations, unread = [], {}
+    observations, unread, unverified = [], {}, set()
     for page in readings["pages"]:
         image = page_image(inp.set_dir, page["statement_id"], int(page.get("page", 1)))
         upload = f"pages/{image.name}"  # the upload name the UI shows; never parsed for meaning
         if "reading" not in page:
             unread[upload] = str(page.get("error") or "no reading for this page")
             continue
-        observations.append(observe(page["reading"], upload, snap_rows(page["reading"], image)))
-    return observations, unread
+        reading = page["reading"]
+        if page.get("capture") and not page["capture"].get("boxes_verified", False):
+            # Model boxes are not evidence of grounding until checked. Keep the page accessible,
+            # but do not draw an unverified highlight or snap an unseen photo to guessed lines.
+            unverified.add(upload)
+            reading = copy.deepcopy(reading)
+            for field in (
+                "institution",
+                "currency",
+                "account_number",
+                "holder",
+                "period",
+                "opening_balance",
+                "closing_balance",
+            ):
+                reading[field]["bbox"] = None
+            for row in reading["rows"]:
+                for field in ("row_bbox", "amount_bbox", "balance_bbox"):
+                    row[field] = None
+            observations.append(observe(reading, upload))
+        else:
+            observations.append(observe(reading, upload, snap_rows(reading, image)))
+    return observations, unread, unverified
 
 
 def _effective_intake(document, ownership_overrides, interest_overrides):
@@ -106,7 +128,7 @@ def build(
     intake_doc = IntakeDocument.from_dict(json.loads(inp.intake.read_text()))
     intake = _effective_intake(intake_doc, ownership_overrides, interest_overrides)
     year_rates = rates.load(inp.tax_year)
-    observations, unread = load_observations(inp)
+    observations, unread, unverified = load_observations(inp)
     observations = [part for page in observations for part in split_by_row_account(page)]
     account_rates = {
         key: rates.Rate(v["currency"], Decimal(v["units_per_usd"]), v["record_date"], v["source"], "cpa")
@@ -123,6 +145,15 @@ def build(
         account_rates=account_rates,
         currency_selections=selections,
     )
+    for result in results:
+        for upload in sorted(set(result.uploads) & unverified):
+            result.flags.append(
+                Flag(
+                    "photo_location_unverified",
+                    "photo source location is unverified",
+                    [Source(upload, "page", None)],
+                )
+            )
     totals = fbar_totals(results)
     readings_meta = json.loads(inp.readings.read_text())
     accounts, flags = [], []

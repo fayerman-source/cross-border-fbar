@@ -11,6 +11,13 @@
    "missed": 0,
    "raised_by_misreads": 0
   },
+  "review_burden": {
+   "review_items_total": 6,
+   "expected_review_items_matched": 6,
+   "additional_review_items": 0,
+   "additional_items_linked_to_header_misreads": 0,
+   "additional_items_without_header_misread_link": 0
+  },
   "aggregate_usd": {
    "got": 373618,
    "want": 373618

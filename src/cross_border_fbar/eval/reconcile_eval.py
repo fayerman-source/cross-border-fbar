@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections import Counter
 from decimal import Decimal
 from pathlib import Path
 
@@ -42,16 +43,68 @@ SCORED_CODES = {
 FIELD_OF_FLAG = {"institution_names_differ": "institution", "currency_conflict": "currency"}
 
 
+def _expected_identity(flag):
+    where = flag["statement_id"].rsplit("_", 1)[1] if flag["code"] == "missing_statement" else ""
+    return flag["code"], where
+
+
 def _expected_flags(acct: dict) -> set[tuple[str, str]]:
-    out = set()
-    for f in acct["expected_flags"]:
-        where = f["statement_id"].rsplit("_", 1)[1] if f["code"] == "missing_statement" else ""
-        out.add((f["code"], where))
-    return out
+    return {_expected_identity(flag) for flag in acct["expected_flags"]}
 
 
 def _got_flags(result) -> set[tuple[str, str]]:
     return {(f.code, f.month or "") for f in result.flags}
+
+
+def _consume_expected_review(flag, remaining):
+    identity = (flag.code, flag.month or "")
+    if not remaining[identity]:
+        return False
+    remaining[identity] -= 1
+    return True
+
+
+def _linked_header_misread(flag, misread, upload_to_statement):
+    return any(
+        (
+            upload_to_statement.get(source.upload),
+            source.ref if flag.code == "field_unreadable" else FIELD_OF_FLAG.get(flag.code),
+        )
+        in misread
+        for source in flag.sources
+    )
+
+
+def _review_burden(results, truth_accounts, misread, upload_to_statement):
+    """Count actual review items, including duplicates and unrecognized accounts.
+
+    An expected review flag matches one actual flag with the same account, code and month.
+    Remaining review flags are additional work, not necessarily false positives: they can
+    reflect reader errors or sensible review of uncertainty not modeled by the answer key.
+    """
+    expected = {
+        account_key(account["account_number"]): Counter(
+            _expected_identity(flag) for flag in account["expected_flags"] if flag.get("severity") == "review"
+        )
+        for account in truth_accounts
+    }
+    items = [
+        (result.account_key, flag) for result in results for flag in result.flags if flag.severity == "review"
+    ]
+    matched, additional = 0, []
+    for key, flag in items:
+        if _consume_expected_review(flag, expected.get(key, Counter())):
+            matched += 1
+        else:
+            additional.append(flag)
+    linked = sum(_linked_header_misread(flag, misread, upload_to_statement) for flag in additional)
+    return {
+        "review_items_total": len(items),
+        "expected_review_items_matched": matched,
+        "additional_review_items": len(additional),
+        "additional_items_linked_to_header_misreads": linked,
+        "additional_items_without_header_misread_link": len(additional) - linked,
+    }
 
 
 def evaluate(set_dir: Path, model: str) -> dict:
@@ -165,6 +218,7 @@ def evaluate(set_dir: Path, model: str) -> dict:
                 "missed": fn,
                 "raised_by_misreads": sum(len(a["flags_from_misreads"]) for a in accounts),
             },
+            "review_burden": _review_burden(results, truth["accounts"], misread, upload_to_statement),
             "aggregate_usd": {
                 "got": totals.aggregate_max_usd,
                 "want": truth["household"]["aggregate_max_usd"],

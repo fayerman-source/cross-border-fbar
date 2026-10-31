@@ -21,9 +21,10 @@ Replay uses the model responses recorded in `recordings/`, keyed by a hash of th
   - A box is "in the right row" if its centre falls inside the true row.
   - Box overlap (IoU) is measured against the tight box of the printed text.
 - **Snapping:** the model's row boxes drift vertically, by different amounts on different runs. `extract/snap.py` finds printed lines in the image alone, with no answer key. Its primary signal is the model's horizontal positions, which stay accurate: each row's amount sits in a debit or credit column, so its true line has ink in that column and none in the other. When that pattern can't decide (one-column layouts), a fit-plus-anchor cost is used, and the code abstains rather than guess.
+- **Reviewer workload:** every actual review-severity flag is counted, including multiple items of the same type and flags on unmatched accounts. Each expected review item matches at most one actual flag for the same account, code, and month; unmatched actual review items are additional workload. The subset linked to scored header-field misreads is reported separately and is not added a second time. This link covers mapped institution/currency flags and unreadable header fields; other items may still arise from misreads. Additional review items are not necessarily false positives. Matching by code and month cannot distinguish multiple causes represented by one flag, so this is fixture-relative item count, not a universal time or cost estimate.
 - **Reconciliation scoring:**
   - Per account: the maximum, the statement it came from, and its USD value. A value counts only if it matches the answer key exactly.
-  - Review and info flags are scored as true positives, false positives and misses.
+  - Review and info flags are scored as true positives, false positives and misses, deduplicated by account, code and month. Certain flags linked to header misreads are reported separately from false positives.
   - Intake facts (owner vs signature authority) come from the answer key here. In the product they come from the client call or the CPA.
 
 ## Results: muse-spark-1.3, prompt v3, clean renders (Oct 27, 2026)
@@ -56,6 +57,7 @@ Two of the 280 rows don't count as snapped:
 | Accounts found | 6/6 |
 | Maximum / source / USD, including two whose correct answer is "unknown" | 6/6 / 6/6 / 6/6 |
 | Flags | 9 correct, 0 false, 0 missed |
+| Review workload | 6 actual review items; 0 additional |
 | Household aggregate | $373,618 (answer key: $373,618) |
 
 The two "unknown" accounts are the point of the compiled list:
@@ -64,7 +66,7 @@ The two "unknown" accounts are the point of the compiled list:
 
 ## Open weights: Muse Glimmer on a consumer GPU (Oct 28, 2026)
 
-The same 49 pages and the same prompt v3, read by Meta's open-weights model on hardware we control. No statement leaves the machine and there is no per-token cost.
+The same 49 pages and the same prompt v3, read by Meta's open-weights model on the GPU host over an SSH tunnel, with no third-party inference endpoint and no per-token model charge. The data are synthetic.
 
 **Runtime:**
 - llama.cpp b11941 (commit 19ff817fb), CUDA build.
@@ -82,9 +84,10 @@ The same 49 pages and the same prompt v3, read by Meta's open-weights model on h
 | Row box in the right row, snapped | 244/280 | 278/280 |
 | Reconciliation: maximum / USD | 6/6 / 6/6 | 6/6 / 6/6 |
 | Reconciliation: flags | 9 correct, 0 false, 0 missed, 1 raised by a misread | 9 correct, 0 false, 0 missed |
+| Actual review workload | 7 items: 6 expected, 1 additional from a misread | 6 items: 6 expected, 0 additional |
 | Household aggregate | $373,618 (key: $373,618) | $373,618 |
 | Median time per page | 344 s | ~10 s |
-| Cost | $0 (4.9 h on the GPU) | $0.76 |
+| Cost | $0 model-token charge (4.9 h on the GPU; hardware and electricity excluded) | $0.76 model charges |
 
 What the gaps are:
 - **Header fields:** on 8 pages Glimmer returned the right header text but labeled every field `absent`. The strict field score counts those as misses. The reconciliation now uses text that is present whatever its label, which recovered the end-to-end result.
@@ -100,10 +103,14 @@ Box placement changes from run to run, and snapping has had to change with it:
 
 Earlier detail: an earlier run (prompt v1, before pages printed a currency line) placed 209/240 raw row boxes in the right row; this run placed 187/240. The direction and size of the drift differed between runs. The first snapping rule assumed the first row drifts least. It reached 239/240 on run 1 but snapped one page confidently onto the wrong lines on run 2 (218/240). The column-pattern rule above reaches 240/240 on run 2. Treat box placement as variable, and judge snapping on data it wasn't tuned on. The photographed and scanned copies are that test.
 
+## Physical capture runner
+
+`python -m cross_border_fbar.eval.photo` can read one confirmed-synthetic image or PDF page and score values against a selected manifest case. It reports localization as unscored unless operator-supplied page corners are used to rectify the capture; such geometry still requires manual alignment verification. New capture source boxes remain unverified in the worksheet and produce a review item. See the README for the command. Physical captures have not yet been evaluated.
+
 ## What these numbers do not show
 
 - **Clean renders only.** Photographed and scanned copies are the real test and are not in these tables yet.
 - **Snapping was revised after seeing this run's failures.** Its 240/240 is in-sample.
-- **One model, one run.** Glimmer (open weights) has not been evaluated.
-- **No unreadable or missing fields on the pages,** so abstention isn't scored yet.
+- **One recorded run per model on the current clean set.** These are not repeated-run reliability estimates.
+- **No intentionally unreadable document fields in the clean set.** Expected absent fields are scored; abstention on genuinely unreadable input is not yet established.
 - **Same author.** The answer key and the reconciliation were written separately but by the same author, so a shared misunderstanding of the rules would not show up here.
