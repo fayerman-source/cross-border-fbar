@@ -1,4 +1,4 @@
-/* Bundled web fonts (SIL Open Font License; see fonts/OFL.txt). Latin subsets from Google Fonts. */
+/* Bundled web fonts: SIL OFL 1.1; family-specific licenses are in static/fonts/. */
 @font-face { font-family: 'Barlow Condensed'; font-style: normal; font-weight: 500; font-display: swap; src: url('/static/fonts/BarlowCondensed-500.woff2') format('woff2'); }
 @font-face { font-family: 'Barlow Condensed'; font-style: normal; font-weight: 600; font-display: swap; src: url('/static/fonts/BarlowCondensed-600.woff2') format('woff2'); }
 @font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url('/static/fonts/IBMPlexMono-400.woff2') format('woff2'); }

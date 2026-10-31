@@ -100,7 +100,8 @@ function show(sources, key, caption) {
     img.alt = `Source page ${page}`;
   } else draw();
   const extra = usable.length > 1 ? ` (+${usable.length - 1} more line${usable.length > 2 ? "s" : ""})` : "";
-  $("viewer-caption").textContent = `${caption} — ${usable[0].wp}${extra}`;
+  const location = usable.some((source) => source.bbox) ? "" : " · page only; location not verified";
+  $("viewer-caption").textContent = `${caption} — ${usable[0].wp}${extra}${location}`;
   document.querySelectorAll("[aria-pressed]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.key === key ? "true" : "false"));
 }
 
