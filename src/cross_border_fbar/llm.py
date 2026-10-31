@@ -182,17 +182,13 @@ class Client:
         est_input = len(json.dumps(messages)) // 3  # generous: images count as text here
         worst = round((est_input * PRICES[model]["input"] + max_tokens * PRICES[model]["output"]) / 1e6, 6)
         rid = self._reserve(worst, label)
-        try:
-            started = time.time()
-            data = self._post(body)
-            latency = time.time() - started
-            usage = _validated_usage(data)
-            cost = cost_usd(model, usage)
-            content = data["choices"][0]["message"]["content"]
-        except BaseException:
-            # An interrupted or failed request may still be billed. Keep the reservation until
-            # its actual outcome can be reconciled; assuming zero could exceed the local cap.
-            raise
+        # Failures retain the reservation: an interrupted request may still be billed.
+        started = time.time()
+        data = self._post(body)
+        latency = time.time() - started
+        usage = _validated_usage(data)
+        cost = cost_usd(model, usage)
+        content = data["choices"][0]["message"]["content"]
         self._settle(
             rid,
             worst,

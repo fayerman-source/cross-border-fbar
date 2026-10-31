@@ -56,7 +56,13 @@ def _case(manifest_path: Path, case_id: str, page: int) -> tuple[dict, tuple[int
     if len(matches) != 1:
         raise ValueError("manifest must contain exactly one matching statement and page")
     case = matches[0]
-    truth_path = (manifest_path.parent / case["baseline_truth"]).resolve()
+    base = manifest_path.parent.resolve()
+    truth_ref = Path(case["baseline_truth"])
+    if truth_ref.is_absolute():
+        raise ValueError("manifest answer key must be within the manifest directory")
+    truth_path = (base / truth_ref).resolve()
+    if not truth_path.is_relative_to(base):
+        raise ValueError("manifest answer key must be within the manifest directory")
     truth = json.loads(truth_path.read_text())
     statements = [s for s in truth["statements"] if s["statement_id"] == case_id]
     if len(statements) != 1:
@@ -75,7 +81,7 @@ def _case(manifest_path: Path, case_id: str, page: int) -> tuple[dict, tuple[int
 def _solve(matrix: list[list[float]]) -> list[float]:
     """Solve an 8x8 system with pivoting; reject degenerate page corners."""
     for col in range(8):
-        pivot = max(range(col, 8), key=lambda row: abs(matrix[row][col]))
+        pivot = max(range(col, 8), key=lambda row, col=col: abs(matrix[row][col]))
         if abs(matrix[pivot][col]) < 1e-10:
             raise ValueError("page corners are degenerate")
         matrix[col], matrix[pivot] = matrix[pivot], matrix[col]
@@ -130,9 +136,9 @@ def _strip_geometry(scored: dict) -> dict:
         field.pop("centre_in_cell", None)
         field.pop("iou_text", None)
     for row in scored["rows"]:
-        for key in list(row):
-            if "iou" in key or "centre_in" in key:
-                del row[key]
+        row_keys = [key for key in row if "iou" in key or "centre_in" in key]
+        for key in row_keys:
+            del row[key]
     return scored
 
 
@@ -180,9 +186,10 @@ def _validate_schema(value, schema, path="reading"):
         _validate_object(value, schema, path)
     elif kind == "array":
         _validate_array(value, schema, path)
-    elif kind == "string":
-        if not isinstance(value, str) or ("enum" in schema and value not in schema["enum"]):
-            raise ValueError(f"{path} has an invalid string value")
+    elif kind == "string" and (
+        not isinstance(value, str) or ("enum" in schema and value not in schema["enum"])
+    ):
+        raise ValueError(f"{path} has an invalid string value")
     elif kind == "integer":
         if type(value) is not int or not schema.get("minimum", value) <= value <= schema.get(
             "maximum", value
@@ -263,6 +270,12 @@ def run(
         raise ValueError("--manifest and --case must be provided together")
     if corners and not manifest:
         raise ValueError("page corners require a manifest and case for the original page dimensions")
+    # The operator explicitly chooses these paths. Resolve them before use; only the indirect
+    # answer-key reference inside a manifest is confined to the manifest directory.
+    input_path = input_path.resolve(strict=True)
+    set_dir = set_dir.resolve()
+    manifest = manifest.resolve(strict=True) if manifest else None
+    intake_path = intake_path.resolve(strict=True) if intake_path else None
     image = _open_page(input_path, page)
     statement, size = _case(manifest, case_id, truth_page) if manifest else (None, None)
     if corners:

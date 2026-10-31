@@ -6,7 +6,7 @@ import pytest
 from PIL import Image
 
 from cross_border_fbar.app.worksheet import Inputs, build
-from cross_border_fbar.eval.photo import _rectify, run
+from cross_border_fbar.eval.photo import _case, _rectify, run
 from cross_border_fbar.extract.page import FIELD_NAMES
 from cross_border_fbar.llm import Client, SpendCapExceeded
 
@@ -28,6 +28,21 @@ def reading():
         }
     ]
     return data
+
+
+@pytest.mark.parametrize("reference", ["../outside.json", "/tmp/outside.json", "link.json"])
+def test_manifest_cannot_read_answer_key_outside_its_directory(tmp_path, reference):
+    packet = tmp_path / "packet"
+    packet.mkdir()
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}")
+    (packet / "link.json").symlink_to(outside)
+    manifest = packet / "manifest.json"
+    manifest.write_text(
+        json.dumps({"cases": [{"statement_id": "s", "page": 1, "baseline_truth": reference}]})
+    )
+    with pytest.raises(ValueError, match="within the manifest directory"):
+        _case(manifest, "s", 1)
 
 
 @pytest.fixture

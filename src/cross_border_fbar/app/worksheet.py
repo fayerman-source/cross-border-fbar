@@ -69,6 +69,24 @@ def page_image(set_dir: Path, statement_id: str, page: int) -> Path:
     return image
 
 
+def _without_unverified_boxes(reading: dict) -> dict:
+    reading = copy.deepcopy(reading)
+    for field in (
+        "institution",
+        "currency",
+        "account_number",
+        "holder",
+        "period",
+        "opening_balance",
+        "closing_balance",
+    ):
+        reading[field]["bbox"] = None
+    for row in reading["rows"]:
+        for field in ("row_bbox", "amount_bbox", "balance_bbox"):
+            row[field] = None
+    return reading
+
+
 def load_observations(inp: Inputs) -> tuple[list, dict[str, str], set[str]]:
     """Observations from the pages that were read, and each page that wasn't (upload -> reason)."""
     readings = json.loads(inp.readings.read_text())
@@ -84,21 +102,7 @@ def load_observations(inp: Inputs) -> tuple[list, dict[str, str], set[str]]:
             # Model boxes are not evidence of grounding until checked. Keep the page accessible,
             # but do not draw an unverified highlight or snap an unseen photo to guessed lines.
             unverified.add(upload)
-            reading = copy.deepcopy(reading)
-            for field in (
-                "institution",
-                "currency",
-                "account_number",
-                "holder",
-                "period",
-                "opening_balance",
-                "closing_balance",
-            ):
-                reading[field]["bbox"] = None
-            for row in reading["rows"]:
-                for field in ("row_bbox", "amount_bbox", "balance_bbox"):
-                    row[field] = None
-            observations.append(observe(reading, upload))
+            observations.append(observe(_without_unverified_boxes(reading), upload))
         else:
             observations.append(observe(reading, upload, snap_rows(reading, image)))
     return observations, unread, unverified
@@ -113,6 +117,18 @@ def _effective_intake(document, ownership_overrides, interest_overrides):
         stated = intake.get(key, Intake("unknown"))
         intake[key] = replace(stated, financial_interest=correction["value"])
     return intake
+
+
+def _flag_unverified_locations(results, unverified):
+    for result in results:
+        for upload in sorted(set(result.uploads) & unverified):
+            result.flags.append(
+                Flag(
+                    "photo_location_unverified",
+                    "photo source location is unverified",
+                    [Source(upload, "page", None)],
+                )
+            )
 
 
 def build(
@@ -145,15 +161,7 @@ def build(
         account_rates=account_rates,
         currency_selections=selections,
     )
-    for result in results:
-        for upload in sorted(set(result.uploads) & unverified):
-            result.flags.append(
-                Flag(
-                    "photo_location_unverified",
-                    "photo source location is unverified",
-                    [Source(upload, "page", None)],
-                )
-            )
+    _flag_unverified_locations(results, unverified)
     totals = fbar_totals(results)
     readings_meta = json.loads(inp.readings.read_text())
     accounts, flags = [], []
