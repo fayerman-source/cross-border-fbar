@@ -1,5 +1,7 @@
 import hashlib
 import json
+import os
+import shutil
 from decimal import Decimal
 from pathlib import Path
 
@@ -13,6 +15,68 @@ from cross_border_fbar.synth.render import render_statement
 from cross_border_fbar.synth.truth import to_usd_ceiling
 
 SEED = 2025
+
+
+def test_font_cache_uses_source_content_and_repairs_corrupt_entries(tmp_path, monkeypatch):
+    from fontTools.ttLib import TTFont
+
+    from cross_border_fbar.synth import render
+
+    fonts = tmp_path / "fonts"
+    fonts.mkdir()
+    source = fonts / render.FONT_FILES["latin"]
+    shutil.copyfile(FONTS / source.name, source)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    monkeypatch.setattr(render, "FONT_CACHE", cache)
+    (cache / "latin-400.ttf").write_bytes(b"old corrupt cache")
+    first = render.static_font(fonts, "latin", 400)
+    assert first.name != "latin-400.ttf"
+    with TTFont(first) as font:
+        assert font.getBestCmap()
+    first_bytes = first.read_bytes()
+    first.write_bytes(b"interrupted write")
+    assert render.static_font(fonts, "latin", 400) == first
+    assert first.read_bytes() == first_bytes
+    with TTFont(first) as font:
+        assert font.getBestCmap()
+    with TTFont(first, lazy=True) as font:
+        glyph_offset = font.reader.tables["glyf"].offset
+    damaged = bytearray(first.read_bytes())
+    damaged[glyph_offset + 10] ^= 1
+    first.write_bytes(damaged)
+    assert render.static_font(fonts, "latin", 400) == first
+    assert first.read_bytes() == first_bytes
+    with source.open("ab") as stream:
+        stream.write(b"changed source bytes")
+    second = render.static_font(fonts, "latin", 400)
+    assert second != first
+    with TTFont(second) as font:
+        assert font.getBestCmap()
+    before = source.stat()
+    data = bytearray(source.read_bytes())
+    data[-1] ^= 1
+    source.write_bytes(data)
+    os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert render.static_font(fonts, "latin", 400) not in {first, second}
+
+
+def test_failed_font_creation_leaves_no_partial_cache_file(tmp_path, monkeypatch):
+    from fontTools.varLib import instancer
+
+    from cross_border_fbar.synth import render
+
+    monkeypatch.setattr(render, "FONT_CACHE", tmp_path / "cache")
+
+    class Interrupted:
+        def save(self, path):
+            path.write_bytes(b"partial font")
+            raise RuntimeError("interrupted")
+
+    monkeypatch.setattr(instancer, "instantiateVariableFont", lambda *args, **kwargs: Interrupted())
+    with pytest.raises(RuntimeError, match="interrupted"):
+        render.static_font(FONTS, "latin", 400)
+    assert list(render.FONT_CACHE.iterdir()) == []
 
 
 @pytest.fixture(scope="module")

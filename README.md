@@ -21,9 +21,13 @@ FBAR uses the year's maximum balance; month-end statements can miss it. This pro
 
 This repository was created on October 27, 2026, after the hackathon kickoff. The synthetic statement generator, model-reading and evaluation pipeline, deterministic reconciliation, review worksheet, audit/sign-off, Korean-summary workflow, indicative Form 8938 panel, and single-page photo-evaluation runner were built during the event. The project uses new work in this repository; see commit history for dates.
 
-Not yet complete: broader physical-capture and unseen-layout testing; native-speaker review of the full Korean phrase catalog; a browser upload flow; voice intake; and the submission video. Nineteen of 27 Korean phrases have been reviewed; eight remain unreviewed, including terminology changes, a potentially truncated transcription and two row-versus-column questions. The Korean draft requires explicit preparer approval.
+Not yet complete: broader physical-capture and unseen-layout testing; a browser upload flow; voice intake; and the submission video. All 27 current Korean catalog phrases have been reviewed by a native speaker. The Korean draft requires explicit preparer approval.
 
 ## Synthetic test data
+
+Run the demo from a clone of this repository: recorded replays and results are repository fixtures,
+and the demo set is generated there. Those fixtures are not included in the installed wheel. The wheel
+does include the data and fonts needed to generate synthetic statements and load the bundled rates.
 
 ```bash
 uv sync
@@ -46,7 +50,7 @@ A local app for the preparer. The recorded-reading worksheet runs offline, binds
 - **Schedule A** lists each account's highest observed balance in the supplied material, subject to coverage and review. Click a figure to see its source page. For prepared readings, image-based snapping proposes a line highlight: on the clean set, 278/280 row centers were in the right row after snapping, measured in-sample. The preparer must verify each highlight against the page; new captures have no highlight while their locations are unverified.
 - **Schedule B** lists the review items. Each must be acknowledged with a note; ownership (owner, joint, signature authority) can be corrected, and the worksheet recomputes.
 - **Sign-off** is allowed only when every review item is acknowledged. It records a reviewed snapshot and fingerprint; acknowledged limitations may remain. The signed view and export list review items still present and open threshold determinations. Existing sign-offs are invalidated if the worksheet changes, including when the threshold-state fields are first added; review and sign off again.
-- **Client summary in Korean** is assembled from signed figures and fixed catalog phrases (last four digits, no statement contents, none of the preparer's notes). Missing phrases may be translated by `muse-spark-1.3`; unreviewed phrases require explicit confirmation and the preparer approves the draft before release. Native-speaker review is partial, with one potentially truncated transcription awaiting confirmation.
+- **Client summary in Korean** is assembled from signed figures and fixed catalog phrases (last four digits, no statement contents, none of the preparer's notes). Missing phrases may be translated by `muse-spark-1.3`; unreviewed phrases require explicit confirmation and the preparer approves the draft before release. All 27 current catalog phrases have been reviewed by a native speaker; changed English or new phrases require review again.
 
 A misread amount can be inspected against its source page but cannot yet be corrected in the app. Corrections currently cover ownership, financial interest, currency and exchange rate. Every action goes to an audit trail (`out/review/audit.jsonl`). The app reads the model's recorded page readings and the intake facts, never the answer key.
 

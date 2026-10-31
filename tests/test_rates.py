@@ -28,3 +28,17 @@ def test_load_rejects_a_file_for_another_date(tmp_path):
     bad.write_text(json.dumps(doc))
     with pytest.raises(ValueError):
         rates.load(2025, bad)
+
+
+def test_fetch_writes_workspace_file_without_modifying_packaged_rates(tmp_path, monkeypatch, capsys):
+    bundled = rates.rates_path(2025)
+    original = bundled.read_bytes()
+    doc = json.loads(original)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(rates, "fetch", lambda year, currencies: doc)
+    rates.main(["fetch", "2025", "KRW"])
+    output = tmp_path / "data" / "treasury_rates_2025.json"
+    assert output.is_file()
+    assert rates.load(2025, output)["KRW"] == rates.load(2025)["KRW"]
+    assert bundled.read_bytes() == original
+    assert "Load explicitly with rates.load(2025, path=Path(" in capsys.readouterr().out

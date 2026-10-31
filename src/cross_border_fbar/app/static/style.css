@@ -96,7 +96,7 @@ table.accounts { width: 100%; border-collapse: collapse; font-size: 14px; table-
 .amount { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .ccy { font: 500 11px/1 var(--mono); color: var(--ink-soft); margin-left: 3px; }
 tr.unidentified td { color: var(--ink-soft); }
-.unknown { font-style: italic; color: var(--ink-soft); }
+.unknown { display: inline-block; max-width: 100%; white-space: normal; overflow-wrap: anywhere; font-style: italic; color: var(--ink-soft); }
 
 /* A traced figure: red tickmark + workpaper reference, clickable */
 .traced {
