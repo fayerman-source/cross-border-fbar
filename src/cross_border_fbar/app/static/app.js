@@ -136,7 +136,9 @@ function renderAccounts(signed) {
   $("accounts").replaceChildren(...ws.accounts.map((a) => accountRow(a, signed)));
   const t = ws.totals;
   const threshold = `$${t.threshold_usd.toLocaleString("en-US")} FBAR aggregate threshold`;
-  const outcome = t.above_threshold === null ? `result against the ${threshold} is undetermined` : `observed total ${t.above_threshold ? "above" : "not above"} the ${threshold}`;
+  let outcome;
+  if (t.above_threshold === null) outcome = `result against the ${threshold} is undetermined`;
+  else outcome = `observed total ${t.above_threshold ? "above" : "not above"} the ${threshold}`;
   const notes = [`${outcome} — review`];
   if (t.accounts_without_value.length) notes.push(`${plural(t.accounts_without_value.length, "account")} without a determinable balance not included`);
   if (t.unidentified_uploads.length) notes.push("unidentified rows not counted");
@@ -255,6 +257,14 @@ function signoffHint(open) {
   return `Acknowledge the ${plural(open.length, "open review item")} to sign off.`;
 }
 
+function determinationText(d) {
+  const parts = [d.label ? d.label + ": " + d.message : d.message];
+  if (d.accounts?.length) parts.push("Accounts: " + d.accounts.join(", ") + ".");
+  if (d.uploads?.length) parts.push("Pages: " + d.uploads.join(", ") + ".");
+  if (d.scope) parts.push(d.scope);
+  return parts.join(" ");
+}
+
 function renderSignoff(signed) {
   const open = state.open_review_flags;
   $("signoff-btn").disabled = signed || open.length > 0;
@@ -271,7 +281,7 @@ function renderSignoff(signed) {
     : [el("li", {}, "No acknowledged review items remain on this worksheet.")]));
   const determinations = state.open_determinations;
   $("open-determinations").replaceChildren(...(determinations.length
-    ? determinations.map((d) => el("li", {}, `${d.label ? `${d.label}: ` : ""}${d.message}${d.accounts?.length ? ` Accounts: ${d.accounts.join(", ")}.` : ""}${d.uploads?.length ? ` Pages: ${d.uploads.join(", ")}.` : ""}${d.scope ? ` ${d.scope}` : ""}`))
+    ? determinations.map((d) => el("li", {}, determinationText(d)))
     : [el("li", {}, "No open determinations are recorded in this worksheet.")]));
   renderSummary(state.review.summary);
 }

@@ -44,7 +44,12 @@ def fbar_totals(accounts: list[AccountResult]) -> FbarTotals:
         reasons.append("unidentified_accounts_or_pages")
     if any(CATALOG[f.code].may_raise_aggregate for a in accounts for f in a.flags):
         reasons.append("review_items")
-    above = True if total > FBAR_AGGREGATE_USD else None if reasons else False
+    if total > FBAR_AGGREGATE_USD:
+        above = True
+    elif reasons:
+        above = None
+    else:
+        above = False
     return FbarTotals(
         aggregate_max_usd=total,
         accounts_counted=len(valued),
