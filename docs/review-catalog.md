@@ -6,7 +6,7 @@ When Treasury has no rate, the acknowledgement dialog accepts foreign currency u
 
 The Korean gettext catalog is `src/cross_border_fbar/app/translations/ko.po`. Each stable message context names a label, with a translator comment identifying its grammar. English changes retain the old translation as fuzzy. A translation is reviewed only when `Last-Translator` names the human reviewer, the file header is not fuzzy and the matching entry is not fuzzy. Current fuzzy drafts can be used only with explicit CPA confirmation at approval. Stale English is never used as a reviewed translation.
 
-Give `docs/korean-review.txt` to the native reviewer. It contains numbered English | Korean pairs and review status. After incorporating the review into the `.po` file, record the human's name in `Last-Translator` and remove fuzzy only for approved entries. Regenerate the printout without an API call:
+Give `docs/korean-review.txt` to the native reviewer. It contains numbered English | Korean pairs and review status. After incorporating the review into the `.po` file, record the reviewer designation in `Last-Translator` and remove fuzzy only for approved entries. Regenerate the printout without an API call:
 
 ```
 uv run python -m cross_border_fbar.app.phrases --printout

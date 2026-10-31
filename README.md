@@ -10,7 +10,7 @@ A local preparer prototype that turns recorded readings of fictional foreign ban
 
 This repository was created on October 27, 2026, after the hackathon kickoff. The synthetic statement generator, model-reading and evaluation pipeline, deterministic reconciliation, review worksheet, audit/sign-off, Korean-summary workflow, indicative Form 8938 panel, and single-page photo-evaluation runner were built during the event. The project uses new work in this repository; see commit history for dates.
 
-Not yet complete: physical photo/scan accuracy testing; native-speaker review of the Korean phrase catalog; a browser upload flow; voice intake; and the submission video. The clean synthetic replay is not evidence of photographed-document accuracy. The Korean draft requires explicit preparer approval and its 27 catalog phrases are not yet human-reviewed.
+Not yet complete: physical photo/scan accuracy testing; native-speaker review of the full Korean phrase catalog; a browser upload flow; voice intake; and the submission video. The clean synthetic replay is not evidence of photographed-document accuracy. Fifteen of 27 Korean phrases have been reviewed; 12 remain unreviewed, including terminology changes and one potentially truncated transcription to confirm. The Korean draft requires explicit preparer approval.
 
 ## License and model attribution
 
@@ -46,7 +46,7 @@ A local app for the preparer. The recorded-reading worksheet runs offline, binds
 - **Schedule A** lists each account's highest balance with a tickmark and a workpaper reference. Click a figure to see the source page with the line circled.
 - **Schedule B** lists the review items. Each must be acknowledged with a note; ownership (owner, joint, signature authority) can be corrected, and the worksheet recomputes.
 - **Sign-off** is allowed only when every review item is acknowledged. It freezes the worksheet and records a fingerprint; export exists only after it.
-- **Client summary in Korean** is assembled from signed figures and fixed catalog phrases (last four digits, no statement contents, none of the preparer's notes). Missing phrases may be translated by `muse-spark-1.3`; unreviewed phrases require explicit confirmation and the preparer approves the draft before release. The current catalog has not received native-speaker review.
+- **Client summary in Korean** is assembled from signed figures and fixed catalog phrases (last four digits, no statement contents, none of the preparer's notes). Missing phrases may be translated by `muse-spark-1.3`; unreviewed phrases require explicit confirmation and the preparer approves the draft before release. Native-speaker review is partial, with one potentially truncated transcription awaiting confirmation.
 
 Every action goes to an audit trail (`out/review/audit.jsonl`). The app reads the model's recorded page readings and the intake facts, never the answer key.
 
