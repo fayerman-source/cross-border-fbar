@@ -190,11 +190,10 @@ def _validate_schema(value, schema, path="reading"):
         not isinstance(value, str) or ("enum" in schema and value not in schema["enum"])
     ):
         raise ValueError(f"{path} has an invalid string value")
-    elif kind == "integer":
-        if type(value) is not int or not schema.get("minimum", value) <= value <= schema.get(
-            "maximum", value
-        ):
-            raise ValueError(f"{path} has an invalid integer value")
+    elif kind == "integer" and (
+        type(value) is not int or not schema.get("minimum", value) <= value <= schema.get("maximum", value)
+    ):
+        raise ValueError(f"{path} has an invalid integer value")
 
 
 def _existing_set(set_dir: Path, intake: dict, explicit_intake: bool) -> dict:

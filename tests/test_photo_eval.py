@@ -170,8 +170,9 @@ def test_cap_is_finite_and_cannot_exceed_50(monkeypatch, tmp_path):
     for invalid in (51, float("nan"), float("inf"), -1):
         with pytest.raises(ValueError, match="spend cap"):
             Client(cap_usd=invalid, ledger=tmp_path / "ledger")
+    zero_cap = Client(cap_usd=0, ledger=tmp_path / "ledger")
     with pytest.raises(SpendCapExceeded):
-        Client(cap_usd=0, ledger=tmp_path / "ledger")._reserve(0.01, "test")
+        zero_cap._reserve(0.01, "test")
 
 
 def test_rectify_validates_corner_order():
