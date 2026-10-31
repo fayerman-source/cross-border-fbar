@@ -184,6 +184,15 @@ def _validate_schema(value, schema, path="reading"):
     kind = schema.get("type")
     if kind not in ("object", "array", "string", "integer"):
         raise ValueError(f"{path} has unsupported schema type {kind!r}")
+    supported = {
+        "object": {"type", "properties", "required"},
+        "array": {"type", "items"},
+        "string": {"type", "enum"},
+        "integer": {"type", "minimum", "maximum"},
+    }
+    unsupported = schema.keys() - supported[kind]
+    if unsupported:
+        raise ValueError(f"{path} has unsupported schema keywords: {sorted(unsupported)}")
     if kind == "object":
         _validate_object(value, schema, path)
     elif kind == "array":

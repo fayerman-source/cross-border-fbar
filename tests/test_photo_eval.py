@@ -51,6 +51,12 @@ def test_unsupported_schema_types_fail_closed(kind):
         _validate_schema("anything", {"type": kind})
 
 
+@pytest.mark.parametrize("keyword", ["pattern", "format", "minLength"])
+def test_unsupported_schema_constraints_fail_closed(keyword):
+    with pytest.raises(ValueError, match="unsupported schema keywords"):
+        _validate_schema("anything", {"type": "string", keyword: "constraint"})
+
+
 @pytest.fixture
 def capture(tmp_path, monkeypatch):
     image = tmp_path / "synthetic.png"
