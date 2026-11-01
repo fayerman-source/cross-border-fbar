@@ -4,9 +4,9 @@
 
 ## The problem it solves
 
-Americans whose foreign bank accounts total more than $10,000 report them to the US Treasury each year on a form called the FBAR. The form asks for each account's **highest balance during the year**, not its year-end balance. For a preparer, that is slow and easy to get wrong: the client sends statements in other languages and date formats, sometimes as phone photos, and a brief spike between month ends is easy to miss.
+Americans whose foreign bank accounts total more than $10,000 report them to the US Treasury each year on a form called the FBAR. The form asks for each account's **highest balance during the year**, not its year-end balance. Preparers can get that wrong: clients send statements in other languages and date formats, sometimes as phone photos, and a brief spike between month ends never appears in a month-end balance.
 
-**Example.** Joy is a fictional US citizen living in Seoul, with accounts in Korea, Germany and Thailand. In March, a 250,000,000-won deposit refund passes through her Korean checking account and leaves two days later, so the balance peaks at about $199,100 and no month-end balance shows it. Added across her accounts, month-end balances alone give **$121,350**. The highest balances on her statements total **$373,618**.
+**Example.** Joy is a fictional US citizen living in Seoul, with accounts in Korea, Germany and Thailand. In March, a 250,000,000-won deposit refund passes through her Korean checking account and leaves two days later, so the balance peaks at about $199,100 and no month-end balance shows it. Month-end balances across her accounts total **$121,350**. The highest balances on her statements total **$373,618**.
 
 ## What it does
 
@@ -44,8 +44,8 @@ Full numbers and caveats are in [EVAL.md](EVAL.md).
 
 ## Limits
 
-- **Early prototype, synthetic data only.** It has not been tried with a practising CPA, and these tests measure accuracy, not time saved.
-- **Replayed readings.** The worksheet above opens recorded readings from the live model, so it runs offline. A command-line runner can read a new synthetic image or PDF page live; there is no browser upload.
+- **Early prototype, synthetic data only.** It has not been tried with a practicing CPA, and these tests measure accuracy, not time saved.
+- **Replayed readings.** The worksheet opens recorded readings from the live model, so it runs offline. A command-line runner can read a new synthetic image or PDF page live; there is no browser upload.
 - **Captures use known layouts.** The scans and photos were of the same layouts as the clean test, so they show the tool copes with how a page was captured, not with unfamiliar banks. Scans and photos show the source page without a line highlight, because locations on them are not verified. The one header miss was the Thai bank name, returned in its printed English form.
 - **A misread amount can't be corrected in the app yet.** It can only be inspected against its source page.
 - **Scope:** balances, thresholds and review flags only. A below-threshold result stays undetermined when omitted values or relevant review items could change it. It gives no tax advice and doesn't say whether anyone must file; the CPA decides. The Form 8938 panel is indicative and not independently validated.
@@ -54,13 +54,16 @@ Full numbers and caveats are in [EVAL.md](EVAL.md).
 
 This repository was created on October 27, 2026, after the hackathon kickoff. The synthetic statement generator, model-reading and evaluation pipeline, deterministic reconciliation, review worksheet, audit/sign-off, Korean-summary workflow, indicative Form 8938 panel, and single-page photo-evaluation runner were built during the event. The project uses new work in this repository; see commit history for dates.
 
-Not yet complete: broader physical-capture and unseen-layout testing; a browser upload flow; voice intake; and the submission video. All 27 current Korean catalog phrases have been reviewed by a native speaker. The Korean draft requires explicit preparer approval.
+Not yet complete:
+
+- broader physical-capture and unseen-layout testing
+- a browser upload flow
+- voice intake
+- the submission video
 
 ## Synthetic test data
 
-Run the demo from a clone of this repository: recorded replays and results are repository fixtures,
-and the demo set is generated there. Those fixtures are not included in the installed wheel. The wheel
-does include the data and fonts needed to generate synthetic statements and load the bundled rates.
+Run the demo from a clone. The recorded readings and results live in the repository, and the demo set is generated there. An installed package includes only the data and fonts needed to generate synthetic statements and load the bundled rates.
 
 ```bash
 uv sync
@@ -85,15 +88,14 @@ uv run python -m cross_border_fbar.app --set out/synth --readings results/muse-s
 # open http://127.0.0.1:8765
 ```
 
-A local app for the preparer. The recorded-reading worksheet runs offline, binds to localhost, and needs no build step. A fresh model translation for missing catalog phrases may require API access.
+A local app for the preparer. The recorded-reading worksheet runs offline, binds to localhost, and needs no build step. Only translating a phrase missing from the catalog calls the API.
 
-- **Schedule A** lists each account's highest observed balance in the supplied material, subject to coverage and review. Click a figure to see its source page. For prepared readings, image-based snapping proposes a line highlight: on the clean set, 278/280 row centers were in the right row after snapping, measured in-sample. The preparer must verify each highlight against the page; new captures have no highlight while their locations are unverified.
+- **Schedule A** lists each account's highest observed balance in the supplied material, subject to coverage and review. Click a figure to see its source page. For prepared readings, code snaps the model's box to the printed line and proposes a highlight: on the clean set, 278/280 row centers landed in the right row, measured on the same pages the snapping was tuned on. The preparer must verify each highlight against the page; new captures have no highlight while their locations are unverified.
 - **Schedule B** lists the review items. Each must be acknowledged with a note; ownership (owner, joint, signature authority) can be corrected, and the worksheet recomputes.
-- **Sign-off** is allowed only when every review item is acknowledged. It records a reviewed snapshot and fingerprint; acknowledged limitations may remain. The signed view and export list review items still present and open threshold determinations. Existing sign-offs are invalidated if the worksheet changes, including when the threshold-state fields are first added; review and sign off again.
-- **Client summary in Korean** is assembled from signed figures and fixed catalog phrases (last four digits, no statement contents, none of the preparer's notes). Missing phrases may be translated by `muse-spark-1.3`; unreviewed phrases require explicit confirmation and the preparer approves the draft before release. All 27 current catalog phrases have been reviewed by a native speaker; changed English or new phrases require review again.
+- **Sign-off** is allowed only when every review item is acknowledged. It records a reviewed snapshot and fingerprint; acknowledged limitations may remain. The signed view and export list review items still present and open threshold determinations. Any change to the worksheet invalidates the sign-off.
+- **Client summary in Korean** is assembled from signed figures and fixed catalog phrases (last four digits, no statement contents, none of the preparer's notes). A phrase missing from the catalog is translated by `muse-spark-1.3`. Unreviewed phrases require explicit confirmation, and the preparer approves the draft before release. All 27 current catalog phrases have been reviewed by a native speaker; changed English or new phrases require review again.
 
-A misread amount can be inspected against its source page but cannot yet be corrected in the app. Corrections currently cover ownership, financial interest, currency and exchange rate. Every action goes to an audit trail (`out/review/audit.jsonl`). The app reads the model's recorded page readings and the intake facts, never the answer key.
-
+Corrections cover ownership, financial interest, currency and exchange rate. Every action goes to an audit trail (`out/review/audit.jsonl`). The app reads the model's recorded page readings and the intake facts, never the answer key.
 
 ## Evaluate one synthetic capture
 
