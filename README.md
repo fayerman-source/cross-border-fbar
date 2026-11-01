@@ -1,21 +1,54 @@
 # cross-border-fbar
 
-FBAR uses the year's maximum balance; month-end statements can miss it. This prototype can surface a higher observed balance and link it to a line a CPA checks in the supplied statements.
+**A review tool for US tax preparers (CPAs) with clients abroad. It reads foreign bank statements (tested on Korean, German and Thai), finds each account's highest balance of the year, and links every figure to the page it came from.**
 
-![Synthetic review worksheet showing an observed balance linked to a circled source line](docs/worksheet.png)
+## The problem it solves
 
-| Synthetic account | Review case |
+Americans whose foreign bank accounts total more than $10,000 report them to the US Treasury each year on a form called the FBAR. The form asks for each account's **highest balance during the year**, not its year-end balance. For a preparer, that is slow and easy to get wrong: the client sends statements in other languages and date formats, sometimes as phone photos, and a brief spike between month ends is easy to miss.
+
+**Example.** Joy is a fictional US citizen living in Seoul, with accounts in Korea, Germany and Thailand. In March, a 250,000,000-won deposit refund passes through her Korean checking account and leaves two days later, so the balance peaks at about $199,100 and no month-end balance shows it. Added across her accounts, month-end balances alone give **$121,350**. The highest balances on her statements total **$373,618**.
+
+## What it does
+
+1. **Read:** a Meta Muse model reads each statement page into structured fields and rows.
+2. **Check:** ordinary code, not the model, recomputes the balances line by line and raises review items for missing months, mismatches and possible same-day peaks.
+3. **Review:** the CPA sees a worksheet of highest balances. Clicking a figure opens its source page. The CPA acknowledges each review item, corrects facts such as ownership, and signs off.
+4. **Tell the client:** a short Korean note is built from phrases reviewed by a native speaker, and the CPA approves it before release.
+
+![Review worksheet showing a highest balance linked to its highlighted source line on a synthetic statement](docs/worksheet.png)
+
+## Try it in about 2 minutes
+
+No API key is needed. Requires [uv](https://docs.astral.sh/uv/getting-started/installation/). All the data is fictional.
+
+```bash
+git clone https://github.com/fayerman-source/cross-border-fbar.git
+cd cross-border-fbar
+uv sync
+uv run python -m cross_border_fbar.synth --out out/synth --png
+uv run python -m cross_border_fbar.app --set out/synth --readings results/muse-spark-1.3_synth.json
+```
+
+Open http://127.0.0.1:8765. You should see six rows and a total of **$373,618**. Click the 287,450,200 KRW figure on the Korean checking row to see the March peak on its source page.
+
+## Results so far
+
+| Test (all synthetic) | Result |
 |---|---|
-| Korean checking | A deposit passes through in March and creates a peak between month ends |
-| Parents' Korean account | Signature authority only; the August statement is withheld |
-| German joint account | The bank merges mid-year with the same IBAN and a new layout |
-| Thai savings | Buddhist-era dates and a debit-first same-day pair |
+| Hosted Muse Spark, 49 clean pages | 294/294 header fields; 280/280 rows |
+| Open-weights Muse Glimmer on a laptop GPU, same pages | 280/280 row values, about 6 minutes a page, nothing sent to a hosted service |
+| Reconciliation, either model | Maximum and USD value right on 6/6 accounts; 9 of 9 expected review flags, none false. Glimmer raised one extra item, caused by a misread bank name |
+| Printed pages, re-captured as flatbed scans and as WhatsApp photos | 19/19 rows with every date, amount and balance right; 17/18 header fields |
 
-**Status:** early prototype; synthetic data only. The worksheet opens prepared, recorded readings; a command-line runner can also read a new synthetic image or PDF page with Meta Muse Spark and add it to a review set. There is no browser upload.
+Full numbers and caveats are in [EVAL.md](EVAL.md).
 
-**Capture test:** For both the flatbed scans and WhatsApp-forwarded photos, 19/19 rows had every scored date, amount and balance correct and 17/18 header fields matched; the Thai bank name came back in its printed English form where the key expected Thai. On scans and photos, the source page is shown without a circled line because source locations are not verified. Each single-page capture raised 11 expected missing-month review items, plus other items explained in [EVAL.md](EVAL.md). These were the same source layouts as the clean evaluation; capture box placement was not scored.
+## Limits
 
-**Scope:** balances, thresholds and review flags only. A below-threshold result remains undetermined when omitted values or aggregate-relevant review items could change it. It does not give tax advice or say whether anyone must file. The separate Form 8938 panel is indicative and not independently validated.
+- **Early prototype, synthetic data only.** It has not been tried with a practising CPA, and these tests measure accuracy, not time saved.
+- **Replayed readings.** The worksheet above opens recorded readings from the live model, so it runs offline. A command-line runner can read a new synthetic image or PDF page live; there is no browser upload.
+- **Captures use known layouts.** The scans and photos were of the same layouts as the clean test, so they show the tool copes with how a page was captured, not with unfamiliar banks. Scans and photos show the source page without a line highlight, because locations on them are not verified. The one header miss was the Thai bank name, returned in its printed English form.
+- **A misread amount can't be corrected in the app yet.** It can only be inspected against its source page.
+- **Scope:** balances, thresholds and review flags only. A below-threshold result stays undetermined when omitted values or relevant review items could change it. It gives no tax advice and doesn't say whether anyone must file; the CPA decides. The Form 8938 panel is indicative and not independently validated.
 
 ## Built during the event
 
@@ -35,6 +68,13 @@ uv run python -m cross_border_fbar.synth --out out/synth --png
 ```
 
 This generates a year of monthly statements for one fictional household (Korean, German and Thai banks, all invented) and `truth.json`, the answer key the accuracy test scores against. Each account carries a case the tool must handle:
+
+| Synthetic account | Review case |
+|---|---|
+| Korean checking | A deposit passes through in March and creates a peak between month ends |
+| Parents' Korean account | Signature authority only; the August statement is withheld |
+| German joint account | The bank merges mid-year with the same IBAN and a new layout |
+| Thai savings | Buddhist-era dates and a debit-first same-day pair |
 
 The answer key follows the FinCEN instructions' statement-based method: the maximum is the largest balance appearing on any statement, converted at the Treasury Dec 31 rate and rounded up. Every field and line also carries its position on the page (0-1000 grid), so extracted locations can be scored.
 
