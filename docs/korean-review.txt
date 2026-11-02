@@ -1,12 +1,11 @@
 Client summary phrase review: English | Korean
 
-Reviewer: native Korean speaker    Date: 2026-10-31
+Reviewer: native Korean speaker    Date: 2026-11-02
 Record the reviewer in Last-Translator and remove fuzzy only for approved entries.
 Terminology source: IRS Pub 850 (EN-KR), September 2023: https://www.irs.gov/pub/irs-prior/p850enkr--2023.pdf
 
-1. heading (UNREVIEWED, noun phrase)
-   What your tax preparer reviewed | 세무 대리인이 검토한 항목
-   Review note: 세무 대리인 replaces 공인회계사 because enrolled agents prepare returns too; needs the native reviewer.
+1. heading (reviewed, noun phrase)
+   What your tax preparer reviewed | 세무대리인이 검토한 항목
 
 2. account_ending (reviewed, noun phrase)
    account ending | 계좌 끝자리

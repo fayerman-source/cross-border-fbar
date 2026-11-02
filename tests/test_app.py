@@ -181,7 +181,9 @@ def test_a_reviewed_table_needs_no_model_call_and_stale_entries_are_retranslated
     assert list(s["unreviewed"]) == ["heading"]
 
 
-def test_first_summary_uses_the_committed_catalog_without_model_or_key(review, monkeypatch):
+def test_first_summary_uses_the_committed_catalog_without_model_or_key(
+    review, monkeypatch, heading_unreviewed
+):
     import socket
 
     from cross_border_fbar import llm
@@ -193,8 +195,8 @@ def test_first_summary_uses_the_committed_catalog_without_model_or_key(review, m
         review.acknowledge(flag_id, "reviewed synthetic evidence", "Preparer")
     review.sign_off("Preparer", "PR")
     summary = review.draft_summary(lambda *a, **k: pytest.fail("model was called"))
-    # The catalog's one unreviewed entry is a draft: it needs the preparer's confirmation, not a model call.
-    assert summary["unreviewed"] == {"heading": "세무 대리인이 검토한 항목"}
+    # A draft entry in the catalog needs the preparer's confirmation, not a model call.
+    assert summary["unreviewed"] == {"heading": heading_unreviewed}
     assert summary["text"]
     with pytest.raises(ReviewError, match="haven't been reviewed"):
         review.approve_summary("Preparer")

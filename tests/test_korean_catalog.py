@@ -6,8 +6,8 @@ def test_korean_catalog_review_status_and_terminology():
     catalog = phrases.load("ko")
     reviewed = phrases.reviewed("ko", current)
     assert catalog.last_translator == "native Korean speaker"
-    assert catalog.revision_date.strftime("%Y-%m-%d") == "2026-10-31"
-    assert set(current) - set(reviewed) == {"heading"}  # reworded, so it needs the native reviewer again
+    assert catalog.revision_date.strftime("%Y-%m-%d") == "2026-11-02"
+    assert set(current) == set(reviewed)
     for text in phrases.drafts("ko", current).values():
         assert "잔고" not in text
         assert "계좌 명세서" not in text
@@ -20,23 +20,20 @@ def test_korean_catalog_review_status_and_terminology():
     assert phrases.drafts("ko", current)["highest_balance"] == "확인된 최고 잔액"
     assert reviewed["balance_not_confirmed"] == "검토한 서류로는 최고 잔액을 확인할 수 없음"
     printout = phrases.printout("ko")
-    assert "native Korean speaker    Date: 2026-10-31" in printout
-    assert printout.count("UNREVIEWED") == 1
-    assert "1. heading (UNREVIEWED, noun phrase)" in printout
-    assert "What your tax preparer reviewed | 세무 대리인이 검토한 항목" in printout
-    assert "Review note:" in printout
+    assert "native Korean speaker    Date: 2026-11-02" in printout
+    assert "UNREVIEWED" not in printout
+    assert "1. heading (reviewed, noun phrase)" in printout
+    assert "What your tax preparer reviewed | 세무대리인이 검토한 항목" in printout
     assert "공인회계사" not in phrases.drafts("ko", current)["heading"]
     assert "Transcription may be truncated" not in printout
 
 
-def test_the_reworded_heading_is_a_draft_and_never_reads_as_reviewed():
+def test_the_heading_carries_the_native_reviewers_wording():
     current = phrases.current_phrases()
     assert current["heading"] == "What your tax preparer reviewed"
     message = phrases.load("ko").get(current["heading"], context="heading")
-    assert message.fuzzy
-    assert message.string == "세무 대리인이 검토한 항목"
-    assert "heading" not in phrases.reviewed("ko", current)
-    assert phrases.drafts("ko", current)["heading"] == "세무 대리인이 검토한 항목"
+    assert not message.fuzzy
+    assert phrases.reviewed("ko", current)["heading"] == "세무대리인이 검토한 항목"
 
 
 def test_no_user_facing_wording_says_cpa():

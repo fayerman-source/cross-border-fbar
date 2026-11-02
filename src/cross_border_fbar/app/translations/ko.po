@@ -7,7 +7,7 @@ msgstr ""
 "Project-Id-Version: cross-border-fbar VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
 "POT-Creation-Date: 2026-10-28 23:43-0400\n"
-"PO-Revision-Date: 2026-10-31 01:38-0400\n"
+"PO-Revision-Date: 2026-11-02 02:00-0500\n"
 "Last-Translator: native Korean speaker\n"
 "Language: ko\n"
 "Language-Team: ko <LL@li.org>\n"
@@ -29,13 +29,11 @@ msgctxt "reviewed"
 msgid "Items reviewed"
 msgstr "검토 항목"
 
-# Review note: 세무 대리인 replaces 공인회계사 because enrolled agents prepare returns too; needs the native reviewer.
-# | msgid "What your CPA reviewed"
+# Reviewed by native Korean speaker on 2026-11-02.
 #. label: noun phrase, plural-safe, no semicolon
-#, fuzzy
 msgctxt "heading"
 msgid "What your tax preparer reviewed"
-msgstr "세무 대리인이 검토한 항목"
+msgstr "세무대리인이 검토한 항목"
 
 # Reviewed by native Korean speaker on 2026-10-31.
 #. label: noun phrase, plural-safe, no semicolon
