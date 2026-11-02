@@ -44,11 +44,11 @@ LABELS = {
     "maximum lower bound. Upper: sum of individual maximum upper bounds; unknown if any are unresolved.",
 }
 RESULT_TEXT = {
-    "above": "Known lower bound exceeds the threshold — review",
-    "not_above": "Upper bound for accounts read does not exceed the threshold — review",
-    "between": "Threshold falls inside the range — review",
-    "incomplete": "Upper bound is unknown; comparison unresolved — review",
-    "needs_intake": "Threshold awaits filing status and qualifying residence — review",
+    "above": "Known lower bound exceeds the threshold. Review",
+    "not_above": "Upper bound for accounts read does not exceed the threshold. Review",
+    "between": "Threshold falls inside the range. Review",
+    "incomplete": "Upper bound is unknown; comparison unresolved. Review",
+    "needs_intake": "Threshold awaits filing status and qualifying residence. Review",
 }
 HOUSEHOLD_LABELS = {
     "filing_status": "Filing status",

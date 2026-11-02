@@ -14,7 +14,7 @@ function money(amount, ccy) {
   const digits = ccy === "KRW" ? 0 : 2;
   return Number(amount).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
-const usd = (n) => (n === null || n === undefined ? "—" : "$" + Number(n).toLocaleString("en-US"));
+const usd = (n) => (n === null || n === undefined ? "n/a" : "$" + Number(n).toLocaleString("en-US"));
 // Server-calculated Decimal strings, grouped without going through Number, which would lose digits.
 function grouped(value) {
   const negative = value.startsWith("-");
@@ -128,7 +128,7 @@ function show(sources, key, caption) {
   } else draw();
   const extra = usable.length > 1 ? ` (+${usable.length - 1} more line${usable.length > 2 ? "s" : ""})` : "";
   const location = usable.some((source) => source.bbox) ? "" : " · page only; location not verified";
-  $("viewer-caption").textContent = `${caption} — ${usable[0].wp}${extra}${location}`;
+  $("viewer-caption").textContent = `${caption}: ${usable[0].wp}${extra}${location}`;
   document.querySelectorAll("[aria-pressed]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.key === key ? "true" : "false"));
 }
 
@@ -168,7 +168,7 @@ function renderAccounts(signed) {
   let outcome;
   if (t.above_threshold === null) outcome = `result against the ${threshold} is undetermined`;
   else outcome = `observed total ${t.above_threshold ? "above" : "not above"} the ${threshold}`;
-  const notes = [`${outcome} — review`];
+  const notes = [`${outcome}. Review`];
   if (t.accounts_without_value.length) notes.push(`${plural(t.accounts_without_value.length, "account")} without a determinable balance not included`);
   if (t.unidentified_uploads.length) notes.push("unidentified rows not counted");
   $("aggregate").replaceChildren(
@@ -195,7 +195,7 @@ function renderValueCorrections() {
         onclick: () => show([c.source], key, `Corrected ${valueLabel(c.field).toLowerCase()}`) }, c.source.wp),
       ` ${valueLabel(c.field)} ${readAs(c.read.text)}, corrected by reviewer to `,
       el("span", { class: "amount" }, grouped(c.value)),
-      ` — ${c.note} (${c.reviewer})`);
+      `: ${c.note} (${c.reviewer})`);
   }));
 }
 
@@ -300,7 +300,7 @@ function form8938Sources(row, field, label) {
     sources.length ? el("ul", { class: "evidence-list" }, ...sources.map((source, index) =>
       el("li", {}, el("button", { type: "button", class: "source", onclick: () =>
         show([source], `8938-${row.key}-${field}-${index}`, label) }, source.wp))))
-      : el("p", {}, "No source line available — review missing evidence."));
+      : el("p", {}, "No source line available. Review the missing evidence."));
 }
 
 function form8938Account(row, panel) {
@@ -317,10 +317,10 @@ function form8938Account(row, panel) {
   }
   if (row.rate.units_per_usd) {
     children.push(el("p", {}, `Exchange rate: ${row.rate.units_per_usd} ${row.rate.currency || "units"}/USD · ${row.rate.date || "identity"} · ${row.rate.basis || "recorded"} · source: ${row.rate.source || "USD identity"}`));
-  } else children.push(el("p", {}, "Exchange rate unavailable — review."));
+  } else children.push(el("p", {}, "Exchange rate unavailable. Review."));
   const stated = panel.effective_accounts[row.key];
   const corrections = [panel.corrections.ownership[row.key], panel.corrections.financial_interest[row.key]]
-    .filter(Boolean).map((c) => `Correction: ${c.value ?? "unknown"} — ${c.note} (${c.reviewer})`);
+    .filter(Boolean).map((c) => `Correction: ${c.value ?? "unknown"}: ${c.note} (${c.reviewer})`);
   children.push(...corrections.map((note) => el("p", { class: "hint" }, note)));
   if (row.identified) {
     children.push(el("label", {}, "Financial interest correction ", el("select", {
@@ -409,7 +409,7 @@ function renderSignoff(signed) {
     ` Signed off by ${so.reviewer}, ${so.ts}. Fingerprint ${so.hash.slice(0, 12)}.`);
   const remaining = state.remaining_review_items;
   $("remaining-items").replaceChildren(...(remaining.length
-    ? remaining.map((f) => el("li", {}, `${flagTitle(f)} · ${acctLabel(state.worksheet, f.account)} — ${f.message}`))
+    ? remaining.map((f) => el("li", {}, `${flagTitle(f)} · ${acctLabel(state.worksheet, f.account)}: ${f.message}`))
     : [el("li", {}, "No acknowledged review items remain on this worksheet.")]));
   const determinations = state.open_determinations;
   $("open-determinations").replaceChildren(...(determinations.length
@@ -426,7 +426,7 @@ function renderSummary(s) {
   $("draft-summary").hidden = Boolean(s?.approved);
   if (!s) return;
   $("summary-lines").replaceChildren(...s.lines.map((line) => el("tr", {},
-    el("td", { lang: "en" }, line.en), el("td", { lang: s.language, class: "ko" }, line[s.language] ?? "—"))));
+    el("td", { lang: "en" }, line.en), el("td", { lang: s.language, class: "ko" }, line[s.language] ?? "n/a"))));
   $("summary-blocked").hidden = !s.blocked;
   $("summary-blocked").textContent = s.blocked ? `Korean held back: the translation ${s.blocked}. Draft it again; English can still be released.` : "";
   document.querySelectorAll('input[name="release"]').forEach((input) => {
@@ -445,13 +445,13 @@ function renderSummaryConfirmation(s) {
   const fresh = chosenRelease() === "en" ? [] : Object.entries(s.unreviewed || {});
   $("summary-unreviewed").hidden = !fresh.length || Boolean(s.blocked || s.approved);
   $("summary-unreviewed-list").replaceChildren(...fresh.map(([k, v]) => el("li", {},
-    el("span", { lang: s.language, class: "ko" }, v), el("span", { class: "sub" }, ` — ${s.unreviewed_en[k]}`))));
+    el("span", { lang: s.language, class: "ko" }, v), el("span", { class: "sub" }, ` (${s.unreviewed_en[k]})`))));
   const count = plural(fresh.length, "unreviewed phrase");
   $("approve-summary").textContent = fresh.length ? `Approve, including ${count}` : "Approve for release";
 }
 
 function auditLine(e) {
-  const note = e.note ? ` — ${e.note}` : "";
+  const note = e.note ? `: ${e.note}` : "";
   const change = e.after ? ` (${e.before ?? "nothing read"} → ${e.after})` : "";
   const where = e.field ? ` ${e.upload} ${e.field}` : "";
   return `${e.ts}  ${e.reviewer}  ${e.action}${where}${note}${change}`;
@@ -501,7 +501,7 @@ function accountRow(a, signed) {
       .map(([k, v]) => el("option", { value: k, selected: k === a.ownership }, v)));
   const banks = a.institutions;
   return el("tr", { class: a.identified ? "" : "unidentified" },
-    el("td", { class: "bank" }, banks.length ? banks[banks.length - 1] : "—",
+    el("td", { class: "bank" }, banks.length ? banks[banks.length - 1] : "Bank name not available",
       banks.length > 1 ? el("span", { class: "sub" }, `also printed as ${banks.slice(0, -1).join(", ")}`) : null,
       a.holders[0] ? el("span", { class: "sub holder", title: a.holders.join("; ") }, a.holders[0]) : null),
     el("td", {}, el("span", { class: "acct" }, a.account_number), currencyControl(a, signed)),
@@ -542,7 +542,7 @@ function classificationContext(panel, account) {
   const stated = panel.stated_accounts[account];
   const intake = stated ? `Stated ownership: ${stated.ownership}; financial interest: ${stated.financial_interest ?? "not stated"}. ` : "No account intake record. ";
   const changes = [panel.corrections.ownership[account], panel.corrections.financial_interest[account]]
-    .filter(Boolean).map((c) => `Correction: ${c.value ?? "unknown"} — ${c.note} (${c.reviewer}). `);
+    .filter(Boolean).map((c) => `Correction: ${c.value ?? "unknown"}: ${c.note} (${c.reviewer}). `);
   return el("p", { class: "hint" }, `Intake source: ${panel.intake_source || "not stated"}. `, intake, ...changes);
 }
 
@@ -566,7 +566,7 @@ function itemRow(f, ack, signed, ws) {
         ? classificationContext(ws.form8938, f.account) : null,
       chips(f)),
     el("div", { class: "item-actions" }, actions),
-    ack ? el("p", { class: "ack-note" }, `${ack.note} — ${ack.reviewer}`) : null);
+    ack ? el("p", { class: "ack-note" }, `${ack.note} (${ack.reviewer})`) : null);
 }
 
 // --- actions -----------------------------------------------------------------------------------
