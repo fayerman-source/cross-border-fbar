@@ -42,6 +42,10 @@
           </table>
         </div>
         <p class="rate-note" id="rate-note"></p>
+        <div class="value-corrections" id="value-corrections-box" hidden>
+          <h3>Readings corrected by reviewer</h3>
+          <ul id="value-corrections"></ul>
+        </div>
       </section>
 
       <section class="schedule" aria-labelledby="sched-b">
@@ -102,6 +106,19 @@
 
     <aside class="viewer" aria-label="Source document">
       <p class="viewer-caption" id="viewer-caption">Select a figure or a review item to see the line it comes from.</p>
+      <div class="readings" id="readings" hidden>
+        <div class="line-reading" id="line-reading"></div>
+        <details class="page-readings">
+          <summary>All readings on this page</summary>
+          <div class="reading-balances" id="page-balances"></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th scope="col">Line</th><th scope="col">Date</th><th scope="col">Description</th><th scope="col" class="num">Amount</th><th scope="col" class="num">Balance</th></tr></thead>
+              <tbody id="page-rows"></tbody>
+            </table>
+          </div>
+        </details>
+      </div>
       <div class="sheet" id="sheet">
         <img id="page" alt="">
         <svg id="marks" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true"></svg>
@@ -118,6 +135,17 @@
         <label>Foreign currency units per USD <input id="rate-value" inputmode="decimal"></label>
         <label>Verifiable source <input id="rate-source"></label>
         <label>Rate date <input id="rate-date" type="date"></label>
+      </fieldset>
+      <fieldset id="correction-fields" hidden>
+        <legend>Corrected value</legend>
+        <p>Read as: <span class="amount" id="correction-read"></span>. The reading stays on record.</p>
+        <label id="correction-direction-label">Direction
+          <select id="correction-direction">
+            <option value="withdrawal">Withdrawal</option>
+            <option value="deposit">Deposit</option>
+          </select>
+        </label>
+        <label>Figure as printed, such as 1,234.56 or 1.234,56 <input id="correction-value" inputmode="decimal" autocomplete="off"></label>
       </fieldset>
       <label>Note for the audit trail <textarea id="note-text" rows="3" required></textarea></label>
       <menu>

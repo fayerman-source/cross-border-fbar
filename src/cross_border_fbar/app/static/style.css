@@ -113,7 +113,7 @@ tr.unidentified td { color: var(--ink-soft); }
   width: 100%; max-width: 100%;
   border: 1px solid var(--rule); background: var(--paper); padding: 2px 4px; border-radius: 2px; font-size: 13px;
 }
-.ownership .corrected { display: block; font-size: 11px; color: var(--review); margin-top: 3px; }
+.corrected { display: block; font-size: 11px; color: var(--review); margin-top: 3px; white-space: normal; }
 
 tfoot td { border-top: 2px solid var(--ink); border-bottom: 3px double var(--ink); padding: var(--s3) var(--s2); }
 tfoot .label { font: 600 13px/1.3 var(--display); letter-spacing: .08em; text-transform: uppercase; }
@@ -121,6 +121,9 @@ tfoot .threshold { display: block; font: 400 12.5px/1.4 var(--body); text-transf
 tfoot .num .amount { font-weight: 600; font-size: 17px; }
 .rate-note { font-size: 12px; color: var(--ink-soft); margin: var(--s2) 0 0; }
 .rate-note a { color: inherit; }
+
+.value-corrections ul { margin: 0; padding-left: var(--s4); font-size: 13px; }
+.value-corrections li { margin: var(--s2) 0; }
 
 /* Schedule B: review items */
 .items { list-style: none; margin: 0; padding: 0; }
@@ -143,7 +146,7 @@ button.primary, .signoff-form button, #draft-summary, #approve-summary, .item-ac
   font-weight: 500;
 }
 .item-actions button.ack { border-color: var(--review); color: var(--review); }
-.item-actions button.link { border: 0; background: none; color: var(--ink-soft); text-decoration: underline; padding: 2px 0; }
+.item-actions button.link, .reading-value button.link { border: 0; background: none; color: var(--ink-soft); text-decoration: underline; padding: 2px 0; cursor: pointer; }
 .item.done .item-title { color: var(--ink-soft); }
 .item.done .item-title::before { content: "✓ "; color: var(--review); }
 .info-items { margin-top: var(--s3); font-size: 13.5px; color: var(--ink-soft); }
@@ -172,6 +175,22 @@ pre.ko {
 
 /* The source page and the red-pencil loop around the traced line */
 .viewer-caption { margin: 0 0 var(--s3); font: 400 12.5px/1.4 var(--mono); color: var(--ink); min-height: 2.8em; }
+.readings { margin: 0 0 var(--s3); font-size: 13px; }
+.line-reading { background: var(--paper); border: 1px solid var(--rule); padding: var(--s2) var(--s3); margin-bottom: var(--s2); }
+.reading-line { margin: 0 0 var(--s1); color: var(--ink-soft); overflow-wrap: anywhere; }
+.reading-balances { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s5); }
+.labelled-reading { display: flex; flex-direction: column; }
+.reading-label { font: 600 11px/1.3 var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft); }
+.reading-value { display: inline-flex; flex-direction: column; align-items: flex-start; }
+.reading-value .read-as { font-size: 11px; color: var(--ink-soft); }
+.page-readings summary { cursor: pointer; font-size: 12.5px; color: var(--ink-soft); }
+.page-readings > .reading-balances { background: var(--paper); padding: var(--s2) var(--s3); margin-top: var(--s2); }
+.page-readings table { width: 100%; border-collapse: collapse; background: var(--paper); font-size: 12px; }
+.page-readings th { font: 600 11px/1.2 var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); text-align: left; padding: var(--s1) 6px; border-bottom: 1px solid var(--ink); }
+.page-readings td { padding: var(--s1) 6px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.page-readings .num { text-align: right; }
+.page-readings .num .reading-value { align-items: flex-end; }
+.page-readings .traced-row td { background: rgba(184, 50, 42, .07); }
 .sheet { position: relative; background: var(--paper); box-shadow: 0 1px 3px rgba(0,0,0,.18); }
 .sheet img { display: block; width: 100%; height: auto; }
 .sheet img:not([src]) { min-height: 70vh; }
@@ -189,6 +208,10 @@ dialog::backdrop { background: rgba(43, 47, 42, .35); }
 .note-form h3 { margin-top: 0; }
 .note-form label { display: flex; flex-direction: column; gap: var(--s1); font-size: 13px; color: var(--ink-soft); }
 .note-form textarea { border: 1px solid var(--rule); background: var(--paper); padding: var(--s2); }
+.note-form fieldset { border: 1px solid var(--rule); margin: 0 0 var(--s3); padding: var(--s2) var(--s3); }
+.note-form fieldset p { margin: 0 0 var(--s2); font-size: 13px; }
+.note-form fieldset label { margin-bottom: var(--s2); }
+.note-form input, .note-form select { border: 1px solid var(--rule); background: var(--paper); padding: var(--s1) var(--s2); }
 .note-form menu { display: flex; justify-content: flex-end; gap: var(--s2); padding: 0; margin: var(--s4) 0 0; }
 .note-form button { border: 1.5px solid var(--ink); background: var(--paper); padding: 6px 12px; cursor: pointer; }
 #note-ok { background: var(--review); color: var(--paper); border-color: var(--review); }

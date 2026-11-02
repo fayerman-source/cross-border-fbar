@@ -20,10 +20,12 @@ from pathlib import Path
 
 from babel.numbers import format_currency
 
+from ..extract.parse import parse_typed_amount
+from ..reconcile.corrections import as_read, correction_key
 from ..reconcile.flags import CATALOG
 from . import phrases as phrase_tables
 from .phrases import LANGUAGES
-from .worksheet import Inputs, build, worksheet_hash
+from .worksheet import Inputs, build, page_readings, readings_view, worksheet_hash
 
 OWNERSHIPS = ("sole", "joint", "signature_authority")
 # The client summary is assembled from a fixed table of phrases, translated, plus the signed figures; the
@@ -150,6 +152,8 @@ class Review:
         self.state.setdefault("currencies", {})
         self.state.setdefault("interest", {})
         self.state.setdefault("ownership_details", {})
+        self.state.setdefault("value_corrections", {})
+        self._retire_stale_value_corrections()
         self.worksheet = self._build()
         self._revalidate_signoff()
 
@@ -161,7 +165,26 @@ class Review:
             currency_overrides=self.state["currencies"],
             interest_overrides=self.state["interest"],
             ownership_details=self.state["ownership_details"],
+            value_corrections=self.state["value_corrections"],
         )
+
+    def _retire_stale_value_corrections(self) -> None:
+        """A correction says what was read and what it should be. If the readings changed so the page no
+        longer reads that way, it no longer applies: keep it on record, stop applying it, and say so."""
+        corrections = self.state["value_corrections"]
+        pages = page_readings(self.inputs) if corrections else {}
+        for key, correction in list(corrections.items()):
+            page = pages.get(correction["upload"])
+            if page is None or as_read(page, correction["field"]) != correction["read"]:
+                del corrections[key]
+                self.state.setdefault("stale_value_corrections", []).append(correction)
+                self._audit(
+                    "value_correction_stale",
+                    "system",
+                    upload=correction["upload"],
+                    field=correction["field"],
+                    reason="the reading changed after the correction",
+                )
 
     def _revalidate_signoff(self) -> None:
         """A sign-off covers the figures it fingerprinted. If the readings or intake changed since,
@@ -188,7 +211,9 @@ class Review:
         panel = self.worksheet["form8938"]
         # Exclude only account containers and aggregate results; new shared fields count by default.
         shared = {
-            k: v for k, v in self.worksheet.items() if k not in {"accounts", "flags", "totals", "form8938"}
+            k: v
+            for k, v in self.worksheet.items()
+            if k not in {"accounts", "flags", "value_corrections", "totals", "form8938"}
         }
         shared_panel = {
             k: v
@@ -299,6 +324,7 @@ class Review:
             "open_review_flags": self.open_review_flags(),
             "remaining_review_items": self.remaining_review_items() if self.state["signoff"] else [],
             "open_determinations": self.open_determinations() if self.state["signoff"] else [],
+            "page_readings": readings_view(self.inputs, self.state["value_corrections"]),
             "audit": self.audit_tail(40),
         }
 
@@ -463,6 +489,70 @@ class Review:
                 before=before,
                 after=value,
                 note=note.strip(),
+            )
+
+    def _value_as_read(self, upload, field) -> dict:
+        page = page_readings(self.inputs).get(upload) if isinstance(upload, str) else None
+        read = as_read(page, field) if page is not None and isinstance(field, str) else None
+        if read is None:
+            raise ReviewError("That value isn't on a page of this worksheet.")
+        return read
+
+    def correct_value(self, upload: str, field: str, value: str, note: str, reviewer: str) -> None:
+        """Correct a misread amount or balance. The reading stays as it was; the correction sits beside it,
+        and reconciliation runs on the corrected value."""
+        with self.lock:
+            self._require_open()
+            read = self._value_as_read(upload, field)
+            if not note.strip():
+                raise ReviewError("Record where the corrected figure comes from.")
+            text = str(value).strip()
+            corrected = parse_typed_amount(text)
+            if corrected is None:
+                raise ReviewError("Enter the figure as printed, such as 1,234.56 or 1.234,56.")
+            if read["value"] is not None and corrected == Decimal(read["value"]):
+                raise ReviewError("That is the value as read. Remove the correction instead.")
+            key = correction_key(upload, field)
+            before = self.state["value_corrections"].get(key, read)["value"]
+            self.state["value_corrections"][key] = {
+                "upload": upload,
+                "field": field,
+                "read": read,
+                "text": text,
+                "value": str(corrected),
+                "note": note.strip(),
+                "reviewer": reviewer,
+                "ts": time.time(),
+            }
+            self.worksheet = self._build()
+            self._audit(
+                "correct_value",
+                reviewer,
+                upload=upload,
+                field=field,
+                original=read,
+                before=before,
+                after=str(corrected),
+                note=note.strip(),
+            )
+
+    def remove_value_correction(self, upload: str, field: str, reviewer: str) -> None:
+        with self.lock:
+            self._require_open()
+            correction = None
+            if isinstance(upload, str) and isinstance(field, str):
+                correction = self.state["value_corrections"].pop(correction_key(upload, field), None)
+            if correction is None:
+                raise ReviewError("That value has no correction to remove.")
+            self.worksheet = self._build()
+            self._audit(
+                "remove_value_correction",
+                reviewer,
+                upload=upload,
+                field=field,
+                original=correction["read"],
+                before=correction["value"],
+                after=correction["read"]["value"],
             )
 
     def sign_off(self, reviewer: str, initials: str) -> None:

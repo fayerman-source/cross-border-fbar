@@ -11,6 +11,7 @@ import copy
 import hashlib
 import json
 import re
+from collections import defaultdict
 from dataclasses import dataclass, replace
 from decimal import Decimal
 from pathlib import Path
@@ -18,6 +19,13 @@ from pathlib import Path
 from .. import rates
 from ..extract.snap import snap_rows
 from ..reconcile.accounts import AccountResult, Flag, Intake, reconcile, split_by_row_account
+from ..reconcile.corrections import (
+    BALANCE_FIELDS,
+    as_read,
+    corrected_reading,
+    correction_key,
+    field_ref,
+)
 from ..reconcile.fbar import FBAR_AGGREGATE_USD, fbar_totals
 from ..reconcile.flags import CATALOG
 from ..reconcile.intake import IntakeDocument
@@ -87,10 +95,58 @@ def _without_unverified_boxes(reading: dict) -> dict:
     return reading
 
 
-def load_observations(inp: Inputs) -> tuple[list, dict[str, str], set[str]]:
-    """Observations from the pages that were read, and each page that wasn't (upload -> reason)."""
+def page_readings(inp: Inputs) -> dict[str, dict]:
+    """Each read page's reading as the model returned it, by upload."""
+    pages = {}
+    for page in json.loads(inp.readings.read_text())["pages"]:
+        if "reading" in page:
+            image = page_image(inp.set_dir, page["statement_id"], int(page.get("page", 1)))
+            pages[f"pages/{image.name}"] = page["reading"]
+    return pages
+
+
+def readings_view(inp: Inputs, corrections: dict) -> dict:
+    """Every correctable value on each page as it was read, with its correction, if any, beside it."""
+
+    def value(upload: str, reading: dict, field: str) -> dict:
+        return {
+            "field": field,
+            "wp": wp_ref(Source(upload, field_ref(field), None)),
+            **as_read(reading, field),
+            "correction": corrections.get(correction_key(upload, field)),
+        }
+
+    def row_view(upload: str, reading: dict, i: int, row: dict) -> dict:
+        return {
+            "ref": f"row:{i}",
+            "wp": wp_ref(Source(upload, f"row:{i}", None)),
+            "date": row["date_text"],
+            "description": row["description"],
+            "amount": {**value(upload, reading, f"row:{i}:amount"), "column": row["amount_column"]},
+            "balance": value(upload, reading, f"row:{i}:balance"),
+        }
+
+    return {
+        upload: {
+            "balances": [value(upload, reading, name) for name in BALANCE_FIELDS],
+            "rows": [row_view(upload, reading, i, row) for i, row in enumerate(reading["rows"])],
+        }
+        for upload, reading in page_readings(inp).items()
+    }
+
+
+def load_observations(
+    inp: Inputs, value_corrections: dict | None = None
+) -> tuple[list, dict[str, str], set[str]]:
+    """Observations from the pages that were read, and each page that wasn't (upload -> reason).
+
+    Corrections apply here, before reconciliation. Boxes still come from the reading as returned, so
+    correcting a value can't move where its line is drawn."""
     readings = json.loads(inp.readings.read_text())
     observations, unread, unverified = [], {}, set()
+    by_page = defaultdict(list)
+    for correction in (value_corrections or {}).values():
+        by_page[correction["upload"]].append(correction)
     for page in readings["pages"]:
         image = page_image(inp.set_dir, page["statement_id"], int(page.get("page", 1)))
         upload = f"pages/{image.name}"  # the upload name the UI shows; never parsed for meaning
@@ -98,13 +154,14 @@ def load_observations(inp: Inputs) -> tuple[list, dict[str, str], set[str]]:
             unread[upload] = str(page.get("error") or "no reading for this page")
             continue
         reading = page["reading"]
+        corrected = corrected_reading(reading, by_page[upload])
         if page.get("capture") and not page["capture"].get("boxes_verified", False):
             # Model boxes are not evidence of grounding until checked. Keep the page accessible,
             # but do not draw an unverified highlight or snap an unseen photo to guessed lines.
             unverified.add(upload)
-            observations.append(observe(_without_unverified_boxes(reading), upload))
+            observations.append(observe(_without_unverified_boxes(corrected), upload))
         else:
-            observations.append(observe(reading, upload, snap_rows(reading, image)))
+            observations.append(observe(corrected, upload, snap_rows(reading, image)))
     return observations, unread, unverified
 
 
@@ -131,6 +188,26 @@ def _flag_unverified_locations(results, unverified):
             )
 
 
+def _value_correction_views(corrections: dict, pages: list) -> dict:
+    """Each correction with the account it belongs to and its source line."""
+    owners = {}
+    for page in pages:
+        for name, source in page.sources.items():
+            owners[(page.upload, name)] = (page.account_key, source)
+        for part in split_by_row_account(page):
+            for line in part.lines:
+                owners[(page.upload, line.source.ref)] = (part.account_key, line.source)
+    views = {}
+    for key, correction in sorted(corrections.items()):
+        account, source = owners[(correction["upload"], field_ref(correction["field"]))]
+        views[key] = {
+            **correction,
+            "account": account or f"unidentified:{correction['upload']}",
+            "source": _source(source),
+        }
+    return views
+
+
 def build(
     inp: Inputs,
     ownership_overrides: dict[str, str] | None = None,
@@ -140,11 +217,13 @@ def build(
     currency_overrides: dict | None = None,
     interest_overrides: dict | None = None,
     ownership_details: dict | None = None,
+    value_corrections: dict | None = None,
 ) -> dict:
     intake_doc = IntakeDocument.from_dict(json.loads(inp.intake.read_text()))
     intake = _effective_intake(intake_doc, ownership_overrides, interest_overrides)
     year_rates = rates.load(inp.tax_year)
-    observations, unread, unverified = load_observations(inp)
+    observations, unread, unverified = load_observations(inp, value_corrections)
+    corrections = _value_correction_views(value_corrections or {}, observations)
     observations = [part for page in observations for part in split_by_row_account(page)]
     account_rates = {
         key: rates.Rate(v["currency"], Decimal(v["units_per_usd"]), v["record_date"], v["source"], "cpa")
@@ -185,7 +264,7 @@ def build(
                     "sources": [_source(s) for s in f.sources],
                 }
             )
-        account = _account(r, year_rates, intake, acct_flags, account_rates.get(r.account_key))
+        account = _account(r, year_rates, intake, acct_flags, account_rates.get(r.account_key), corrections)
         if r.account_key in (ownership_overrides or {}):
             account["ownership_source"] = "review_correction"
         account["currency_correction"] = (currency_overrides or {}).get(r.account_key)
@@ -225,6 +304,7 @@ def build(
         },
         "accounts": accounts,
         "flags": flags,
+        "value_corrections": list(corrections.values()),
         "totals": {
             "aggregate_usd": totals.aggregate_max_usd,
             "threshold_usd": FBAR_AGGREGATE_USD,
@@ -237,7 +317,15 @@ def build(
     }
 
 
-def _balance_view(balance) -> dict | None:
+def _figure_field(balance) -> str:
+    """The value this figure shows: a page field, a line's printed balance, or a line's amount if computed."""
+    ref = balance.source.ref
+    if not ref.startswith("row:"):
+        return ref
+    return f"{ref}:{'balance' if balance.kind == 'printed' else 'amount'}"
+
+
+def _balance_view(balance, corrections: dict) -> dict | None:
     if balance is None:
         return None
     return {
@@ -245,6 +333,7 @@ def _balance_view(balance) -> dict | None:
         "kind": balance.kind,
         "day": balance.day.isoformat() if balance.day else None,
         "source": _source(balance.source),
+        "correction": corrections.get(correction_key(balance.source.upload, _figure_field(balance))),
     }
 
 
@@ -267,7 +356,9 @@ def _rate_view(currency: str | None, rate: rates.Rate | None) -> dict:
     return {"rate": None, "rate_source": None, "rate_date": None, "rate_basis": None}
 
 
-def _account(r: AccountResult, year_rates: dict, intake: dict, flag_ids: list[str], alternate=None) -> dict:
+def _account(
+    r: AccountResult, year_rates: dict, intake: dict, flag_ids: list[str], alternate, corrections: dict
+) -> dict:
     rate = year_rates.get(r.currency or "")
     if rate is None and alternate and alternate.currency == r.currency:
         rate = alternate
@@ -281,7 +372,7 @@ def _account(r: AccountResult, year_rates: dict, intake: dict, flag_ids: list[st
         "ownership": r.ownership,
         "financial_interest": r.financial_interest,
         "ownership_source": "intake" if r.account_key in intake else "unknown",
-        "max": _balance_view(r.max_value),
+        "max": _balance_view(r.max_value, corrections),
         **_rate_view(r.currency, rate),
         "max_usd": r.max_value_usd,
         "year_end_balance": decimal_str(r.year_end_balance),

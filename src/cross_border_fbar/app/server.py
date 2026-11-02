@@ -168,6 +168,10 @@ class Handler(BaseHTTPRequestHandler):
             "/api/interest": lambda: review.set_financial_interest(
                 body["account"], body["value"], str(body.get("note", "")), who
             ),
+            "/api/value": lambda: review.correct_value(
+                body["upload"], body["field"], body["value"], str(body.get("note", "")), who
+            ),
+            "/api/value/remove": lambda: review.remove_value_correction(body["upload"], body["field"], who),
             "/api/signoff": lambda: review.sign_off(who, str(body.get("initials", ""))),
             "/api/summary/draft": lambda: review.draft_summary(translate_phrases),
             "/api/summary/approve": lambda: review.approve_summary(

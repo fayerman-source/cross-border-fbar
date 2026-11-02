@@ -3,7 +3,12 @@ from decimal import Decimal
 
 import pytest
 
-from cross_border_fbar.extract.parse import normalize_account_number, parse_amount, parse_date
+from cross_border_fbar.extract.parse import (
+    normalize_account_number,
+    parse_amount,
+    parse_date,
+    parse_typed_amount,
+)
 
 
 @pytest.mark.parametrize(
@@ -45,3 +50,51 @@ def test_parse_date(text, hint, want):
 
 def test_account_numbers_compare_without_spaces_or_hyphens():
     assert normalize_account_number("DE36 9901 2345") == normalize_account_number("de36-99012345")
+
+
+@pytest.mark.parametrize(
+    "text, value",
+    [
+        ("287,450,200", "287450200"),
+        ("287450200", "287450200"),
+        ("1,234.56", "1234.56"),
+        ("1.234,56", "1234.56"),
+        ("1234.56", "1234.56"),
+        ("1234,56", "1234.56"),
+        ("1 234,56", "1234.56"),
+        ("1,234", "1234"),
+        ("1.234", "1234"),
+        ("0", "0"),
+        (" 500 ", "500"),
+        ("-500,000", "-500000"),
+        ("500,000-", "-500000"),
+        ("(500,000)", "-500000"),
+    ],
+)
+def test_a_typed_amount_is_read_by_the_printed_rules(text, value):
+    assert parse_typed_amount(text) == Decimal(value)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        " ",
+        "-",
+        "()",
+        "abc",
+        "12abc",
+        "1e5",
+        "NaN",
+        "1.5",
+        "1234.5",
+        "1,2,3",
+        "1,234,56",
+        "--5",
+        "(5",
+        "١٢٣",
+        "1" * 25,
+    ],
+)
+def test_a_typed_amount_that_does_not_read_one_clear_way_is_refused(text):
+    assert parse_typed_amount(text) is None

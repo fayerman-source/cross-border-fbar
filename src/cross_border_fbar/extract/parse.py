@@ -48,6 +48,38 @@ def parse_amount(text: str) -> Decimal | None:
     return -value if _is_negative(s) else value
 
 
+_TYPED_NUMBERS = tuple(
+    re.compile(pattern, re.ASCII)
+    for pattern in (
+        r"\d+(?:[.,]\d{2})?",
+        r"\d{1,3}(?:,\d{3})+(?:\.\d{2})?",
+        r"\d{1,3}(?:\.\d{3})+(?:,\d{2})?",
+        r"\d{1,3}(?: \d{3})+(?:[.,]\d{2})?",
+    )
+)
+_TYPED_NUMBER_MAX_LENGTH = 24  # stays within Decimal's default 28 digits of working precision
+
+
+def parse_typed_amount(text: str) -> Decimal | None:
+    """An amount a person typed, read by parse_amount's rules; None unless it is plainly just a number.
+
+    parse_amount picks the digits out of what a model copied, which turns "12abc" into 12 and "1.5" into 15.
+    For a correction, text that doesn't read one clear way is refused, not guessed at.
+    """
+    s = (text or "").strip()
+    if s.startswith("(") and s.endswith(")"):
+        body = s[1:-1]
+    elif s.startswith("-"):
+        body = s[1:]
+    elif s.endswith("-"):
+        body = s[:-1]
+    else:
+        body = s
+    if len(body) > _TYPED_NUMBER_MAX_LENGTH or not any(p.fullmatch(body) for p in _TYPED_NUMBERS):
+        return None
+    return parse_amount(s)
+
+
 def parse_date(text: str, year_hint: int | None = None) -> date | None:
     """Parse YYYY.MM.DD, DD.MM.YYYY, DD/MM/YYYY (Gregorian or Buddhist era) or DD.MM. with a year hint."""
     s = (text or "").strip()

@@ -4,6 +4,7 @@ const $ = (id) => document.getElementById(id);
 const DOC = window.DOC_BASE ?? "/doc/"; // where page images are served (a static snapshot overrides it)
 let state = null;
 let selected = null; // key of the traced figure or chip currently shown
+let viewing = null; // the page and line the source viewer is showing
 
 const OWNERSHIP = { sole: "Owner", joint: "Joint owner", signature_authority: "Sig. authority", unknown: "Not stated" };
 const OWNERSHIP_LONG = { sole: "owner", joint: "joint owner", signature_authority: "signature authority" };
@@ -14,6 +15,15 @@ function money(amount, ccy) {
   return Number(amount).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 const usd = (n) => (n === null || n === undefined ? "—" : "$" + Number(n).toLocaleString("en-US"));
+// Server-calculated Decimal strings, grouped without going through Number, which would lose digits.
+function grouped(value) {
+  const negative = value.startsWith("-");
+  const [whole, fraction] = (negative ? value.slice(1) : value).split(".");
+  const groups = [];
+  for (let end = whole.length; end > 0; end -= 3) groups.push(whole.slice(Math.max(0, end - 3), end));
+  groups.reverse();
+  return (negative ? "-" : "") + groups.join(",") + (fraction === undefined ? "" : "." + fraction);
+}
 const el = (tag, attrs = {}, ...kids) => {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -44,12 +54,20 @@ function reviewer() {
   return $("reviewer").value.trim();
 }
 
-function askNote(title, exchangeRate = false) {
+function askNote(title, exchangeRate = false, correction = null) {
   return new Promise((resolve) => {
     const d = $("note-dialog");
     $("note-title").textContent = title;
     $("note-text").value = "";
     $("rate-fields").hidden = !exchangeRate;
+    $("correction-fields").hidden = !correction;
+    $("correction-value").required = Boolean(correction);
+    if (correction) {
+      $("correction-read").textContent = correction.read;
+      $("correction-value").value = correction.value;
+      $("correction-direction-label").hidden = !correction.direction;
+      if (correction.direction) $("correction-direction").value = correction.direction;
+    }
     for (const id of ["rate-value", "rate-source", "rate-date"]) $(id).value = "";
     $("rate-date").value = `${state.worksheet.tax_year}-12-31`;
     $("rate-value").required = false;
@@ -63,6 +81,10 @@ function askNote(title, exchangeRate = false) {
         units_per_usd: $("rate-value").value.trim(), source: $("rate-source").value.trim(),
         record_date: $("rate-date").value,
       };
+      if (correction) {
+        result.value = $("correction-value").value.trim();
+        result.direction = $("correction-direction").value;
+      }
       resolve(result);
     };
   });
@@ -74,6 +96,8 @@ function show(sources, key, caption) {
   const usable = sources.filter((s) => s.upload);
   if (!usable.length) return;
   const page = usable[0].upload;
+  viewing = { upload: page, ref: usable[0].ref };
+  renderReadings();
   const img = $("page");
   const draw = () => {
     const svg = $("marks");
@@ -91,7 +115,10 @@ function show(sources, key, caption) {
     const first = usable.find((x) => x.upload === page && x.bbox);
     if (first) {
       const sheet = $("sheet");
-      $("page").closest(".viewer").scrollTo({ top: (first.bbox.y_min / 1000) * sheet.offsetHeight - 140, behavior: "smooth" });
+      const viewer = $("page").closest(".viewer");
+      const line = sheet.offsetTop + (first.bbox.y_min / 1000) * sheet.offsetHeight;
+      const inView = line > viewer.scrollTop + 60 && line < viewer.scrollTop + viewer.clientHeight - 120;
+      if (!inView) viewer.scrollTo({ top: line - 220, behavior: "smooth" });
     }
   };
   if (img.getAttribute("src") !== `${DOC}${page}`) {
@@ -113,6 +140,8 @@ function render() {
   const signed = !!state.review.signoff;
   renderHeader(signed);
   renderAccounts(signed);
+  renderValueCorrections();
+  renderReadings();
   renderItems(signed);
   renderForm8938();
   renderSignoff(signed);
@@ -151,15 +180,102 @@ function renderAccounts(signed) {
     el("a", { href: r0.source, target: "_blank", rel: "noopener" }, "Source query"));
 }
 
+// --- correcting a misread value ------------------------------------------------------------------
+const VALUE_LABELS = { opening_balance: "Opening balance", closing_balance: "Closing balance", amount: "Amount", balance: "Balance" };
+const valueLabel = (field) => VALUE_LABELS[field.split(":").pop()];
+const readAs = (text) => `read as ${text || "nothing"}`;
+
+function renderValueCorrections() {
+  const corrections = state.worksheet.value_corrections;
+  $("value-corrections-box").hidden = !corrections.length;
+  $("value-corrections").replaceChildren(...corrections.map((c, i) => {
+    const key = `correction:${i}`;
+    return el("li", {},
+      el("button", { class: "source-chip", type: "button", "data-key": key, "aria-pressed": "false",
+        onclick: () => show([c.source], key, `Corrected ${valueLabel(c.field).toLowerCase()}`) }, c.source.wp),
+      ` ${valueLabel(c.field)} ${readAs(c.read.text)}, corrected by reviewer to `,
+      el("span", { class: "amount" }, grouped(c.value)),
+      ` — ${c.note} (${c.reviewer})`);
+  }));
+}
+
+function amountDirection(item, current) {
+  if (current === null) return item.column === "debit" ? "withdrawal" : "deposit";
+  return current.startsWith("-") ? "withdrawal" : "deposit";
+}
+
+async function correctValue(upload, item) {
+  const isAmount = item.field.endsWith(":amount");
+  const current = item.correction ? item.correction.value : item.value;
+  const shown = current === null ? "" : grouped(isAmount ? current.replace("-", "") : current);
+  const answer = await askNote(`Correct ${valueLabel(item.field).toLowerCase()} · ${item.wp}`, false, {
+    read: item.text || "nothing", value: shown, direction: isAmount ? amountDirection(item, current) : null,
+  });
+  if (!answer) return;
+  const sign = answer.direction === "withdrawal" ? "-" : "";
+  const value = isAmount ? sign + answer.value.replace(/^[-(]+|[-)]+$/g, "") : answer.value;
+  try {
+    state = await api("/api/value", { upload, field: item.field, value, note: answer.note, reviewer: reviewer() || "reviewer" });
+    render(); toast("Correction saved; the worksheet recomputed");
+  } catch (e) { toast(e.message); }
+}
+
+async function removeCorrection(upload, item) {
+  try {
+    state = await api("/api/value/remove", { upload, field: item.field, reviewer: reviewer() || "reviewer" });
+    render(); toast("Correction removed");
+  } catch (e) { toast(e.message); }
+}
+
+function readingValue(upload, item) {
+  const signed = !!state.review.signoff;
+  const c = item.correction;
+  let figure = "none read";
+  if (c) figure = grouped(c.value);
+  else if (item.value !== null) figure = grouped(item.value);
+  return el("span", { class: "reading-value" },
+    el("span", { class: "amount" }, figure),
+    c ? el("span", { class: "corrected" }, "corrected by reviewer") : null,
+    c ? el("span", { class: "read-as" }, readAs(item.text)) : null,
+    signed ? null : el("button", { class: "link", type: "button", "aria-label": `Correct ${valueLabel(item.field).toLowerCase()}, ${item.wp}`,
+      onclick: () => correctValue(upload, item) }, c ? "Change" : "Correct"),
+    !signed && c ? el("button", { class: "link", type: "button", "aria-label": `Remove correction of ${valueLabel(item.field).toLowerCase()}, ${item.wp}`,
+      onclick: () => removeCorrection(upload, item) }, "Remove") : null);
+}
+
+function labelledReading(upload, item) {
+  return el("div", { class: "labelled-reading" }, el("span", { class: "reading-label" }, valueLabel(item.field)), readingValue(upload, item));
+}
+
+function lineReading(upload, page) {
+  const row = page.rows.find((r) => r.ref === viewing.ref);
+  if (row) {
+    return [el("p", { class: "reading-line" }, `${row.date} · ${row.description}`),
+      el("div", { class: "reading-balances" }, labelledReading(upload, row.amount), labelledReading(upload, row.balance))];
+  }
+  const balance = page.balances.find((b) => b.field === viewing.ref);
+  return balance ? [el("div", { class: "reading-balances" }, labelledReading(upload, balance))] : [];
+}
+
+function renderReadings() {
+  const page = viewing && state.page_readings[viewing.upload];
+  $("readings").hidden = !page;
+  if (!page) return;
+  const upload = viewing.upload;
+  const line = lineReading(upload, page);
+  $("line-reading").hidden = !line.length;
+  $("line-reading").replaceChildren(...line);
+  $("page-balances").replaceChildren(...page.balances.map((b) => labelledReading(upload, b)));
+  $("page-rows").replaceChildren(...page.rows.map((row, i) => el("tr", { class: row.ref === viewing.ref ? "traced-row" : "" },
+    el("td", {}, `r${i + 1}`), el("td", {}, row.date), el("td", {}, row.description),
+    el("td", { class: "num" }, readingValue(upload, row.amount)),
+    el("td", { class: "num" }, readingValue(upload, row.balance)))));
+}
+
 // Form 8938 values are server-calculated Decimal strings. Never coerce them to Number.
 function exactUsd(value, unknown) {
   if (value === null || value === undefined) return unknown;
-  const [whole, fraction] = value.split(".");
-  const groups = [];
-  for (let end = whole.length; end > 0; end -= 3) groups.push(whole.slice(Math.max(0, end - 3), end));
-  const decimals = fraction === undefined ? "" : "." + fraction;
-  groups.reverse();
-  return "$" + groups.join(",") + decimals;
+  return "$" + grouped(value);
 }
 
 function form8938Sources(row, field, label) {
@@ -304,8 +420,9 @@ function renderSummary(s) {
 
 function auditLine(e) {
   const note = e.note ? ` — ${e.note}` : "";
-  const change = e.after ? ` (${e.before} → ${e.after})` : "";
-  return `${e.ts}  ${e.reviewer}  ${e.action}${note}${change}`;
+  const change = e.after ? ` (${e.before ?? "nothing read"} → ${e.after})` : "";
+  const where = e.field ? ` ${e.upload} ${e.field}` : "";
+  return `${e.ts}  ${e.reviewer}  ${e.action}${where}${note}${change}`;
 }
 
 function renderAudit() {
@@ -331,12 +448,15 @@ function accountRow(a, signed) {
     ...Object.entries(OWNERSHIP).filter(([k]) => k !== "unknown" || a.ownership === "unknown")
       .map(([k, v]) => el("option", { value: k, selected: k === a.ownership }, v)));
   const key = `max:${a.key}`;
+  const direct = m?.correction;
+  const others = state.worksheet.value_corrections.filter((c) => c.account === a.key).length - (direct ? 1 : 0);
   const figure = m
     ? el("button", { class: "traced", "data-key": key, "aria-pressed": "false",
         onclick: () => show([m.source], key, `Highest observed balance, ${a.account_number}`) },
         el("span", { class: "figure" }, el("span", { class: "amount" }, money(m.amount, a.currency)), el("span", { class: "ccy" }, a.currency)),
         el("span", { class: "wp" }, m.source.wp),
-        m.kind === "computed" ? el("span", { class: "kind" }, "computed from lines") : null)
+        m.kind === "computed" ? el("span", { class: "kind" }, "computed from lines") : null,
+        direct ? el("span", { class: "corrected" }, `corrected by reviewer · ${readAs(direct.read.text)}`) : null)
     : el("span", { class: "unknown" }, a.identified ? "could not be established from the documents read" : "not counted");
   const banks = a.institutions;
   return el("tr", { class: a.identified ? "" : "unidentified" },
@@ -345,7 +465,8 @@ function accountRow(a, signed) {
       a.holders[0] ? el("span", { class: "sub holder", title: a.holders.join("; ") }, a.holders[0]) : null),
     el("td", {}, el("span", { class: "acct" }, a.account_number), currencyControl(a, signed)),
     el("td", { class: "ownership" }, select, corrected ? el("span", { class: "corrected" }, "corrected by reviewer") : null),
-    el("td", { class: "num" }, figure),
+    el("td", { class: "num" }, figure,
+      others > 0 ? el("span", { class: "corrected" }, `${plural(others, direct ? "other reading" : "reading")} on this account corrected by reviewer`) : null),
     el("td", { class: "num usd" }, el("span", { class: "amount" }, usd(a.max_usd)),
       a.rate && a.max_usd !== null ? el("span", { class: "rate" }, `@ ${a.rate} ${a.currency}/USD`) : null,
       a.rate_basis === "cpa" ? el("span", { class: "sub" }, `CPA-recorded, ${a.rate_date}: ${a.rate_source}`) : null),
