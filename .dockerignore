@@ -1,0 +1,10 @@
+# Only what the demo needs reaches the image. Everything else stays out by default.
+*
+!LICENSE
+!pyproject.toml
+!uv.lock
+!.python-version
+!src/
+!results/muse-spark-1.3_synth.json
+**/__pycache__
+**/*.pyc
