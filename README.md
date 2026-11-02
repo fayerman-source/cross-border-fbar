@@ -20,7 +20,7 @@ The model reads the statements. Deterministic code performs the calculations, so
 
 ![Review worksheet showing a highest balance linked to its highlighted source line on a synthetic statement](docs/worksheet.png)
 
-## Try it in about 2 minutes
+## Try it in about 3 minutes
 
 No API key needed. All the data is fictional.
 
@@ -60,9 +60,9 @@ The worksheet opens readings recorded from the live model, so it runs offline. T
 | Test | Result |
 |---|---|
 | Hosted Muse Spark, 49 clean pages | 294/294 header fields; 280/280 rows |
-| Open-weights Muse Glimmer on a laptop GPU, same pages | 280/280 row values, about 6 minutes a page, nothing sent to a hosted service |
-| Reconciliation | Highest balance and USD value right on 6/6 accounts. Spark: 9 of 9 expected review items, none extra. Glimmer: 9 of 9, plus 1 extra |
-| Printed pages, re-captured as flatbed scans and as WhatsApp photos | 19/19 rows with every date, amount and balance right; 18/18 header fields |
+| Open-weights Muse Glimmer on a laptop GPU, same pages | 280/280 row values; 244/294 header fields under strict scoring (48 were the right text labeled absent, 2 were a page-level account number on the compiled list, which has none); about 6 minutes a page; nothing sent to a hosted service |
+| Reconciliation | Highest observed balance and USD value right on 6/6 accounts (4 numeric results, 2 correctly undetermined). Spark: 9 of 9 expected flags (6 review items, 3 notes), none extra. Glimmer: 9 of 9, plus 1 extra review item |
+| Printed pages, re-captured as flatbed scans and as WhatsApp photos | 19/19 rows with every date, amount and balance right; 18/18 header fields after an [answer-key correction](EVAL.md#answer-key-change-nov-1-2026) made after the test (17/18 before), same recorded readings |
 
 - All data is synthetic, on bank layouts we generated. The scans and photos test how a page was captured, not unfamiliar banks.
 - Scans and photos show the source page without a line highlight, because locations on them aren't verified.
@@ -82,7 +82,6 @@ This repository was created on October 27, 2026, after the hackathon kickoff. Th
 Run the demo from a clone. The recorded readings and results live in the repository, and the demo set is generated there. An installed package includes only the data and fonts needed to generate synthetic statements and load the bundled rates.
 
 ```bash
-uv sync
 uv run python -m cross_border_fbar.synth --out out/synth --png
 ```
 
