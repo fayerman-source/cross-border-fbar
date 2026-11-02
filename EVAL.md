@@ -21,11 +21,11 @@ Replay uses the model responses recorded in `recordings/`, keyed by a hash of th
   - A bank name counts if it is one or more of the names the page prints and nothing else. The renderer records those names as it draws them, so `Saebyeol Bank` is not accepted on a Korean page that doesn't print it. See [the answer-key change](#answer-key-change-nov-1-2026).
   - A box is "in the right row" if its centre falls inside the true row.
   - Box overlap (IoU) is measured against the tight box of the printed text.
-- **Snapping:** the model's row boxes drift vertically, by different amounts on different runs. `extract/snap.py` finds printed lines in the image alone, with no answer key. Its primary signal is the model's horizontal positions, which stay accurate: each row's amount sits in a debit or credit column, so its true line has ink in that column and none in the other. When that pattern can't decide (one-column layouts), a fit-plus-anchor cost is used, and the code abstains rather than guess.
-- **Reviewer workload:** every actual review-severity flag is counted, including multiple items of the same type and flags on unmatched accounts. Each expected review item matches at most one actual flag for the same account, code, and month; unmatched actual review items are additional workload. Two subsets are reported separately and not added a second time: items raised because the reader chose different printed bank names across pages, and items linked to scored header-field misreads. The misread link covers mapped institution/currency flags and unreadable header fields; other items may still arise from misreads. Additional review items are not necessarily false positives. Matching by code and month cannot distinguish multiple causes represented by one flag, so this is fixture-relative item count, not a universal time or cost estimate.
+- **Snapping:** the model's row boxes drift vertically, by different amounts on different runs. `extract/snap.py` finds printed lines in the image alone, with no answer key. Its primary signal is the model's horizontal positions, which stay accurate. Each row's amount sits in a debit or credit column, so its true line has ink in that column and none in the other. When that pattern can't decide (one-column layouts), a fit-plus-anchor cost is used, and the code abstains rather than guess.
+- **Reviewer workload:** every actual review-severity flag is counted, including multiple items of the same type and flags on unmatched accounts. Each expected review item matches at most one actual flag for the same account, code, and month; unmatched actual review items are additional workload. Two subsets are reported separately and are already in that count: items raised because the reader chose different printed bank names across pages, and items linked to scored header-field misreads. The misread link covers mapped institution/currency flags and unreadable header fields; other items may still arise from misreads. Additional review items are not necessarily false positives. Matching by code and month cannot distinguish multiple causes represented by one flag, so this counts items on this test set and does not estimate time or cost.
 - **Reconciliation scoring:**
   - Per account: the maximum, the statement it came from, and its USD value. A value counts only if it matches the answer key exactly.
-  - Review and info flags are scored as true positives, false positives and misses, deduplicated by account, code and month. A currency flag linked to a header misread is reported separately from false positives. A bank-name flag the key doesn't expect is reported separately only when every name read for that account is printed on the page it was read from; any other name counts as a false positive and fails the CI gate.
+  - Review and info flags are scored as true positives, false positives and misses, deduplicated by account, code and month. A currency flag linked to a header misread is reported separately from false positives. A bank-name flag the key doesn't expect is reported separately only when every name read for that account is printed on the page it was read from. Any other name counts as a false positive and fails the CI gate.
   - Intake facts (owner vs signature authority) come from the answer key here. In the product they come from the client call or the preparer.
 
 ## Results: muse-spark-1.3, prompt v3, clean renders (Oct 27, 2026)
@@ -67,7 +67,7 @@ The two "unknown" accounts are the point of the compiled list:
 
 ## Open weights: Muse Glimmer on a consumer GPU (Oct 28, 2026)
 
-The same 49 pages and the same prompt v3, read by Meta's open-weights model on the GPU host over an SSH tunnel, with no third-party inference endpoint and no per-token model charge. The data are synthetic.
+Meta's open-weights model read the same 49 pages with the same prompt v3, on the GPU host over an SSH tunnel. There was no third-party inference endpoint and no per-token model charge. The data are synthetic.
 
 **Runtime:**
 - llama.cpp b11941 (commit 19ff817fb), CUDA build.
@@ -126,7 +126,7 @@ The current clean-run snapped result is 278/280; snapping was revised after insp
 
 ## Physical capture test: Muse Spark (Oct 30, 2026)
 
-One live Standard-mode call per capture, with no retries or tuning against this set. Three synthetic statement pages were each printed and captured once by a 300-dpi flatbed scanner and once by a phone; the phone images were recompressed by WhatsApp before testing, and the Thai photo was sideways. These are the same underlying pages and layouts used in the clean evaluation, so this tests capture robustness, not generalization to unseen layouts.
+One live Standard-mode call per capture, with no retries or tuning against this set. Three synthetic statement pages were each printed and captured once by a 300-dpi flatbed scanner and once by a phone. The phone images were recompressed by WhatsApp before testing, and the Thai photo was sideways. These are the same underlying pages and layouts used in the clean evaluation, so this tests capture robustness, not generalization to unseen layouts.
 
 | Language | Condition | Header values: original key → current key | Rows returned | Dates | Amounts | Balances | Row accounts | Extra rows | Unreadable header fields | Review items | Cost |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -149,8 +149,8 @@ No page corners were supplied: photo **and scan** box placement was not scored, 
 
 ## What these numbers do not show
 
-- **Small physical set.** Only three previously used synthetic pages were tested, each as a scan and a WhatsApp-forwarded photo; no new layouts were tested and capture box placement was not scored.
+- **Small physical set.** Only three previously used synthetic pages were tested, each as a scan and a WhatsApp-forwarded photo. No new layouts were tested, and capture box placement was not scored.
 - **Snapping was revised after seeing failures.** The current clean-run result of 278/280 is in-sample.
 - **One recorded run per model on the current clean set.** These are not repeated-run reliability estimates.
-- **No intentionally unreadable document fields in the clean set.** Expected absent fields are scored; abstention on genuinely unreadable input is not yet established.
+- **No intentionally unreadable document fields in the clean set.** Expected absent fields are scored; abstention on unreadable input is not yet established.
 - **Same author.** The answer key and the reconciliation were written separately but by the same author, so a shared misunderstanding of the rules would not show up here.
