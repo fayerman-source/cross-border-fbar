@@ -402,20 +402,36 @@ function renderSignoff(signed) {
   renderSummary(state.review.summary);
 }
 
+const RELEASE_LABELS = { ko: "Korean", en: "English", both: "Korean and English" };
+const chosenRelease = () => document.querySelector('input[name="release"]:checked').value;
+
 function renderSummary(s) {
   $("summary-box").hidden = !s;
   $("draft-summary").hidden = Boolean(s?.approved);
   if (!s) return;
-  $("summary-text").textContent = s.text;
+  $("summary-lines").replaceChildren(...s.lines.map((line) => el("tr", {},
+    el("td", { lang: "en" }, line.en), el("td", { lang: s.language, class: "ko" }, line[s.language] ?? "—"))));
   $("summary-blocked").hidden = !s.blocked;
-  $("summary-blocked").textContent = s.blocked ? `Held back: the translation ${s.blocked}. Draft it again.` : "";
-  const fresh = Object.entries(s.unreviewed || {});
-  $("summary-unreviewed").hidden = !fresh.length || Boolean(s.blocked || s.approved);
-  $("summary-unreviewed-list").replaceChildren(...fresh.map(([k, v]) => el("li", {}, v, el("span", { class: "sub" }, ` (${k})`))));
-  $("approve-summary").textContent = fresh.length ? `Approve, including ${fresh.length} new phrases` : "Approve for release";
-  $("approve-summary").hidden = Boolean(s.approved || s.blocked);
+  $("summary-blocked").textContent = s.blocked ? `Korean held back: the translation ${s.blocked}. Draft it again; English can still be released.` : "";
+  document.querySelectorAll('input[name="release"]').forEach((input) => {
+    input.disabled = Boolean(s.blocked) && input.value !== "en";
+    if (s.blocked) input.checked = input.value === "en";
+  });
+  $("summary-release").hidden = Boolean(s.approved);
+  $("approve-summary").hidden = Boolean(s.approved);
   $("summary-approved").hidden = !s.approved;
-  if (s.approved) $("summary-approved").textContent = `Approved for release by ${s.approved.reviewer}, ${s.approved.ts}.`;
+  if (s.approved) $("summary-approved").textContent = `Approved for release by ${s.approved.reviewer}, ${s.approved.ts}. The client gets: ${RELEASE_LABELS[s.approved.release]}.`;
+  renderSummaryConfirmation(s);
+}
+
+// An English-only note has nothing to confirm; Korean or both show the phrases not yet reviewed.
+function renderSummaryConfirmation(s) {
+  const fresh = chosenRelease() === "en" ? [] : Object.entries(s.unreviewed || {});
+  $("summary-unreviewed").hidden = !fresh.length || Boolean(s.blocked || s.approved);
+  $("summary-unreviewed-list").replaceChildren(...fresh.map(([k, v]) => el("li", {},
+    el("span", { lang: s.language, class: "ko" }, v), el("span", { class: "sub" }, ` — ${s.unreviewed_en[k]}`))));
+  const count = plural(fresh.length, "unreviewed phrase");
+  $("approve-summary").textContent = fresh.length ? `Approve, including ${count}` : "Approve for release";
 }
 
 function auditLine(e) {
@@ -543,9 +559,13 @@ $("draft-summary").addEventListener("click", async () => {
   catch (e) { toast(e.message); }
   finally { $("draft-summary").disabled = false; $("draft-summary").textContent = "Draft again"; }
 });
+document.querySelectorAll('input[name="release"]').forEach((input) => input.addEventListener("change", () => {
+  if (state.review.summary) renderSummaryConfirmation(state.review.summary);
+}));
 $("approve-summary").addEventListener("click", async () => {
-  try { state = await api("/api/summary/approve", { reviewer: reviewer() || state.review.signoff.reviewer,
-    confirm_unreviewed: Object.keys(state.review.summary?.unreviewed || {}).length > 0 }); render(); toast("Approved for release"); }
+  const release = chosenRelease();
+  try { state = await api("/api/summary/approve", { reviewer: reviewer() || state.review.signoff.reviewer, release,
+    confirm_unreviewed: release !== "en" && Object.keys(state.review.summary?.unreviewed || {}).length > 0 }); render(); toast("Approved for release"); }
   catch (e) { toast(e.message); }
 });
 $("reviewer").value = (() => { try { return localStorage.getItem("reviewer") || ""; } catch { return ""; } })();

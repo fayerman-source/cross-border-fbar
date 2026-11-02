@@ -163,10 +163,13 @@ button.primary, .signoff-form button, #draft-summary, #approve-summary, .item-ac
 .hint { font-size: 13px; color: var(--ink-soft); }
 .signed { color: var(--review); }
 .signed .initials { font: 30px/1 var(--hand); }
-pre.ko {
-  white-space: pre-wrap; font: 15px/1.7 var(--ko); background: var(--paper); border: 1px solid var(--rule);
-  padding: var(--s4); margin: var(--s3) 0;
-}
+.summary-lines { width: 100%; border-collapse: collapse; background: var(--paper); margin: var(--s3) 0; font-size: 14px; }
+.summary-lines th { width: 50%; font: 600 12px/1.2 var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft); text-align: left; padding: var(--s2) var(--s3); border-bottom: 1px solid var(--ink); }
+.summary-lines td { width: 50%; padding: var(--s2) var(--s3); border-bottom: 1px solid var(--rule); vertical-align: top; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ko { font-family: var(--ko); word-break: keep-all; }
+.summary-release { border: 1px solid var(--rule); margin: var(--s3) 0; padding: var(--s2) var(--s3); display: flex; flex-wrap: wrap; gap: var(--s4); }
+.summary-release legend { font-size: 12px; color: var(--ink-soft); padding: 0 var(--s1); }
+.summary-release label { display: inline-flex; align-items: center; gap: var(--s1); }
 .blocked { color: var(--tick); font-weight: 500; }
 
 .audit { font-size: 13px; color: var(--ink-soft); }

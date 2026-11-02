@@ -79,7 +79,8 @@ def _translation_problem(phrases: dict, got) -> str | None:
     return None
 
 
-def _assemble(facts: dict, t: dict) -> str:
+def _assemble(facts: dict, t: dict) -> list[str]:
+    """The note's lines. Each language runs this same code over the same facts, so its lines correspond."""
     lines = [t["heading"]]
     for a in facts["accounts"]:
         head = f"{a['bank'] or t['bank_not_named']} · {t['account_ending']} {a['account_ending']}"
@@ -92,7 +93,7 @@ def _assemble(facts: dict, t: dict) -> str:
         lines += [head, f"  {t['reviewed']}: " + "; ".join(items)]
     if facts["excluded_items"]:
         lines.append(t["excluded_items"] + ": " + "; ".join(t[c] for c in facts["excluded_items"]))
-    return "\n".join(lines)
+    return lines
 
 
 def _money(amount: str | int | None, currency: str | None, language: str = "en_US") -> str | None:
@@ -588,6 +589,7 @@ class Review:
             "remaining_review_items": self.remaining_review_items(),
             "open_determinations": self.open_determinations(),
             "corrections": self.state["overrides"],
+            "client_summary": self.state["summary"],
             "audit": self.audit_tail(10_000),
         }
 
@@ -638,10 +640,12 @@ class Review:
     def draft_summary(self, translate, language: str = "ko") -> dict:
         """translate(phrases, language, fresh) -> (translations, meta). Runs only after sign-off.
 
-        The note is assembled from fixed phrases and the signed figures. Phrases come from the language's
-        reviewed table; only phrases missing from it are sent to the model, and the draft lists them as
-        unreviewed. A translation that adds keys, digits, line breaks or out-of-scope words holds the draft
-        back. A redraft asks for a fresh translation, so a held draft can't be replayed."""
+        The note is assembled from fixed phrases and the signed figures, in English and in the client's
+        language, line for line. English is the phrases themselves, so it needs no translation or review.
+        The other language's phrases come from its reviewed table; only phrases missing from it are sent to
+        the model, and the draft lists them as unreviewed. A translation that adds keys, digits, line breaks
+        or out-of-scope words, or that can't be produced, holds that language back; English stays available.
+        A redraft asks for a fresh translation, so a held draft can't be replayed."""
         if not self.state["signoff"]:
             raise ReviewError("Sign off before drafting the client summary.")
         if language not in LANGUAGES:
@@ -656,17 +660,25 @@ class Review:
         missing = {k: v for k, v in phrases.items() if k not in known and k not in catalog_drafts}
         meta, problem, new = {"model": None, "source": f"gettext catalog ({language})"}, None, {}
         if missing:
-            new, meta = translate(missing, LANGUAGES[language], fresh=self.state["summary"] is not None)
-            problem = _translation_problem(missing, new)
+            try:
+                new, meta = translate(missing, LANGUAGES[language], fresh=self.state["summary"] is not None)
+                problem = _translation_problem(missing, new)
+            except RuntimeError as e:  # no key, spend cap or a failed call: English doesn't depend on it
+                problem = f"couldn't be produced: {e}"
             if problem:
                 new = {}
         unreviewed = {**catalog_drafts, **new}
         if not problem:
             problem = _translation_problem(phrases, {**known, **unreviewed})
+        english = _assemble(self.summary_facts("en_US"), phrases)
+        translated = [None] * len(english) if problem else _assemble(facts, {**known, **unreviewed})
         self.state["summary"] = {
-            "text": None if problem else _assemble(facts, {**known, **unreviewed}),
+            "text": None if problem else "\n".join(translated),
+            "text_en": "\n".join(english),
+            "lines": [{"en": en, language: text} for en, text in zip(english, translated, strict=True)],
             "language": language,
             "unreviewed": unreviewed if not problem else {},
+            "unreviewed_en": {k: phrases[k] for k in unreviewed} if not problem else {},
             "meta": meta,
             "approved": None,
             "blocked": problem,
@@ -680,19 +692,33 @@ class Review:
         )
         return self.state["summary"]
 
-    def approve_summary(self, reviewer: str, confirm_unreviewed: bool = False) -> None:
-        """Phrases translated for this draft, not taken from a reviewed table, are approved only when the
-        preparer confirms them; they are listed in the draft and recorded with the approval."""
+    def approve_summary(self, reviewer: str, confirm_unreviewed: bool = False, release: str = "ko") -> None:
+        """release is what the client gets: the client's language, English or both.
+
+        Phrases translated for this draft, not taken from a reviewed table, are approved only when the
+        preparer confirms them; they are listed in the draft and recorded with the approval. An English note
+        has no translation to hold back or confirm."""
         with self.lock:
             s = self.state["summary"]
             if not s:
                 raise ReviewError("Draft the summary first.")
-            if s["blocked"]:
+            if release not in (s["language"], "en", "both"):
+                raise ReviewError(f"Choose what the client gets: {s['language']}, en or both.")
+            needs_translation = release != "en"
+            if needs_translation and s["blocked"]:
                 raise ReviewError(f"This draft can't be released: it {s['blocked']}. Draft it again.")
-            if s["unreviewed"] and not confirm_unreviewed:
+            if needs_translation and s["unreviewed"] and not confirm_unreviewed:
                 raise ReviewError(
                     f"{len(s['unreviewed'])} phrases were translated for this draft and haven't been "
                     "reviewed. Read them and confirm to approve."
                 )
-            s["approved"] = {"reviewer": reviewer, "ts": time.strftime("%Y-%m-%d %H:%M")}
-            self._audit("approve_summary", reviewer, confirmed_unreviewed=sorted(s["unreviewed"]))
+            confirmed = sorted(s["unreviewed"]) if needs_translation else []
+            released = {"en": [s["text_en"]], "both": [s["text"], s["text_en"]]}.get(release, [s["text"]])
+            s["approved"] = {
+                "reviewer": reviewer,
+                "ts": time.strftime("%Y-%m-%d %H:%M"),
+                "release": release,
+                "confirmed_unreviewed": confirmed,
+                "client_text": "\n\n".join(released),
+            }
+            self._audit("approve_summary", reviewer, release=release, confirmed_unreviewed=confirmed)

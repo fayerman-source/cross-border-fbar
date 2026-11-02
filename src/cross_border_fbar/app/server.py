@@ -175,7 +175,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/signoff": lambda: review.sign_off(who, str(body.get("initials", ""))),
             "/api/summary/draft": lambda: review.draft_summary(translate_phrases),
             "/api/summary/approve": lambda: review.approve_summary(
-                who, body.get("confirm_unreviewed") is True
+                who, body.get("confirm_unreviewed") is True, body.get("release", "ko")
             ),
         }
         return actions.get(self.path)

@@ -81,16 +81,27 @@
           </section>
           <p><a href="/api/export" id="export" download="fbar-worksheet-signed.json">Download signed worksheet (JSON)</a></p>
           <div class="client-summary">
-            <h3>Client summary in Korean</h3>
-            <p class="hint">Drafted from the signed figures only, checked against the scope line, released only when you approve it.</p>
+            <h3>Client summary</h3>
+            <p class="hint">Drafted from the signed figures only, in English and Korean, line by line. Checked against the scope line, released only when you approve it.</p>
             <button type="button" id="draft-summary">Draft summary</button>
             <div id="summary-box" hidden>
-              <pre class="ko" id="summary-text" lang="ko"></pre>
+              <div class="table-wrap">
+                <table class="summary-lines">
+                  <thead><tr><th scope="col">English</th><th scope="col">Korean</th></tr></thead>
+                  <tbody id="summary-lines"></tbody>
+                </table>
+              </div>
               <p class="blocked" id="summary-blocked" hidden></p>
               <div id="summary-unreviewed" hidden>
-                <p>Translated for this draft, not yet reviewed. Check each one before approving:</p>
-                <ul id="summary-unreviewed-list" lang="ko"></ul>
+                <p>Korean not yet reviewed by a native speaker. Check each phrase before approving:</p>
+                <ul id="summary-unreviewed-list"></ul>
               </div>
+              <fieldset class="summary-release" id="summary-release">
+                <legend>What the client gets</legend>
+                <label><input type="radio" name="release" value="ko" checked> Korean</label>
+                <label><input type="radio" name="release" value="en"> English</label>
+                <label><input type="radio" name="release" value="both"> Both</label>
+              </fieldset>
               <button type="button" id="approve-summary">Approve for release</button>
               <p class="signed" id="summary-approved" hidden></p>
             </div>
