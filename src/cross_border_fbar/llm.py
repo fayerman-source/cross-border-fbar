@@ -16,7 +16,6 @@ The key comes from MODEL_API_KEY or ~/.config/fbar/.env and is never logged.
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import hashlib
 import json
 import math
@@ -27,6 +26,8 @@ import urllib.request
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+
+from .filelock import exclusive
 
 BASE_URL = "https://api.meta.ai/v1"
 CONFIG_DIR = Path.home() / ".config" / "fbar"
@@ -122,21 +123,21 @@ class Client:
         """Recorded spend plus worst-case reservations for calls still in flight."""
         if not self.ledger.exists():
             return 0.0
-        return sum(json.loads(line)["cost_usd"] for line in self.ledger.read_text().splitlines() if line)
+        return sum(
+            json.loads(line)["cost_usd"]
+            for line in self.ledger.read_text(encoding="utf-8").splitlines()
+            if line
+        )
 
     @contextlib.contextmanager
     def _ledger_lock(self):
         # One lock file per ledger, so threads and separate processes admit calls one at a time.
         self.ledger.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.ledger.with_suffix(".lock"), "w") as fh:
-            fcntl.flock(fh, fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(fh, fcntl.LOCK_UN)
+        with exclusive(self.ledger.with_suffix(".lock")):
+            yield
 
     def _append(self, entry: dict) -> None:
-        with self.ledger.open("a") as f:
+        with self.ledger.open("a", encoding="utf-8") as f:
             f.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), **entry}) + "\n")
 
     def _reserve(self, worst: float, label: str) -> str:
@@ -174,7 +175,7 @@ class Client:
         key = request_key(body)
         rec = self.recordings / model / f"{key}.json"
         if self.mode in ("replay", "auto") and rec.exists():
-            r = json.loads(rec.read_text())
+            r = json.loads(rec.read_text(encoding="utf-8"))
             return Result(r["content"], r["usage"], r["cost_usd"], r["latency_s"], True, key)
         if self.mode == "replay":
             raise NotRecorded(f"no recording for {label or key[:12]} under {rec.parent}")
@@ -214,7 +215,8 @@ class Client:
                 },
                 ensure_ascii=False,
                 indent=1,
-            )
+            ),
+            encoding="utf-8",
         )
         return Result(content, usage, cost, latency, False, key)
 
@@ -237,7 +239,7 @@ def _api_key() -> str:
     if os.environ.get("MODEL_API_KEY"):
         return os.environ["MODEL_API_KEY"]
     env = CONFIG_DIR / ".env"
-    for line in env.read_text().splitlines() if env.exists() else []:
+    for line in env.read_text(encoding="utf-8").splitlines() if env.exists() else []:
         if line.startswith("MODEL_API_KEY="):
             return line.split("=", 1)[1].strip()
     raise RuntimeError("MODEL_API_KEY is not set (env var or ~/.config/fbar/.env)")

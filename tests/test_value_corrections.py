@@ -23,12 +23,12 @@ CHECKING = "110-482-913746"
 
 
 def readings_with(inputs, tmp_path, mutate) -> Inputs:
-    doc = json.loads(inputs.readings.read_text())
+    doc = json.loads(inputs.readings.read_text(encoding="utf-8"))
     for page in doc["pages"]:
         if "reading" in page:
             mutate(page["statement_id"], page["reading"])
     path = tmp_path / "misread-readings.json"
-    path.write_text(json.dumps(doc))
+    path.write_text(json.dumps(doc), encoding="utf-8")
     return Inputs(inputs.set_dir, path, inputs.intake)
 
 
@@ -207,7 +207,7 @@ def test_a_correction_is_in_the_fingerprint_and_invalidates_a_sign_off_on_reload
     """Corrections are refused after sign-off, so one found in the saved state wasn't what was signed."""
     signed = review_signed.state["signoff"]["hash"]
     assert signed == worksheet_hash(review_signed.worksheet)
-    state = json.loads(review_signed.state_path.read_text())
+    state = json.loads(review_signed.state_path.read_text(encoding="utf-8"))
     field = f"row:{PEAK_ROW}:balance"
     page = page_readings(review_signed.inputs)[MARCH_PAGE]
     state["value_corrections"] = {
@@ -223,7 +223,7 @@ def test_a_correction_is_in_the_fingerprint_and_invalidates_a_sign_off_on_reload
             "ts": 1.0,
         }
     }
-    review_signed.state_path.write_text(json.dumps(state))
+    review_signed.state_path.write_text(json.dumps(state), encoding="utf-8")
     reloaded = Review(review_signed.inputs, review_signed.dir, root=tmp_path)
     assert reloaded.state["signoff"] is None
     assert reloaded.state["invalidated_signoffs"][-1]["hash"] == signed
@@ -361,11 +361,11 @@ def test_corrections_survive_a_restart(misread, tmp_path):
 
 def test_a_correction_to_a_reading_that_changed_is_retired_on_record(misread, tmp_path):
     correct_peak(misread)
-    doc = json.loads(misread.inputs.readings.read_text())
+    doc = json.loads(misread.inputs.readings.read_text(encoding="utf-8"))
     for page in doc["pages"]:
         if page["statement_id"] == MARCH:
             page["reading"]["rows"][PEAK_ROW]["balance_text"] = "287,450,900"
-    misread.inputs.readings.write_text(json.dumps(doc))
+    misread.inputs.readings.write_text(json.dumps(doc), encoding="utf-8")
     again = Review(misread.inputs, misread.dir, root=tmp_path)
     assert again.state["value_corrections"] == {}
     assert again.state["stale_value_corrections"][0]["value"] == TRUE_PEAK
@@ -383,14 +383,14 @@ def test_a_correction_does_not_move_to_another_transaction_when_a_row_is_inserte
     review.correct_value(upload, "row:1:balance", "1.000,00", "balance from the bank's letter", "A. Rivera")
     assert review.state["value_corrections"]
 
-    doc = json.loads(inputs.readings.read_text())
+    doc = json.loads(inputs.readings.read_text(encoding="utf-8"))
     (page,) = [p for p in doc["pages"] if p["statement_id"] == statement]
     rows = page["reading"]["rows"]
     assert rows[0]["balance_text"] == rows[1]["balance_text"] == ""
     assert rows[0]["description"] != rows[1]["description"]
     rows.insert(0, {**rows[0], "description": "a row the first reading missed"})
     changed = tmp_path / "reread.json"
-    changed.write_text(json.dumps(doc))
+    changed.write_text(json.dumps(doc), encoding="utf-8")
 
     again = Review(Inputs(inputs.set_dir, changed, inputs.intake), review.dir, root=tmp_path)
     assert again.state["value_corrections"] == {}
@@ -418,7 +418,7 @@ def test_a_row_on_a_list_of_several_accounts_belongs_to_the_rows_account(inputs,
     review = Review(inputs, tmp_path / "review", root=tmp_path)
     page = "pages/compiled-ledger-p1.png"
     rows = review.view()["page_readings"][page]["rows"]
-    doc = json.loads(inputs.readings.read_text())
+    doc = json.loads(inputs.readings.read_text(encoding="utf-8"))
     reading = next(
         p["reading"] for p in doc["pages"] if p["statement_id"] == "compiled-ledger" and p.get("page", 1) == 1
     )

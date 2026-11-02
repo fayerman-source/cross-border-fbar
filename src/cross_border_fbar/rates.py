@@ -84,7 +84,7 @@ def fetch(year: int, currencies: list[str]) -> dict:
 
 
 def load(year: int, path: Path | None = None) -> dict[str, Rate]:
-    doc = json.loads((path or rates_path(year)).read_text())
+    doc = json.loads((path or rates_path(year)).read_text(encoding="utf-8"))
     if doc["record_date"] != f"{year}-12-31":
         raise ValueError(f"rates file is for {doc['record_date']}, not {year}-12-31")
     return {
@@ -101,7 +101,7 @@ def main(argv: list[str]) -> None:
     # Fetching writes to the current workspace, never into a potentially read-only installation.
     out = Path.cwd() / "data" / f"treasury_rates_{year}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(doc, indent=2) + "\n")
+    out.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {out}: " + ", ".join(f"{c} {r['units_per_usd']}" for c, r in doc["rates"].items()))
     print(f"Load explicitly with rates.load({year}, path=Path({str(out)!r})).")
 

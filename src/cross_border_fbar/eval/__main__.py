@@ -23,7 +23,7 @@ RESULTS = Path(__file__).resolve().parents[3] / "results"
 
 
 def evaluate(set_dir: Path, model: str, mode: str, workers: int, limit: int | None) -> dict:
-    truth = json.loads((set_dir / "truth.json").read_text())
+    truth = json.loads((set_dir / "truth.json").read_text(encoding="utf-8"))
     statements = truth["statements"]
     if limit:
         statements = statements[:limit]
@@ -86,7 +86,7 @@ def main() -> None:
     result = evaluate(a.set, a.model, a.mode, a.workers, a.limit)
     RESULTS.mkdir(exist_ok=True)
     out = RESULTS / f"{a.model}_{a.set.name}.json"
-    out.write_text(json.dumps(result, ensure_ascii=False, indent=1) + "\n")
+    out.write_text(json.dumps(result, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     print(json.dumps({k: result[k] for k in ("model", "prompt", "mode", "cost_usd_this_run")}))
     print(json.dumps(result["summary"], indent=1))
     for e in result["errors"]:

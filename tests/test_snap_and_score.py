@@ -115,7 +115,8 @@ def test_eval_reports_statements_without_page_images(tmp_path):
     from cross_border_fbar.eval.__main__ import evaluate
 
     (tmp_path / "truth.json").write_text(
-        _json.dumps({"generator": {}, "statements": [{"statement_id": "x_2025-01", "pages": 1}]})
+        _json.dumps({"generator": {}, "statements": [{"statement_id": "x_2025-01", "pages": 1}]}),
+        encoding="utf-8",
     )
     result = evaluate(tmp_path, "muse-spark-1.3", "replay", workers=1, limit=None)
     assert result["summary"] == {}

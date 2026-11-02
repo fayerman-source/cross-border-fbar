@@ -8,7 +8,6 @@ person's documents are permitted.
 from __future__ import annotations
 
 import argparse
-import fcntl
 import hashlib
 import json
 import math
@@ -23,6 +22,7 @@ from pillow_heif import register_heif_opener
 from ..app.worksheet import Inputs, build
 from ..extract.page import PROMPT_VERSION, SCHEMA, read_page
 from ..extract.snap import snap_rows
+from ..filelock import exclusive
 from ..llm import Client
 from ..reconcile.intake import IntakeDocument
 from .score import score_page, summarize
@@ -51,7 +51,7 @@ def _open_page(path: Path, page: int) -> Image.Image:
 
 
 def _case(manifest_path: Path, case_id: str, page: int) -> tuple[dict, tuple[int, int]]:
-    manifest = json.loads(manifest_path.read_text())
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     matches = [c for c in manifest["cases"] if c["statement_id"] == case_id and c["page"] == page]
     if len(matches) != 1:
         raise ValueError("manifest must contain exactly one matching statement and page")
@@ -63,7 +63,7 @@ def _case(manifest_path: Path, case_id: str, page: int) -> tuple[dict, tuple[int
     truth_path = (base / truth_ref).resolve()
     if not truth_path.is_relative_to(base):
         raise ValueError("manifest answer key must be within the manifest directory")
-    truth = json.loads(truth_path.read_text())
+    truth = json.loads(truth_path.read_text(encoding="utf-8"))
     statements = [s for s in truth["statements"] if s["statement_id"] == case_id]
     if len(statements) != 1:
         raise ValueError("synthetic answer key does not uniquely identify this case")
@@ -211,7 +211,7 @@ def _existing_set(set_dir: Path, intake: dict, explicit_intake: bool) -> dict:
     intake_file = set_dir / "intake.json"
     readings_file = set_dir / "readings.json"
     if intake_file.exists():
-        saved = json.loads(intake_file.read_text())
+        saved = json.loads(intake_file.read_text(encoding="utf-8"))
         IntakeDocument.from_dict(saved)
         if explicit_intake and saved != intake:
             raise ValueError("review set already has different intake facts")
@@ -219,7 +219,7 @@ def _existing_set(set_dir: Path, intake: dict, explicit_intake: bool) -> dict:
         raise ValueError("existing review set is missing intake.json")
     if not readings_file.exists():
         return {"model": MODEL, "prompt": PROMPT_VERSION, "pages": []}
-    doc = json.loads(readings_file.read_text())
+    doc = json.loads(readings_file.read_text(encoding="utf-8"))
     if doc.get("model") != MODEL or doc.get("prompt") != PROMPT_VERSION:
         raise ValueError("review set uses a different model or prompt")
     if not isinstance(doc.get("pages"), list):
@@ -230,8 +230,7 @@ def _existing_set(set_dir: Path, intake: dict, explicit_intake: bool) -> dict:
 
 
 def _append_capture(set_dir, intake, intake_path, item):
-    with (set_dir / ".photo-eval.lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+    with exclusive(set_dir / ".photo-eval.lock"):
         intake_file = set_dir / "intake.json"
         readings_file = set_dir / "readings.json"
         doc = _existing_set(set_dir, intake, bool(intake_path))
@@ -291,7 +290,7 @@ def run(
     if corners:
         image = _rectify(image, corners, size)
     intake = (
-        json.loads(intake_path.read_text())
+        json.loads(intake_path.read_text(encoding="utf-8"))
         if intake_path
         else {"client": "Synthetic test client", "source": "Not stated", "accounts": []}
     )
@@ -300,8 +299,7 @@ def run(
     if client.mode != "live":
         raise ValueError("photo evaluation requires live extraction")
     set_dir.mkdir(parents=True, exist_ok=True)
-    with (set_dir / ".photo-eval.lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+    with exclusive(set_dir / ".photo-eval.lock"):
         _existing_set(set_dir, intake, bool(intake_path))
     pages = set_dir / "pages"
     pages.mkdir(exist_ok=True)

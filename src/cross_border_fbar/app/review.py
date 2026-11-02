@@ -155,7 +155,7 @@ class Review:
         self.audit_path = self.dir / "audit.jsonl"
         self.lock = threading.Lock()
         self.state = (
-            json.loads(self.state_path.read_text())
+            json.loads(self.state_path.read_text(encoding="utf-8"))
             if self.state_path.exists()
             else {"acks": {}, "overrides": {}, "signoff": None, "summary": None}
         )
@@ -342,14 +342,14 @@ class Review:
     def audit_tail(self, n: int) -> list[dict]:
         if not self.audit_path.exists():
             return []
-        return [json.loads(x) for x in self.audit_path.read_text().splitlines()[-n:]]
+        return [json.loads(x) for x in self.audit_path.read_text(encoding="utf-8").splitlines()[-n:]]
 
     # -- actions -------------------------------------------------------------------------------
     def _audit(self, action: str, reviewer: str, **detail) -> None:
         entry = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "action": action, "reviewer": reviewer, **detail}
-        with self.audit_path.open("a") as f:
+        with self.audit_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        self.state_path.write_text(json.dumps(self.state, ensure_ascii=False, indent=1))
+        self.state_path.write_text(json.dumps(self.state, ensure_ascii=False, indent=1), encoding="utf-8")
 
     def _require_open(self) -> None:
         if self.state["signoff"]:

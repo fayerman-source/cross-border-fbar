@@ -100,7 +100,7 @@ def _without_unverified_boxes(reading: dict) -> dict:
 def page_readings(inp: Inputs) -> dict[str, dict]:
     """Each read page's reading as the model returned it, by upload."""
     pages = {}
-    for page in json.loads(inp.readings.read_text())["pages"]:
+    for page in json.loads(inp.readings.read_text(encoding="utf-8"))["pages"]:
         if "reading" in page:
             image = page_image(inp.set_dir, page["statement_id"], int(page.get("page", 1)))
             pages[f"pages/{image.name}"] = page["reading"]
@@ -144,7 +144,7 @@ def load_observations(
 
     Corrections apply here, before reconciliation. Boxes still come from the reading as returned, so
     correcting a value can't move where its line is drawn."""
-    readings = json.loads(inp.readings.read_text())
+    readings = json.loads(inp.readings.read_text(encoding="utf-8"))
     observations, unread, unverified = [], {}, set()
     by_page = defaultdict(list)
     for correction in (value_corrections or {}).values():
@@ -221,7 +221,7 @@ def build(
     ownership_details: dict | None = None,
     value_corrections: dict | None = None,
 ) -> dict:
-    intake_doc = IntakeDocument.from_dict(json.loads(inp.intake.read_text()))
+    intake_doc = IntakeDocument.from_dict(json.loads(inp.intake.read_text(encoding="utf-8")))
     intake = _effective_intake(intake_doc, ownership_overrides, interest_overrides)
     year_rates = rates.load(inp.tax_year)
     observations, unread, unverified = load_observations(inp, value_corrections)
@@ -244,7 +244,7 @@ def build(
     )
     _flag_unverified_locations(results, unverified)
     totals = fbar_totals(results)
-    readings_meta = json.loads(inp.readings.read_text())
+    readings_meta = json.loads(inp.readings.read_text(encoding="utf-8"))
     accounts, flags = [], []
     for r in results:
         acct_flags = []

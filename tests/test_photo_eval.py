@@ -35,11 +35,12 @@ def test_manifest_cannot_read_answer_key_outside_its_directory(tmp_path, referen
     packet = tmp_path / "packet"
     packet.mkdir()
     outside = tmp_path / "outside.json"
-    outside.write_text("{}")
+    outside.write_text("{}", encoding="utf-8")
     (packet / "link.json").symlink_to(outside)
     manifest = packet / "manifest.json"
     manifest.write_text(
-        json.dumps({"cases": [{"statement_id": "s", "page": 1, "baseline_truth": reference}]})
+        json.dumps({"cases": [{"statement_id": "s", "page": 1, "baseline_truth": reference}]}),
+        encoding="utf-8",
     )
     with pytest.raises(ValueError, match="within the manifest directory"):
         _case(manifest, "s", 1)
@@ -85,7 +86,7 @@ def test_unscored_capture_records_and_opens_in_review_set(capture):
     assert sent == ["muse-spark-1.3", "muse-spark-1.3"]
     assert first["geometry_status"] == "unscored"
     assert first["value_summary"] is None
-    doc = json.loads((target / "readings.json").read_text())
+    doc = json.loads((target / "readings.json").read_text(encoding="utf-8"))
     assert len(doc["pages"]) == 2
     assert first["capture"] != second["capture"]
     assert (
@@ -136,16 +137,19 @@ def test_manifest_scores_values_but_omits_unverified_geometry(capture, tmp_path)
             }
         ]
     }
-    (tmp_path / "truth.json").write_text(json.dumps(truth))
+    (tmp_path / "truth.json").write_text(json.dumps(truth), encoding="utf-8")
     manifest = tmp_path / "manifest.json"
     manifest.write_text(
-        json.dumps({"cases": [{"statement_id": "synthetic-case", "page": 1, "baseline_truth": "truth.json"}]})
+        json.dumps(
+            {"cases": [{"statement_id": "synthetic-case", "page": 1, "baseline_truth": "truth.json"}]}
+        ),
+        encoding="utf-8",
     )
     result = run(image, target, synthetic=True, client=client, manifest=manifest, case_id="synthetic-case")
     assert result["value_summary"]["fields_value_ok"] == "6/6"
     assert result["value_summary"]["amount_ok"] == "1/1"
     assert result["geometry_summary"] is None
-    item = json.loads((target / "readings.json").read_text())["pages"][0]
+    item = json.loads((target / "readings.json").read_text(encoding="utf-8"))["pages"][0]
     assert "row_centre_in_row" not in item["score"]["rows"][0]
     assert "iou_text" not in item["score"]["fields"]["institution"]
     result = run(
@@ -205,13 +209,13 @@ def test_pdf_page_selection_adds_the_requested_page(capture, tmp_path):
         pdf.cell(text=label)
     pdf.output(str(pdf_path))
     result = run(pdf_path, target, synthetic=True, client=client, page=2)
-    doc = json.loads((target / "readings.json").read_text())
+    doc = json.loads((target / "readings.json").read_text(encoding="utf-8"))
     assert doc["pages"][0]["capture"]["source_page"] == 2
     assert result["value_summary"] is None
     assert sent == ["muse-spark-1.3"]
     with pytest.raises(ValueError, match="outside"):
         run(pdf_path, target, synthetic=True, client=client, page=3)
-    assert len(json.loads((target / "readings.json").read_text())["pages"]) == 1
+    assert len(json.loads((target / "readings.json").read_text(encoding="utf-8"))["pages"]) == 1
 
 
 def test_early_input_validation_never_sends_a_call(capture, tmp_path):
@@ -227,8 +231,10 @@ def test_early_input_validation_never_sends_a_call(capture, tmp_path):
 def test_incompatible_review_set_fails_before_paid_call(capture):
     image, target, client, sent = capture
     target.mkdir()
-    (target / "intake.json").write_text(json.dumps({"accounts": []}))
-    (target / "readings.json").write_text(json.dumps({"model": "other", "prompt": "old", "pages": []}))
+    (target / "intake.json").write_text(json.dumps({"accounts": []}), encoding="utf-8")
+    (target / "readings.json").write_text(
+        json.dumps({"model": "other", "prompt": "old", "pages": []}), encoding="utf-8"
+    )
     with pytest.raises(ValueError, match="different model"):
         run(image, target, synthetic=True, client=client)
     assert not sent

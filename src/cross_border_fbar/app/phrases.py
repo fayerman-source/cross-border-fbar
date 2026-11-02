@@ -163,7 +163,7 @@ def write_printout(language: str, root: Path | None = None) -> Path:
         raise ValueError(f"no printout for client language {language!r}")
     path = confined(relative, root or Path.cwd())
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(printout(language))
+    path.write_text(printout(language), encoding="utf-8")
     return path
 
 

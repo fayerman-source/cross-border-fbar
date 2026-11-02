@@ -22,10 +22,10 @@ def test_query_filters_on_year_end_and_treasury_labels():
 
 
 def test_load_rejects_a_file_for_another_date(tmp_path):
-    doc = json.loads(rates.rates_path(2025).read_text())
+    doc = json.loads(rates.rates_path(2025).read_text(encoding="utf-8"))
     doc["record_date"] = "2025-09-30"
     bad = tmp_path / "rates.json"
-    bad.write_text(json.dumps(doc))
+    bad.write_text(json.dumps(doc), encoding="utf-8")
     with pytest.raises(ValueError):
         rates.load(2025, bad)
 

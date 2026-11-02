@@ -27,7 +27,7 @@ def test_non_standard_models_are_refused_before_any_request(client, model, monke
 
 def test_cap_refuses_a_call_that_could_exceed_it(client, monkeypatch):
     monkeypatch.setattr(client, "_post", lambda body: pytest.fail("request was sent"))
-    client.ledger.write_text(json.dumps({"cost_usd": 0.99}) + "\n")
+    client.ledger.write_text(json.dumps({"cost_usd": 0.99}) + "\n", encoding="utf-8")
     with pytest.raises(llm.SpendCapExceeded):
         client.chat("muse-spark-1.3", [{"role": "user", "content": "hi"}], max_tokens=16000)
 
@@ -62,7 +62,9 @@ def test_recordings_never_contain_the_key(client, monkeypatch):
     monkeypatch.setenv("MODEL_API_KEY", marker)
     monkeypatch.setattr(client, "_post", lambda body: fake_response())
     client.chat("muse-spark-1.3", [{"role": "user", "content": "x"}], max_tokens=10)
-    stored = "".join(p.read_text() for p in client.recordings.rglob("*.json")) + client.ledger.read_text()
+    stored = "".join(
+        p.read_text(encoding="utf-8") for p in client.recordings.rglob("*.json")
+    ) + client.ledger.read_text(encoding="utf-8")
     assert marker not in stored
 
 
@@ -113,7 +115,7 @@ def test_failed_call_keeps_its_reservation_until_cost_is_known(client, monkeypat
     with pytest.raises(RuntimeError):
         client.chat("muse-spark-1.3", [{"role": "user", "content": "x"}], max_tokens=100)
     assert client.spent_usd() > 0
-    assert json.loads(client.ledger.read_text().splitlines()[0])["kind"] == "reservation"
+    assert json.loads(client.ledger.read_text(encoding="utf-8").splitlines()[0])["kind"] == "reservation"
 
 
 @pytest.mark.parametrize(
