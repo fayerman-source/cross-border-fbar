@@ -3,7 +3,7 @@ title: FBAR worksheet demo
 sdk: docker
 app_port: 7860
 license: apache-2.0
-short_description: A foreign account worksheet where every number links to its source line
+short_description: FBAR review worksheet on fictional statements
 disable_embedding: true
 ---
 
