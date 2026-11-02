@@ -34,7 +34,7 @@ Replay uses the model responses recorded in `recordings/`, keyed by a hash of th
 - 47 monthly statements: Korean 23, German 12 in two layouts, Thai 12.
 - One 2-page compiled transaction list covering several accounts, with no balances. Its layout is modeled on a real Korean compiled list; its content is entirely synthetic.
 
-One recorded run per page; median latency is about 10 s per page. The 49 per-page recorded costs in the current replay sum to **$0.87**. An earlier write-up reported $0.45 for the 26 pages newly recorded in one batch, excluding the other pages; its $0.76 total was inconsistent with the current recorded costs. The $0.45 batch figure was not independently reconstructed from these replay results.
+One recorded run per page; median latency is about 10 s per page. The 49 per-page recorded costs in the current replay sum to **$0.87**.
 
 ### Extraction
 
