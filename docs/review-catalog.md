@@ -16,4 +16,4 @@ Give `docs/korean-review.txt` to the native reviewer. It contains numbered Engli
 uv run python -m cross_border_fbar.app.phrases --printout
 ```
 
-`--refresh` deliberately records a new translation of all phrases in one call and resets their review status. Terminology follows IRS Publication 850 (EN-KR), September 2023, where terms exist. A native Korean speaker reviewed the catalog on 2026-10-31. One entry has changed since and is unreviewed: `heading`, whose draft replaces 공인회계사 because enrolled agents prepare returns too. It needs the native reviewer. Until then a Korean or bilingual note needs the preparer's confirmation of that phrase, with no model call.
+`--refresh` deliberately records a new translation of all phrases in one call and resets their review status. Terminology follows IRS Publication 850 (EN-KR), September 2023, where terms exist. A native Korean speaker reviewed the catalog on 2026-10-31, and every entry in the current catalog is reviewed.

@@ -1,6 +1,6 @@
 # cross-border-fbar
 
-As a licensed attorney who works with U.S. tax preparers, I had a practical question for this hackathon: could a tool take on the tedious statement review without taking away control over the numbers? This tool was my answer. Built for preparers serving U.S. expats and immigrants with foreign bank accounts, it helps a Certified Public Accountant (CPA) or enrolled agent (EA) automate the reading of bank statements and identify each account's highest balance of the year. The preparer reviews and signs off on those numbers. Each identified highest balance links to its source page in the bank statement for **one-click verification**.
+As a licensed attorney who works with U.S. tax preparers, I had a practical question for this hackathon: could a tool take on the tedious statement review without taking away control over the numbers? This tool was my answer. Built for preparers serving U.S. expats and immigrants with foreign bank accounts, it helps a Certified Public Accountant (CPA) or enrolled agent (EA) automate the reading of bank statements and identify each account's highest balance shown in those statements. The preparer reviews and signs off on those numbers. Each identified highest balance links to its source page in the bank statement for **one-click verification**.
 
 **Try it without installing anything:** [live demo](https://sadhakadev-fbar-worksheet-demo.hf.space), with fictional data and recorded readings. The first visit after a quiet period may take a moment to load.
 
@@ -64,10 +64,11 @@ The worksheet opens readings recorded from the live model, so it runs offline. T
 | Hosted Muse Spark, 49 clean pages | 294/294 header fields; 280/280 rows |
 | Open-weights Muse Glimmer on a laptop GPU, same pages | 280/280 row values; 244/294 header fields under strict scoring (48 were the right text labeled absent, 2 were a page-level account number on the compiled list, which has none); about 6 minutes a page; nothing sent to a hosted service |
 | Reconciliation | Highest observed balance and USD value right on 6/6 accounts (4 numeric results, 2 correctly undetermined). Spark: 9 of 9 expected flags (6 review items, 3 notes), none extra. Glimmer: 9 of 9, plus 1 extra review item |
-| Printed pages, re-captured as flatbed scans and as WhatsApp photos | 19/19 rows with every date, amount and balance right; 18/18 header fields after an [answer-key correction](EVAL.md#answer-key-change-nov-1-2026) made after the test (17/18 before), same recorded readings |
+| Printed pages, re-captured as flatbed scans and as WhatsApp photos | For each capture method, 19/19 rows with every date, amount and balance right; 18/18 header fields after an [answer-key correction](EVAL.md#answer-key-change-nov-1-2026) made after the test (17/18 before), same recorded readings |
 
 - All data is synthetic, on bank layouts we generated. The scans and photos test how a page was captured, not unfamiliar banks.
 - Scans and photos show the source page without a line highlight, because locations on them aren't verified.
+- The scan and photo images, and the model's readings of them, are in [evidence/physical-capture](evidence/physical-capture). A test rescores them on every CI run.
 
 Full numbers are in [EVAL.md](EVAL.md).
 
@@ -109,7 +110,7 @@ A local app for the preparer. The recorded-reading worksheet runs offline, binds
 
 - **Schedule A** lists each account's highest observed balance in the supplied material, subject to coverage and review. Click a highest balance to see its source page. For prepared readings, code snaps the model's box to the printed line and proposes a highlight. On the clean set, 278/280 row centers landed in the right row with Spark's readings and 244/280 with Glimmer's. Opening and closing balances are placed the same way, with none on the wrong line for either model; when the page doesn't settle the line, the page opens without a highlight. The snapping was tuned on those same pages. The preparer must verify each highlight against the page; new captures have no highlight while their locations are unverified.
 - **Schedule B** lists the review items. Each must be acknowledged with a note; ownership (owner, joint, signature authority) can be corrected, and the worksheet recomputes.
-- **Sign-off** is allowed only when every review item is acknowledged. It records a reviewed snapshot and fingerprint; acknowledged limitations may remain. The signed view and export list review items still present and open threshold determinations. Any change to the worksheet invalidates the sign-off.
+- **Sign-off** is allowed only when every review item is acknowledged. It records a reviewed snapshot and fingerprint; acknowledged limitations may remain. The signed view and export list review items still present and open threshold determinations. A signed worksheet can't be edited. If the readings or intake later change, the sign-off is voided and the worksheet needs review again.
 - **Client summary in Korean** is assembled from signed numbers and fixed catalog phrases (last four digits, no statement contents, none of the preparer's notes). A phrase missing from the catalog is translated by `muse-spark-1.3`. Unreviewed phrases require explicit confirmation, and the preparer approves the draft before release. A native speaker has reviewed the catalog phrases; changed English or new phrases require review again. The preparer sees the English beside the Korean before approving, and chooses what the client receives: Korean, English or both.
 
 Corrections cover amounts, balances, ownership, financial interest, currency and exchange rate. A corrected number keeps the original reading on record, and the worksheet recalculates. Every action goes to an audit trail (`out/review/audit.jsonl`). The app reads the model's recorded page readings and the intake facts, never the answer key.

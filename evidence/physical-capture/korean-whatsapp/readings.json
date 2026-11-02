@@ -1,0 +1,578 @@
+{
+ "model": "muse-spark-1.3",
+ "prompt": "statement_page_v3",
+ "pages": [
+  {
+   "statement_id": "capture-54de2009625f47d98316c7b2f44d9d35",
+   "page": 1,
+   "reading": {
+    "account_number": {
+     "bbox": {
+      "x_max": 410,
+      "x_min": 276,
+      "y_max": 318,
+      "y_min": 303
+     },
+     "status": "read",
+     "text": "110-482-913746"
+    },
+    "closing_balance": {
+     "bbox": {
+      "x_max": 718,
+      "x_min": 608,
+      "y_max": 617,
+      "y_min": 603
+     },
+     "status": "read",
+     "text": "40,657,677"
+    },
+    "currency": {
+     "bbox": {
+      "x_max": 322,
+      "x_min": 276,
+      "y_max": 377,
+      "y_min": 363
+     },
+     "status": "read",
+     "text": "KRW"
+    },
+    "holder": {
+     "bbox": {
+      "x_max": 424,
+      "x_min": 276,
+      "y_max": 301,
+      "y_min": 287
+     },
+     "status": "read",
+     "text": "JUNG SEULGI JOY"
+    },
+    "institution": {
+     "bbox": {
+      "x_max": 222,
+      "x_min": 118,
+      "y_max": 261,
+      "y_min": 235
+     },
+     "status": "read",
+     "text": "새별은행"
+    },
+    "opening_balance": {
+     "bbox": {
+      "x_max": 494,
+      "x_min": 389,
+      "y_max": 397,
+      "y_min": 383
+     },
+     "status": "read",
+     "text": "38,074,000"
+    },
+    "period": {
+     "bbox": {
+      "x_max": 523,
+      "x_min": 276,
+      "y_max": 347,
+      "y_min": 332
+     },
+     "status": "read",
+     "text": "2025.03.01 ~ 2025.03.31"
+    },
+    "rows": [
+     {
+      "account_text": "",
+      "amount_bbox": {
+       "x_max": 615,
+       "x_min": 535,
+       "y_max": 432,
+       "y_min": 419
+      },
+      "amount_column": "debit",
+      "amount_text": "500,000",
+      "balance_bbox": {
+       "x_max": 855,
+       "x_min": 767,
+       "y_max": 432,
+       "y_min": 419
+      },
+      "balance_text": "37,574,000",
+      "date_text": "2025.03.10",
+      "description": "정민호 생활비",
+      "row_bbox": {
+       "x_max": 862,
+       "x_min": 132,
+       "y_max": 433,
+       "y_min": 418
+      }
+     },
+     {
+      "account_text": "",
+      "amount_bbox": {
+       "x_max": 615,
+       "x_min": 535,
+       "y_max": 447,
+       "y_min": 434
+      },
+      "amount_column": "debit",
+      "amount_text": "123,800",
+      "balance_bbox": {
+       "x_max": 855,
+       "x_min": 767,
+       "y_max": 447,
+       "y_min": 434
+      },
+      "balance_text": "37,450,200",
+      "date_text": "2025.03.10",
+      "description": "카카오페이 송금",
+      "row_bbox": {
+       "x_max": 862,
+       "x_min": 132,
+       "y_max": 448,
+       "y_min": 433
+      }
+     },
+     {
+      "account_text": "",
+      "amount_bbox": {
+       "x_max": 735,
+       "x_min": 633,
+       "y_max": 462,
+       "y_min": 449
+      },
+      "amount_column": "credit",
+      "amount_text": "250,000,000",
+      "balance_bbox": {
+       "x_max": 855,
+       "x_min": 760,
+       "y_max": 462,
+       "y_min": 449
+      },
+      "balance_text": "287,450,200",
+      "date_text": "2025.03.10",
+      "description": "보증금반환 이○○",
+      "row_bbox": {
+       "x_max": 862,
+       "x_min": 132,
+       "y_max": 463,
+       "y_min": 448
+      }
+     },
+     {
+      "account_text": "",
+      "amount_bbox": {
+       "x_max": 615,
+       "x_min": 535,
+       "y_max": 476,
+       "y_min": 463
+      },
+      "amount_column": "debit",
+      "amount_text": "46,000",
+      "balance_bbox": {
+       "x_max": 855,
+       "x_min": 760,
+       "y_max": 476,
+       "y_min": 463
+      },
+      "balance_text": "287,404,200",
+      "date_text": "2025.03.12",
+      "description": "카카오페이 송금",
+      "row_bbox": {
+       "x_max": 862,
+       "x_min": 132,
+       "y_max": 477,
+       "y_min": 463
+      }
+     },
+     {
+      "account_text": "",
+      "amount_bbox": {
+       "x_max": 625,
+       "x_min": 525,
+       "y_max": 491,
+       "y_min": 478
+      },
+      "amount_column": "debit",
+      "amount_text": "250,000,000",
+      "balance_bbox": {
+       "x_max": 855,
+       "x_min": 767,
+       "y_max": 491,
+       "y_min": 478
+      },
+      "balance_text": "37,404,200",
+      "date_text": "2025.03.12",
+      "description": "전세보증금 박○○",
+      "row_bbox": {
+       "x_max": 862,
+       "x_min": 132,
+       "y_max": 492,
+       "y_min": 478
+      }
+     },
+     {
+      "account_text": "",
+      "amount_bbox": {
+       "x_max": 615,
+       "x_min": 530,
+       "y_max": 506,
+       "y_min": 493
+      },
+      "amount_column": "debit",
+      "amount_text": "3,071,000",
+      "balance_bbox": {
+       "x_max": 855,
+       "x_min": 767,
+       "y_max": 506,
+       "y_min": 493
+      },
+      "balance_text": "34,333,200",
+      "date_text": "2025.03.14",
+      "description": "새별카드 결제대금",
+      "row_bbox": {
+       "x_max": 862,
+       "x_min": 132,
+       "y_max": 507,
+       "y_min": 493
+      }
+     },
+     {
+      "account_text": "",
+      "amount_bbox": {
+       "x_max": 615,
+       "x_min": 535,
+       "y_max": 521,
+       "y_min": 508
+      },
+      "amount_column": "debit",
+      "amount_text": "257,000",
+      "balance_bbox": {
+       "x_max": 855,
+       "x_min": 767,
+       "y_max": 521,
+       "y_min": 508
+      },
+      "balance_text": "34,076,200",
+      "date_text": "2025.03.20",
+      "description": "아파트 관리비",
+      "row_bbox": {
+       "x_max": 862,
+       "x_min": 132,
+       "y_max": 522,
+       "y_min": 508
+      }
+     },
+     {
+      "account_text": "",
+      "amount_bbox": {
+       "x_max": 710,
+       "x_min": 655,
+       "y_max": 536,
+       "y_min": 523
+      },
+      "amount_column": "credit",
+      "amount_text": "1,377",
+      "balance_bbox": {
+       "x_max": 855,
+       "x_min": 767,
+       "y_max": 536,
+       "y_min": 523
+      },
+      "balance_text": "34,077,577",
+      "date_text": "2025.03.21",
+      "description": "예금이자",
+      "row_bbox": {
+       "x_max": 862,
+       "x_min": 132,
+       "y_max": 537,
+       "y_min": 523
+      }
+     },
+     {
+      "account_text": "",
+      "amount_bbox": {
+       "x_max": 615,
+       "x_min": 535,
+       "y_max": 551,
+       "y_min": 538
+      },
+      "amount_column": "debit",
+      "amount_text": "65,700",
+      "balance_bbox": {
+       "x_max": 855,
+       "x_min": 767,
+       "y_max": 551,
+       "y_min": 538
+      },
+      "balance_text": "34,011,877",
+      "date_text": "2025.03.22",
+      "description": "통신요금 자동이체",
+      "row_bbox": {
+       "x_max": 862,
+       "x_min": 132,
+       "y_max": 552,
+       "y_min": 538
+      }
+     },
+     {
+      "account_text": "",
+      "amount_bbox": {
+       "x_max": 725,
+       "x_min": 640,
+       "y_max": 566,
+       "y_min": 553
+      },
+      "amount_column": "credit",
+      "amount_text": "6,840,000",
+      "balance_bbox": {
+       "x_max": 855,
+       "x_min": 767,
+       "y_max": 566,
+       "y_min": 553
+      },
+      "balance_text": "40,851,877",
+      "date_text": "2025.03.25",
+      "description": "급여 (주)새운캠스",
+      "row_bbox": {
+       "x_max": 862,
+       "x_min": 132,
+       "y_max": 567,
+       "y_min": 553
+      }
+     },
+     {
+      "account_text": "",
+      "amount_bbox": {
+       "x_max": 615,
+       "x_min": 535,
+       "y_max": 581,
+       "y_min": 568
+      },
+      "amount_column": "debit",
+      "amount_text": "29,300",
+      "balance_bbox": {
+       "x_max": 855,
+       "x_min": 767,
+       "y_max": 581,
+       "y_min": 568
+      },
+      "balance_text": "40,822,577",
+      "date_text": "2025.03.25",
+      "description": "ATM 출금",
+      "row_bbox": {
+       "x_max": 862,
+       "x_min": 132,
+       "y_max": 582,
+       "y_min": 568
+      }
+     },
+     {
+      "account_text": "",
+      "amount_bbox": {
+       "x_max": 615,
+       "x_min": 535,
+       "y_max": 596,
+       "y_min": 583
+      },
+      "amount_column": "debit",
+      "amount_text": "164,900",
+      "balance_bbox": {
+       "x_max": 855,
+       "x_min": 767,
+       "y_max": 596,
+       "y_min": 583
+      },
+      "balance_text": "40,657,677",
+      "date_text": "2025.03.29",
+      "description": "ATM 출금",
+      "row_bbox": {
+       "x_max": 862,
+       "x_min": 132,
+       "y_max": 597,
+       "y_min": 583
+      }
+     }
+    ]
+   },
+   "call": {
+    "model": "muse-spark-1.3",
+    "prompt": "statement_page_v3",
+    "cost_usd": 0.02459975,
+    "latency_s": 21.236446380615234,
+    "replayed": false,
+    "request_key": "6707483f311db3e4a200ac6792437620b50a322a069e3dd2ddf83a0ba94684d1",
+    "usage": {
+     "completion_tokens": 5102,
+     "prompt_tokens": 2333,
+     "total_tokens": 7435,
+     "completion_tokens_details": {
+      "reasoning_tokens": 2696
+     },
+     "prompt_tokens_details": {
+      "cached_tokens": 0
+     }
+    }
+   },
+   "capture": {
+    "source_sha256": "d3909784412aab1f3517458ca0ff078320671ec2cfaa0ada08d84c0fcbdbae1c",
+    "source_page": 1,
+    "truth_page": 1,
+    "boxes_verified": false,
+    "synthetic_confirmed": true,
+    "case": "kr-checking_2025-03",
+    "corners": null,
+    "geometry": "unscored"
+   },
+   "score": {
+    "statement_id": "kr-checking_2025-03",
+    "layout": "kr",
+    "fields": {
+     "institution": {
+      "want": "새별은행",
+      "got": "새별은행",
+      "status": "read",
+      "value_ok": true
+     },
+     "currency": {
+      "want": "KRW",
+      "got": "KRW",
+      "status": "read",
+      "value_ok": true
+     },
+     "account_number": {
+      "want": "110-482-913746",
+      "got": "110-482-913746",
+      "status": "read",
+      "value_ok": true
+     },
+     "holder": {
+      "want": "JUNG SEULGI JOY",
+      "got": "JUNG SEULGI JOY",
+      "status": "read",
+      "value_ok": true
+     },
+     "opening_balance": {
+      "want": "38074000",
+      "got": "38,074,000",
+      "status": "read",
+      "value_ok": true
+     },
+     "closing_balance": {
+      "want": "40657677",
+      "got": "40,657,677",
+      "status": "read",
+      "value_ok": true
+     }
+    },
+    "rows": [
+     {
+      "txn_id": "kr-checking-202503-001",
+      "returned": true,
+      "date_ok": true,
+      "amount_ok": true,
+      "balance_ok": true,
+      "account_ok": true
+     },
+     {
+      "txn_id": "kr-checking-202503-002",
+      "returned": true,
+      "date_ok": true,
+      "amount_ok": true,
+      "balance_ok": true,
+      "account_ok": true
+     },
+     {
+      "txn_id": "kr-checking-202503-003",
+      "returned": true,
+      "date_ok": true,
+      "amount_ok": true,
+      "balance_ok": true,
+      "account_ok": true
+     },
+     {
+      "txn_id": "kr-checking-202503-004",
+      "returned": true,
+      "date_ok": true,
+      "amount_ok": true,
+      "balance_ok": true,
+      "account_ok": true
+     },
+     {
+      "txn_id": "kr-checking-202503-005",
+      "returned": true,
+      "date_ok": true,
+      "amount_ok": true,
+      "balance_ok": true,
+      "account_ok": true
+     },
+     {
+      "txn_id": "kr-checking-202503-006",
+      "returned": true,
+      "date_ok": true,
+      "amount_ok": true,
+      "balance_ok": true,
+      "account_ok": true
+     },
+     {
+      "txn_id": "kr-checking-202503-007",
+      "returned": true,
+      "date_ok": true,
+      "amount_ok": true,
+      "balance_ok": true,
+      "account_ok": true
+     },
+     {
+      "txn_id": "kr-checking-202503-008",
+      "returned": true,
+      "date_ok": true,
+      "amount_ok": true,
+      "balance_ok": true,
+      "account_ok": true
+     },
+     {
+      "txn_id": "kr-checking-202503-009",
+      "returned": true,
+      "date_ok": true,
+      "amount_ok": true,
+      "balance_ok": true,
+      "account_ok": true
+     },
+     {
+      "txn_id": "kr-checking-202503-010",
+      "returned": true,
+      "date_ok": true,
+      "amount_ok": true,
+      "balance_ok": true,
+      "account_ok": true
+     },
+     {
+      "txn_id": "kr-checking-202503-011",
+      "returned": true,
+      "date_ok": true,
+      "amount_ok": true,
+      "balance_ok": true,
+      "account_ok": true
+     },
+     {
+      "txn_id": "kr-checking-202503-012",
+      "returned": true,
+      "date_ok": true,
+      "amount_ok": true,
+      "balance_ok": true,
+      "account_ok": true
+     }
+    ],
+    "rows_expected": 12,
+    "rows_returned": 12,
+    "snapped": false
+   },
+   "value_summary": {
+    "fields_value_ok": "6/6",
+    "rows_returned": "12/12",
+    "extra_rows": 0,
+    "date_ok": "12/12",
+    "amount_ok": "12/12",
+    "balance_ok": "12/12",
+    "account_ok": "12/12"
+   },
+   "geometry_summary": null
+  }
+ ]
+}

@@ -118,7 +118,7 @@ The answer key was changed **after seeing these results**, so the counts below a
 
 Glimmer's `th-savings` review flag did not go away. It is still raised, still listed for the reviewer and still counted in the workload. It moved from "raised by a misread" to its own count because the pages it cites do print the names it reports. If any name read for that account were not printed on its page, the flag would count as a false positive and fail the gate.
 
-The physical counts were rescored from the saved readings of the Oct 30 captures, with no new model call. Those captures are not in this repository.
+The physical counts were rescored from the saved readings of the Oct 30 captures, with no new model call. The images and readings are in [evidence/physical-capture](evidence/physical-capture), and `tests/test_physical_evidence.py` rescores them on every CI run.
 
 ## Run-to-run variance in boxes
 
