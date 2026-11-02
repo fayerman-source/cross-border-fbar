@@ -27,6 +27,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from .page import FIELD_NAMES
+
 INK_THRESHOLD = 160  # 0-255; the light grey row rules (225) don't count as ink
 MAX_SCALE_DEVIATION = 0.35  # observed row-spacing compression: 8% (Oct 27 run 1), 16% (run 3)
 MAX_PATTERN_SHIFT = 45.0  # grid units; about two printed lines
@@ -165,4 +167,82 @@ def snap_rows(reading: dict, image: Path) -> dict | None:
             if any(b.values()):
                 new[key] = {**b, "y_min": y0, "y_max": y1}
         snapped["rows"].append(new)
+    return snapped
+
+
+FIELD_REACH = 25  # grid units a header field's box may be from its printed line; about one line
+FIELD_MIN_X_OVERLAP = 0.6  # overlap between the box's columns and a line's ink; a column heading is narrower
+FIELD_MIN_MARGIN = 6  # grid units between the nearest matching line and the next; closer than this, abstain
+_FIELD_X_PAD = 25  # grid units of slack on each side when looking for a line's ink
+
+
+def _x_overlap(a0: float, a1: float, b0: float, b1: float) -> float:
+    union = max(a1, b1) - min(a0, b0)
+    return max(0, min(a1, b1) - max(a0, b0)) / union if union else 0
+
+
+def _ink_lines(mask: Image.Image, x_min: int, x_max: int) -> list[tuple[int, int, int, int]]:
+    """(y0, y1, x0, x1) on the 0-1000 grid for each text line in the columns around [x_min, x_max]."""
+    w, h = mask.size
+    left = max(0, (x_min - _FIELD_X_PAD) * w // 1000)
+    right = min(w, (x_max + _FIELD_X_PAD) * w // 1000)
+    if right <= left:
+        return []
+    region = mask.crop((left, 0, right, h))
+    lines, start = [], None
+    for y, on in enumerate([*region.getprojection()[1], 0]):
+        if on and start is None:
+            start = y
+        elif not on and start is not None:
+            if y - start >= 3:
+                box = region.crop((0, start, right - left, y)).getbbox()
+                if box:
+                    lines.append(
+                        (
+                            round(start * 1000 / h),
+                            round(y * 1000 / h),
+                            round((left + box[0]) * 1000 / w),
+                            round((left + box[2]) * 1000 / w),
+                        )
+                    )
+            start = None
+    return lines
+
+
+def snap_field(box: dict, mask: Image.Image) -> dict | None:
+    """The printed line a header field's box points to, or None when the image doesn't settle it.
+
+    The model's columns stay accurate while its height drifts, as with rows, so a line must fill about the
+    same columns as the box. That rejects a narrower column heading sitting closer than the value itself.
+    """
+    centre = (box["y_min"] + box["y_max"]) / 2
+    matches = sorted(
+        (abs((y0 + y1) / 2 - centre), y0, y1, x0, x1)
+        for y0, y1, x0, x1 in _ink_lines(mask, box["x_min"], box["x_max"])
+        if abs((y0 + y1) / 2 - centre) <= FIELD_REACH
+        and _x_overlap(box["x_min"], box["x_max"], x0, x1) >= FIELD_MIN_X_OVERLAP
+    )
+    if not matches or (len(matches) > 1 and matches[1][0] - matches[0][0] < FIELD_MIN_MARGIN):
+        return None
+    _, y0, y1, x0, x1 = matches[0]
+    return {"x_min": x0, "y_min": y0, "x_max": x1, "y_max": y1}
+
+
+def snap_fields(reading: dict, image: Path) -> dict[str, dict | None]:
+    """Each header field's snapped box. None means no highlight, rather than a box on the wrong line."""
+    gray = Image.open(image).convert("L")
+    mask = gray.point(lambda v: 255 if v < INK_THRESHOLD else 0)
+    out = {}
+    for name in FIELD_NAMES:
+        field = reading.get(name) or {}
+        box = field.get("bbox")
+        out[name] = snap_field(box, mask) if box and any(box.values()) and field.get("text") else None
+    return out
+
+
+def snap_reading(reading: dict, image: Path) -> dict:
+    """A copy of the reading with every box that can be placed on its printed line."""
+    snapped = snap_rows(reading, image) or dict(reading)
+    for name, box in snap_fields(reading, image).items():
+        snapped[name] = {**reading[name], "bbox": box}
     return snapped

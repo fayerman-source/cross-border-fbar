@@ -71,7 +71,7 @@ def _signed_amount(row: dict) -> Decimal | None:
     return -abs(amount) if row["amount_column"] == "debit" else abs(amount)
 
 
-def _score_fields(statement: dict, reading: dict) -> dict:
+def _score_fields(statement: dict, reading: dict, field_boxes: dict | None = None) -> dict:
     """Printed fields are scored on value and position; unprinted ones must be reported absent."""
     out = {}
     for name in FIELDS:
@@ -97,6 +97,9 @@ def _score_fields(statement: dict, reading: dict) -> dict:
             "centre_in_cell": centre_in(got["bbox"], want["bbox"]),
             "iou_text": round(iou(got["bbox"], want["text_bbox"]), 3),
         }
+        if field_boxes is not None:  # None inside means the snap abstained and no highlight is drawn
+            box = field_boxes.get(name)
+            out[name]["snapped_centre_in_cell"] = centre_in(box, want["bbox"]) if box else None
     return out
 
 
@@ -129,7 +132,7 @@ def _score_row(want: dict, got: dict, snapped: dict | None, year: int) -> dict:
     return row
 
 
-def score_page(statement: dict, reading: dict, snapped: dict | None) -> dict:
+def score_page(statement: dict, reading: dict, snapped: dict | None, field_boxes: dict | None = None) -> dict:
     """Score a single-page statement. Rows are matched in printed order."""
     year = int(statement["period"][:4])
     want_rows, got_rows = statement["transactions"], reading["rows"]
@@ -143,11 +146,23 @@ def score_page(statement: dict, reading: dict, snapped: dict | None) -> dict:
     return {
         "statement_id": statement["statement_id"],
         "layout": statement["layout"],
-        "fields": _score_fields(statement, reading),
+        "fields": _score_fields(statement, reading, field_boxes),
         "rows": rows,
         "rows_expected": len(want_rows),
         "rows_returned": len(got_rows),
         "snapped": snapped is not None,
+    }
+
+
+def _snapped_field_counts(fields: list[dict]) -> dict:
+    scored = [x for x in fields if "snapped_centre_in_cell" in x]
+    if not scored:
+        return {}
+    placed = [x["snapped_centre_in_cell"] for x in scored if x["snapped_centre_in_cell"] is not None]
+    return {
+        "fields_snapped_centre_in_cell": f"{sum(placed)}/{len(scored)}",
+        "fields_snapped_wrong": len(placed) - sum(placed),
+        "fields_snapped_no_highlight": len(scored) - len(placed),
     }
 
 
@@ -171,6 +186,7 @@ def summarize(pages: list[dict], iou_ok: float = 0.5) -> dict:
                 sum(x["centre_in_cell"] is not None for x in f),
             ),
             "rows_returned": frac(len(ret), len(r)),
+            **_snapped_field_counts(f),
             "extra_rows": sum(max(0, p["rows_returned"] - p["rows_expected"]) for p in ps),
             "date_ok": frac(sum(x["date_ok"] for x in ret), len(r)),
             "amount_ok": frac(sum(x["amount_ok"] for x in ret), len(r)),

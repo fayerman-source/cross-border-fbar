@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from ..extract.page import PROMPT_VERSION, read_page
-from ..extract.snap import snap_rows
+from ..extract.snap import snap_fields, snap_rows
 from ..llm import Client, NotRecorded
 from .score import score_page, summarize
 
@@ -50,7 +50,7 @@ def evaluate(set_dir: Path, model: str, mode: str, workers: int, limit: int | No
             return {**ident, "error": str(e)}
         snapped = snap_rows(reading, image)
         return {
-            **score_page(page_view(st, page), reading, snapped),
+            **score_page(page_view(st, page), reading, snapped, snap_fields(reading, image)),
             **ident,
             "call": meta,
             "reading": reading,

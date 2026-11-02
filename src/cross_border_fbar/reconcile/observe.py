@@ -99,7 +99,7 @@ def observe(reading: dict, upload: str, snapped: dict | None = None) -> Observat
                 row.get("account_text", "").strip(),
             )
         )
-    sources = {n: Source(upload, n, reading[n]["bbox"]) for n in (*KEY_FIELDS, "institution")}
+    sources = {n: Source(upload, n, boxes_from[n]["bbox"]) for n in (*KEY_FIELDS, "institution")}
     parsed = {
         "account_number": value("account_number").strip() or None,
         "period": start and end,
