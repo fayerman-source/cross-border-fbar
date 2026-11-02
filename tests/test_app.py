@@ -14,17 +14,9 @@ from cross_border_fbar.app import phrases as phrase_tables
 from cross_border_fbar.app.review import CLIENT_LABELS, SUMMARY_PHRASES, Review, ReviewError
 from cross_border_fbar.app.server import make_handler
 from cross_border_fbar.app.worksheet import Inputs, build, worksheet_hash
-from cross_border_fbar.synth.__main__ import generate
 
 REPO = Path(__file__).resolve().parents[1]
 READINGS = REPO / "results" / "muse-spark-1.3_synth.json"
-
-
-@pytest.fixture(scope="module")
-def inputs(tmp_path_factory) -> Inputs:
-    out = tmp_path_factory.mktemp("synth")
-    generate(out, 2025, png=True, dpi=150, threshold_usd=1000)
-    return Inputs(out, READINGS, out / "intake.json")
 
 
 @pytest.fixture
@@ -103,7 +95,7 @@ def test_summary_is_assembled_only_from_fixed_phrases_and_signed_figures(review,
     s = signed.draft_summary(spy)
     assert set(seen) - set(CLIENT_LABELS) == set(SUMMARY_PHRASES)
     assert all(seen[k] == {**SUMMARY_PHRASES, **CLIENT_LABELS}[k] for k in seen)  # English from the tables
-    assert "INTERNAL-NOTE-7731" not in json.dumps(seen)  # CPA notes stay internal
+    assert "INTERNAL-NOTE-7731" not in json.dumps(seen)  # the preparer's notes stay internal
     lines = s["text"].splitlines()
     assert lines[0] == "«heading»"
     assert "새별은행 · «account_ending» 3746 · «highest_balance» 287,450,200 KRW (199,100.00 USD)" in lines
@@ -146,7 +138,7 @@ def test_a_translation_that_adds_anything_is_held_back(signed, bad):
 
 def test_unreviewed_phrases_are_approved_only_when_confirmed(signed):
     """Codex on #5: 'you should file an FBAR' passed the word check. A phrase no one has reviewed is shown
-    to the CPA and needs explicit confirmation; the reviewed table is the normal path."""
+    to the preparer and needs explicit confirmation; the reviewed table is the normal path."""
 
     def stray(phrases, language, fresh):
         out, meta = tokens(phrases, language, fresh)
@@ -189,7 +181,7 @@ def test_a_reviewed_table_needs_no_model_call_and_stale_entries_are_retranslated
     assert list(s["unreviewed"]) == ["heading"]
 
 
-def test_first_summary_uses_actual_reviewed_catalog_without_model_or_key(review, monkeypatch):
+def test_first_summary_uses_the_committed_catalog_without_model_or_key(review, monkeypatch):
     import socket
 
     from cross_border_fbar import llm
@@ -198,11 +190,15 @@ def test_first_summary_uses_actual_reviewed_catalog_without_model_or_key(review,
     monkeypatch.setattr(llm, "_api_key", lambda: pytest.fail("API key was accessed"))
     monkeypatch.setattr(socket, "create_connection", lambda *a, **k: pytest.fail("network was used"))
     for flag_id in review.open_review_flags():
-        review.acknowledge(flag_id, "reviewed synthetic evidence", "CPA")
-    review.sign_off("CPA", "CP")
+        review.acknowledge(flag_id, "reviewed synthetic evidence", "Preparer")
+    review.sign_off("Preparer", "PR")
     summary = review.draft_summary(lambda *a, **k: pytest.fail("model was called"))
-    assert summary["unreviewed"] == {}
+    # The catalog's one unreviewed entry is a draft: it needs the preparer's confirmation, not a model call.
+    assert summary["unreviewed"] == {"heading": "세무 대리인이 검토한 항목"}
     assert summary["text"]
+    with pytest.raises(ReviewError, match="haven't been reviewed"):
+        review.approve_summary("Preparer")
+    review.approve_summary("Preparer", confirm_unreviewed=True)
 
 
 def test_the_committed_korean_table_covers_every_phrase_with_current_english():
@@ -399,7 +395,7 @@ def test_a_phrase_table_path_takes_only_a_listed_language(language):
 
 
 def test_only_this_apps_own_page_can_act_or_read(inputs, tmp_path):
-    """Codex on #5: another site open in the CPA's browser could POST a sign-off to localhost, and a
+    """Codex on #5: another site open in the preparer's browser could POST a sign-off to localhost, and a
     rebound DNS name could read the state. Requests must name this app's host; POSTs must be JSON from
     this origin."""
     review = Review(inputs, tmp_path / "r", root=tmp_path)
@@ -489,17 +485,17 @@ def test_currency_selection_is_audited_and_required_before_acknowledgement(input
     account = next(a for a in review.worksheet["accounts"] if a["key"] == flag["account"])
     assert account["max"] is account["max_usd"] is account["year_end_balance"] is None
     with pytest.raises(ReviewError, match="Select the account currency"):
-        review.acknowledge(flag["id"], "checked", "CPA")
+        review.acknowledge(flag["id"], "checked", "Preparer")
     with pytest.raises(ReviewError, match="source note"):
-        review.set_currency(account["key"], "KRW", "", "CPA")
-    review.set_currency(account["key"], "KRW", "Synthetic bank confirms currency label error", "CPA")
+        review.set_currency(account["key"], "KRW", "", "Preparer")
+    review.set_currency(account["key"], "KRW", "Synthetic bank confirms currency label error", "Preparer")
     account = next(a for a in review.worksheet["accounts"] if a["key"] == flag["account"])
     assert account["currency"] == "KRW"
     assert account["max_usd"] == 199100
-    assert account["currency_correction"]["reviewer"] == "CPA"
+    assert account["currency_correction"]["reviewer"] == "Preparer"
     assert review.audit_tail(1)[0]["action"] == "correct_currency"
     assert worksheet_hash(review.worksheet) != before_hash
-    review.acknowledge(flag["id"], "currency resolved", "CPA")
+    review.acknowledge(flag["id"], "currency resolved", "Preparer")
     again = Review(review.inputs, review.dir, root=tmp_path)
     assert again.worksheet == review.worksheet
     assert flag["id"] not in again.open_review_flags()
@@ -525,7 +521,7 @@ def test_alternative_rate_acknowledgement_recomputes_persists_and_reopens(inputs
     account = next(a for a in review.worksheet["accounts"] if a["key"] == flag["account"])
     assert account["max_usd"] is None
     rate = {"units_per_usd": "2.5", "source": "Synthetic alternative rate table", "record_date": "2025-12-31"}
-    review.acknowledge(flag["id"], "verified year-end rate", "CPA", rate=rate)
+    review.acknowledge(flag["id"], "verified year-end rate", "Preparer", rate=rate)
     account = next(a for a in review.worksheet["accounts"] if a["key"] == flag["account"])
     assert account["max_usd"] == int(
         (Decimal(account["max"]["amount"]) / Decimal("2.5")).to_integral_value(rounding=ROUND_CEILING)
@@ -537,7 +533,7 @@ def test_alternative_rate_acknowledgement_recomputes_persists_and_reopens(inputs
     again = Review(review.inputs, review.dir, root=tmp_path)
     assert again.worksheet == review.worksheet
     assert flag["id"] not in again.open_review_flags()
-    again.reopen(flag["id"], "CPA")
+    again.reopen(flag["id"], "Preparer")
     account = next(a for a in again.worksheet["accounts"] if a["key"] == flag["account"])
     assert account["max_usd"] is None
     assert flag["id"] in again.open_review_flags()
@@ -564,7 +560,7 @@ def test_alternative_rates_require_a_positive_rate_verifiable_source_and_year_en
     review, flag = review_without_treasury_rate(inputs, tmp_path)
     rate = {"units_per_usd": "2.5", "source": "Synthetic rate table", "record_date": "2025-12-31", **change}
     with pytest.raises(ReviewError):
-        review.acknowledge(flag["id"], "checked", "CPA", rate=rate)
+        review.acknowledge(flag["id"], "checked", "Preparer", rate=rate)
     assert not review.state["rates"]
     assert flag["id"] in review.open_review_flags()
 
@@ -579,8 +575,8 @@ def test_masked_and_unread_items_reach_the_client_note(inputs, tmp_path, monkeyp
     review = altered_review(inputs, tmp_path, mutate)
     monkeypatch.setattr(phrase_tables, "PHRASES_DIR", tmp_path / "missing")
     for fid in review.open_review_flags():
-        review.acknowledge(fid, "checked", "CPA")
-    review.sign_off("CPA", "CP")
+        review.acknowledge(fid, "checked", "Preparer")
+    review.sign_off("Preparer", "PR")
     facts = review.summary_facts()
     assert set(facts["excluded_items"]) == {"account_number_masked", "page_not_read"}
     draft = review.draft_summary(tokens)
@@ -638,19 +634,19 @@ def test_unreviewed_catalog_drafts_are_reused_but_need_explicit_approval(signed,
     assert summary["unreviewed"]
     assert summary["text"].startswith("[heading]")
     with pytest.raises(ReviewError, match="haven't been reviewed"):
-        signed.approve_summary("CPA")
-    signed.approve_summary("CPA", confirm_unreviewed=True)
+        signed.approve_summary("Preparer")
+    signed.approve_summary("Preparer", confirm_unreviewed=True)
 
 
 def test_updated_figures_reopen_previously_acknowledged_account_flags(inputs, tmp_path):
     review, flag = review_without_treasury_rate(inputs, tmp_path, extra_review=True)
     account_flags = [f for f in review.worksheet["flags"] if f["account"] == flag["account"]]
     for item in account_flags:
-        review.acknowledge(item["id"], "checked", "CPA")
+        review.acknowledge(item["id"], "checked", "Preparer")
     review.acknowledge(
         flag["id"],
         "rate verified",
-        "CPA",
+        "Preparer",
         rate={
             "units_per_usd": "2",
             "source": "Synthetic alternative source",
@@ -712,7 +708,7 @@ def test_catalog_sync_removes_multiple_obsolete_entries_without_mutating_its_ite
 def test_client_changes_reopen_acknowledgements_even_when_account_figures_stay_the_same(inputs, tmp_path):
     review = Review(inputs, tmp_path / "client-review", root=tmp_path)
     flag_id = review.open_review_flags()[0]
-    review.acknowledge(flag_id, "reviewed for the original client", "CPA")
+    review.acknowledge(flag_id, "reviewed for the original client", "Preparer")
     intake = json.loads(inputs.intake.read_text())
     intake["client"] = "Another Synthetic Client"
     changed = tmp_path / "new-client.json"
@@ -724,7 +720,7 @@ def test_client_changes_reopen_acknowledgements_even_when_account_figures_stay_t
 
 def test_catalog_instruction_changes_reopen_the_corresponding_acknowledgements(review):
     flag_id = review.open_review_flags()[0]
-    review.acknowledge(flag_id, "reviewed under the previous instruction", "CPA")
+    review.acknowledge(flag_id, "reviewed under the previous instruction", "Preparer")
     flag = next(item for item in review.worksheet["flags"] if item["id"] == flag_id)
     flag["cpa_action"] = "A different source check is now required."
     assert flag_id in review.open_review_flags()
@@ -732,11 +728,11 @@ def test_catalog_instruction_changes_reopen_the_corresponding_acknowledgements(r
 
 def test_export_contains_current_acknowledgements_and_preserves_history_in_the_audit(review):
     flag = next(item for item in review.worksheet["flags"] if item["code"] == "signature_authority_only")
-    review.acknowledge(flag["id"], "reviewed previous classification", "CPA")
-    review.set_ownership(flag["account"], "sole", "updated synthetic intake", "CPA")
+    review.acknowledge(flag["id"], "reviewed previous classification", "Preparer")
+    review.set_ownership(flag["account"], "sole", "updated synthetic intake", "Preparer")
     for flag_id in review.open_review_flags():
-        review.acknowledge(flag_id, "reviewed current worksheet", "CPA")
-    review.sign_off("CPA", "CP")
+        review.acknowledge(flag_id, "reviewed current worksheet", "Preparer")
+    review.sign_off("Preparer", "PR")
     exported = review.export()
     assert flag["id"] not in exported["acknowledgements"]
     assert any(entry.get("flag") == flag["id"] for entry in exported["audit"])
@@ -746,8 +742,8 @@ def test_acknowledged_limitation_remains_visible_after_signoff_and_in_export(rev
     limitation = next(f for f in review.worksheet["flags"] if f["code"] == "missing_statement")
     assert review.view()["remaining_review_items"] == []
     for flag_id in review.open_review_flags():
-        review.acknowledge(flag_id, "limitation acknowledged", "CPA")
-    review.sign_off("CPA", "CP")
+        review.acknowledge(flag_id, "limitation acknowledged", "Preparer")
+    review.sign_off("Preparer", "PR")
     visible = review.view()["remaining_review_items"]
     document = review.export()
     exported = document["remaining_review_items"]
@@ -813,7 +809,7 @@ def test_a_rejected_redraft_replaces_the_previous_draft_with_a_persisted_blocked
     restarted = Review(signed.inputs, signed.dir, root=signed.dir.parent)
     assert restarted.state["summary"] == rejected
     with pytest.raises(ReviewError, match="can't be released"):
-        restarted.approve_summary("CPA", confirm_unreviewed=True)
+        restarted.approve_summary("Preparer", confirm_unreviewed=True)
 
 
 def test_unreadable_currency_keeps_a_correction_available_with_one_observed_unit(inputs, tmp_path):
@@ -828,7 +824,7 @@ def test_unreadable_currency_keeps_a_correction_available_with_one_observed_unit
     assert account["observed_currencies"] == ["KRW"]
     assert account["currency_review_needed"]
     assert account["max_usd"] is None
-    review.set_currency(account["key"], "KRW", "currency verified from the synthetic source", "CPA")
+    review.set_currency(account["key"], "KRW", "currency verified from the synthetic source", "Preparer")
     corrected = next(row for row in review.worksheet["accounts"] if row["key"] == account["key"])
     assert corrected["max_usd"] == 199100
     assert corrected["currency_correction"]["note"] == "currency verified from the synthetic source"
@@ -865,7 +861,7 @@ def test_field_corrections_preserve_other_intake_facts_and_record_source(inputs,
         for k, item in review.worksheet["form8938"]["effective_accounts"].items()
         if item["account_number"] == account["account_number"]
     )
-    review.set_ownership(key, "signature_authority", "corrected from synthetic intake", "CPA")
+    review.set_ownership(key, "signature_authority", "corrected from synthetic intake", "Preparer")
     effective = review.worksheet["form8938"]["effective_accounts"][key]
     assert effective["financial_interest"] is True
     assert effective["joint_with_spouse"] is True
@@ -881,11 +877,11 @@ def test_field_corrections_preserve_other_intake_facts_and_record_source(inputs,
 
 def test_conflicting_ownership_and_interest_needs_review_until_source_correction(review):
     account = next(a for a in review.worksheet["accounts"] if a["ownership"] == "signature_authority")
-    review.set_ownership(account["key"], "sole", "synthetic source changed", "CPA")
+    review.set_ownership(account["key"], "sole", "synthetic source changed", "Preparer")
     row = next(a for a in review.worksheet["form8938"]["accounts"] if a["key"] == account["key"])
     assert row["inclusion"] == "unresolved"
     assert any(f["code"] == "ownership_interest_conflict" for f in review.worksheet["flags"])
-    review.set_financial_interest(account["key"], True, "ownership confirmed from intake", "CPA")
+    review.set_financial_interest(account["key"], True, "ownership confirmed from intake", "Preparer")
     row = next(a for a in review.worksheet["form8938"]["accounts"] if a["key"] == account["key"])
     assert row["inclusion"] == "included"
     assert review.worksheet["form8938"]["corrections"]["financial_interest"][account["key"]]["note"]
@@ -903,8 +899,8 @@ def test_each_household_change_invalidates_signed_worksheet(inputs, tmp_path, fi
     local_inputs = Inputs(inputs.set_dir, inputs.readings, path)
     review = Review(local_inputs, tmp_path / "review", root=tmp_path)
     for fid in review.open_review_flags():
-        review.acknowledge(fid, "reviewed", "CPA")
-    review.sign_off("CPA", "CP")
+        review.acknowledge(fid, "reviewed", "Preparer")
+    review.sign_off("Preparer", "PR")
     doc["household"][field] = value
     path.write_text(json.dumps(doc))
     restarted = Review(local_inputs, review.dir, root=tmp_path)
@@ -916,7 +912,7 @@ def test_acknowledgement_reopens_when_derived_8938_account_row_changes(review):
     import copy
 
     flag_id = review.open_review_flags()[0]
-    review.acknowledge(flag_id, "reviewed prior context", "CPA")
+    review.acknowledge(flag_id, "reviewed prior context", "Preparer")
     flag = next(item for item in review.worksheet["flags"] if item["id"] == flag_id)
     row = next(item for item in review.worksheet["form8938"]["accounts"] if item["key"] == flag["account"])
     original = copy.deepcopy(row)
@@ -931,8 +927,8 @@ def test_account_correction_reopens_only_that_accounts_acknowledgements(review):
     flags = review.worksheet["flags"]
     first = next(f for f in flags if f["severity"] == "review")
     second = next(f for f in flags if f["severity"] == "review" and f["account"] != first["account"])
-    review.acknowledge(first["id"], "reviewed A", "CPA")
-    review.acknowledge(second["id"], "reviewed B", "CPA")
+    review.acknowledge(first["id"], "reviewed A", "Preparer")
+    review.acknowledge(second["id"], "reviewed B", "Preparer")
     row = next(a for a in review.worksheet["form8938"]["accounts"] if a["key"] == first["account"])
     row["reason"] = "changed account A context"
     assert first["id"] in review.open_review_flags()
@@ -943,6 +939,6 @@ def test_account_correction_reopens_only_that_accounts_acknowledgements(review):
 
 def test_new_shared_worksheet_context_invalidates_existing_acknowledgement(review):
     flag_id = review.open_review_flags()[0]
-    review.acknowledge(flag_id, "reviewed before new context", "CPA")
+    review.acknowledge(flag_id, "reviewed before new context", "Preparer")
     review.worksheet["new_shared_context"] = {"added_fact": "material"}
     assert flag_id in review.open_review_flags()

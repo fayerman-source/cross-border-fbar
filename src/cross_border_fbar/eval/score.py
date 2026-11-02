@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal
 
 from ..extract.parse import normalize_account_number, normalize_name, parse_amount, parse_currency, parse_date
@@ -27,19 +28,40 @@ def centre_in(a: dict, b: dict) -> bool:
     return b["x0"] <= cx <= b["x1"] and b["y0"] <= cy <= b["y1"]
 
 
-def _field_ok(name: str, got: dict, want) -> bool:
+def printed_bank_names(field: dict) -> list[str]:
+    """Every name the key says the page prints for its bank. A key that lists one name means just that."""
+    return field.get("printed_names") or [field["value"]]
+
+
+def reads_printed_name(text: str, names: list[str]) -> bool:
+    """The text is one or more of the page's printed bank names and nothing else.
+
+    A bilingual header can be returned in either language or both. Empty text is not a reading, and a name
+    with anything added to it ("Siam Lotus Bank / Shinhan") is not what the page prints.
+    """
+    rest = normalize_name(text)
+    wanted = [n for n in (normalize_name(name) for name in names) if n and n in rest]
+    if not wanted:
+        return False
+    for name in sorted(wanted, key=len, reverse=True):
+        rest = rest.replace(name, " ")
+    return re.search(r"\w", rest) is None
+
+
+def _field_ok(name: str, got: dict, want: dict) -> bool:
     if got["status"] != "read":
         return False
+    value = want["value"]
     if name == "account_number":
-        return normalize_account_number(got["text"]) == normalize_account_number(want)
+        return normalize_account_number(got["text"]) == normalize_account_number(value)
     if name == "holder":
-        return normalize_name(got["text"]) == normalize_name(want)
-    if name == "institution":  # bilingual headers: the printed name plus a translation is still right
-        return normalize_name(want) in normalize_name(got["text"])
+        return normalize_name(got["text"]) == normalize_name(value)
+    if name == "institution":
+        return reads_printed_name(got["text"], printed_bank_names(want))
     if name == "currency":  # "KRW", "₩" and "원" all mean won
-        return parse_currency(got["text"]) == want
-    value = parse_amount(got["text"])
-    return value is not None and value == Decimal(want)
+        return parse_currency(got["text"]) == value
+    amount = parse_amount(got["text"])
+    return amount is not None and amount == Decimal(value)
 
 
 def _signed_amount(row: dict) -> Decimal | None:
@@ -71,7 +93,7 @@ def _score_fields(statement: dict, reading: dict) -> dict:
             "want": want["value"],
             "got": got["text"],
             "status": got["status"],
-            "value_ok": _field_ok(name, got, want["value"]),
+            "value_ok": _field_ok(name, got, want),
             "centre_in_cell": centre_in(got["bbox"], want["bbox"]),
             "iou_text": round(iou(got["bbox"], want["text_bbox"]), 3),
         }

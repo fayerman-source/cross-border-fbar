@@ -18,14 +18,15 @@ Replay uses the model responses recorded in `recordings/`, keyed by a hash of th
 - **Extraction scoring:**
   - Rows are matched in printed order.
   - A value counts only if it equals the answer key exactly after parsing.
+  - A bank name counts if it is one or more of the names the page prints and nothing else. The renderer records those names as it draws them, so `Saebyeol Bank` is not accepted on a Korean page that doesn't print it. See [the answer-key change](#answer-key-change-nov-1-2026).
   - A box is "in the right row" if its centre falls inside the true row.
   - Box overlap (IoU) is measured against the tight box of the printed text.
 - **Snapping:** the model's row boxes drift vertically, by different amounts on different runs. `extract/snap.py` finds printed lines in the image alone, with no answer key. Its primary signal is the model's horizontal positions, which stay accurate: each row's amount sits in a debit or credit column, so its true line has ink in that column and none in the other. When that pattern can't decide (one-column layouts), a fit-plus-anchor cost is used, and the code abstains rather than guess.
-- **Reviewer workload:** every actual review-severity flag is counted, including multiple items of the same type and flags on unmatched accounts. Each expected review item matches at most one actual flag for the same account, code, and month; unmatched actual review items are additional workload. The subset linked to scored header-field misreads is reported separately and is not added a second time. This link covers mapped institution/currency flags and unreadable header fields; other items may still arise from misreads. Additional review items are not necessarily false positives. Matching by code and month cannot distinguish multiple causes represented by one flag, so this is fixture-relative item count, not a universal time or cost estimate.
+- **Reviewer workload:** every actual review-severity flag is counted, including multiple items of the same type and flags on unmatched accounts. Each expected review item matches at most one actual flag for the same account, code, and month; unmatched actual review items are additional workload. Two subsets are reported separately and not added a second time: items raised because the reader chose different printed bank names across pages, and items linked to scored header-field misreads. The misread link covers mapped institution/currency flags and unreadable header fields; other items may still arise from misreads. Additional review items are not necessarily false positives. Matching by code and month cannot distinguish multiple causes represented by one flag, so this is fixture-relative item count, not a universal time or cost estimate.
 - **Reconciliation scoring:**
   - Per account: the maximum, the statement it came from, and its USD value. A value counts only if it matches the answer key exactly.
-  - Review and info flags are scored as true positives, false positives and misses, deduplicated by account, code and month. Certain flags linked to header misreads are reported separately from false positives.
-  - Intake facts (owner vs signature authority) come from the answer key here. In the product they come from the client call or the CPA.
+  - Review and info flags are scored as true positives, false positives and misses, deduplicated by account, code and month. A currency flag linked to a header misread is reported separately from false positives. A bank-name flag the key doesn't expect is reported separately only when every name read for that account is printed on the page it was read from; any other name counts as a false positive and fails the CI gate.
+  - Intake facts (owner vs signature authority) come from the answer key here. In the product they come from the client call or the preparer.
 
 ## Results: muse-spark-1.3, prompt v3, clean renders (Oct 27, 2026)
 
@@ -79,20 +80,40 @@ The same 49 pages and the same prompt v3, read by Meta's open-weights model on t
 | Measure | Muse Glimmer (self-hosted) | muse-spark-1.3 (hosted) |
 |---|---|---|
 | Dates / amounts / balances / row accounts | 280/280 each | 280/280 each |
-| Header fields (strict: status must be "read") | 243/294 | 294/294 |
+| Header fields (strict: status must be "read") | 244/294 | 294/294 |
 | Row box in the right row, raw | 211/280 | 177/280 |
 | Row box in the right row, snapped | 244/280 | 278/280 |
 | Reconciliation: maximum / USD | 6/6 / 6/6 | 6/6 / 6/6 |
-| Reconciliation: flags | 9 correct, 0 false, 0 missed, 1 raised by a misread | 9 correct, 0 false, 0 missed |
-| Actual review workload | 7 items: 6 expected, 1 additional from a misread | 6 items: 6 expected, 0 additional |
+| Reconciliation: flags | 9 correct, 0 false, 0 missed, 1 raised by a printed-name choice | 9 correct, 0 false, 0 missed |
+| Actual review workload | 7 items: 6 expected, 1 additional from a printed-name choice | 6 items: 6 expected, 0 additional |
 | Household aggregate | $373,618 (key: $373,618) | $373,618 |
 | Median time per page | 344 s | ~10 s |
 | Cost | $0 model-token charge (4.9 h on the GPU; hardware and electricity excluded) | $0.87 recorded model charges |
 
 What the gaps are:
 - **Header fields:** on 8 pages Glimmer returned the right header text but labeled every field `absent`. The strict field score counts those as misses. The reconciliation now uses text that is present whatever its label, which recovered the end-to-end result.
-- **Thai bank name:** on two statements it read the English name, or both names, instead of the Thai one; both are printed. The tool doesn't decide from the text whether two names are one bank, so it raises a review flag listing each name, its months and a page for it. The eval counts that flag as raised by a misread, not as a false positive, because its source pages are the misread ones. An earlier version matched names by script, then by containment; each rule either merged two different banks or split one bank in two.
+- **Thai bank name:** on two statements it read the English name, or both names, instead of the Thai one; both are printed. The tool doesn't decide from the text whether two names are one bank, so it raises a review flag listing each name, its months and a page for it. The flag costs the reviewer one item and stays in the workload count. The eval reports it as raised by a printed-name choice because every name on its source pages is printed there. An earlier version matched names by script, then by containment; each rule either merged two different banks or split one bank in two.
 - **Boxes on the compiled list:** only 5/40 rows, raw and snapped. The single in/out column gives no column pattern, and the fallback's anchor rule doesn't fit Glimmer's drift on that layout. Values on those rows are all correct; only the highlighted line would be off. This is open work.
+
+## Answer-key change (Nov 1, 2026)
+
+The answer key was changed **after seeing these results**, so the counts below are not blind. Thai statements print both `ธนาคารสยามโลตัส` and `Siam Lotus Bank`. The key listed only the Thai name, so returning the English one scored as a miss even though it is a correct read of the page. The key now lists every name each page prints, and the scorer accepts one or more of them with nothing added. Empty text and any other name still fail. The page images did not change: regenerated PNGs are byte-identical, so the recordings replay unchanged and no model was called.
+
+| Measure, same recorded readings | Before | After |
+|---|---:|---:|
+| muse-spark-1.3 clean set: header fields | 294/294 | 294/294 |
+| Muse Glimmer clean set: header fields | 243/294 | 244/294 |
+| Muse Glimmer: Thai pages, header fields | 65/72 | 66/72 |
+| Muse Glimmer: flags raised by a misread | 1 | 0 |
+| Muse Glimmer: flags raised by a printed-name choice | not counted | 1 |
+| Muse Glimmer: false-positive flags | 0 | 0 |
+| Muse Glimmer: review items | 7 | 7 |
+| Physical capture, flatbed scans: header values | 17/18 | 18/18 |
+| Physical capture, WhatsApp-forwarded photos: header values | 17/18 | 18/18 |
+
+Glimmer's `th-savings` review flag did not go away. It is still raised, still listed for the reviewer and still counted in the workload. It moved from "raised by a misread" to its own count because the pages it cites do print the names it reports. If any name read for that account were not printed on its page, the flag would count as a false positive and fail the gate.
+
+The physical counts were rescored from the saved readings of the Oct 30 captures, with no new model call. Those captures are not in this repository.
 
 ## Run-to-run variance in boxes
 
@@ -107,20 +128,20 @@ The current clean-run snapped result is 278/280; snapping was revised after insp
 
 One live Standard-mode call per capture, with no retries or tuning against this set. Three synthetic statement pages were each printed and captured once by a 300-dpi flatbed scanner and once by a phone; the phone images were recompressed by WhatsApp before testing, and the Thai photo was sideways. These are the same underlying pages and layouts used in the clean evaluation, so this tests capture robustness, not generalization to unseen layouts.
 
-| Language | Condition | Header values | Rows returned | Dates | Amounts | Balances | Row accounts | Extra rows | Unreadable header fields | Review items | Cost |
+| Language | Condition | Header values: original key → current key | Rows returned | Dates | Amounts | Balances | Row accounts | Extra rows | Unreadable header fields | Review items | Cost |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Korean | Flatbed scan | 6/6 | 12/12 | 12/12 | 12/12 | 12/12 | 12/12 | 0 | 0/7 | 13 | $0.03 |
-| Korean | WhatsApp-forwarded photo | 6/6 | 12/12 | 12/12 | 12/12 | 12/12 | 12/12 | 0 | 0/7 | 13 | $0.02 |
-| German | Flatbed scan | 6/6 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 0 | 0/7 | 13 | $0.03 |
-| German | WhatsApp-forwarded photo | 6/6 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 0 | 0/7 | 13 | $0.03 |
-| Thai | Flatbed scan | 5/6 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 0 | 0/7 | 14 | $0.02 |
-| Thai | WhatsApp-forwarded photo | 5/6 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 0 | 0/7 | 14 | $0.04 |
-| **All scans** | Flatbed scan | **17/18** | **19/19** | **19/19** | **19/19** | **19/19** | **19/19** | **0** | **0/21** | **40** | **$0.07** |
-| **All photos** | WhatsApp-forwarded photo | **17/18** | **19/19** | **19/19** | **19/19** | **19/19** | **19/19** | **0** | **0/21** | **40** | **$0.10** |
+| Korean | Flatbed scan | 6/6 → 6/6 | 12/12 | 12/12 | 12/12 | 12/12 | 12/12 | 0 | 0/7 | 13 | $0.03 |
+| Korean | WhatsApp-forwarded photo | 6/6 → 6/6 | 12/12 | 12/12 | 12/12 | 12/12 | 12/12 | 0 | 0/7 | 13 | $0.02 |
+| German | Flatbed scan | 6/6 → 6/6 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 0 | 0/7 | 13 | $0.03 |
+| German | WhatsApp-forwarded photo | 6/6 → 6/6 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 0 | 0/7 | 13 | $0.03 |
+| Thai | Flatbed scan | 5/6 → 6/6 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 0 | 0/7 | 14 | $0.02 |
+| Thai | WhatsApp-forwarded photo | 5/6 → 6/6 | 2/2 | 2/2 | 2/2 | 2/2 | 2/2 | 0 | 0/7 | 14 | $0.04 |
+| **All scans** | Flatbed scan | **17/18 → 18/18** | **19/19** | **19/19** | **19/19** | **19/19** | **19/19** | **0** | **0/21** | **40** | **$0.07** |
+| **All photos** | WhatsApp-forwarded photo | **17/18 → 18/18** | **19/19** | **19/19** | **19/19** | **19/19** | **19/19** | **0** | **0/21** | **40** | **$0.10** |
 
 Total calculated token cost was **$0.17** (about $0.03 per page), not independently reconciled to a provider invoice. Individual and aggregate amounts are rounded independently to cents, so displayed rows may not sum to the displayed total. The six-field header score covers bank, currency, account number, holder, opening and closing balances. Period is separate: all six parsed to the printed period. The row schema has no explicit unreadable status; the abstention counts above cover seven header statuses per capture. Row descriptions were not scored.
 
-**Thai institution mismatch:** both captures returned `Siam Lotus Bank` where the answer key expects `ธนาคารสยามโลตัส`. The English name is also printed on the page. The strict scorer counts both as misses; it was not changed for this test.
+**Thai institution:** both captures returned `Siam Lotus Bank`. The original key listed only `ธนาคารสยามโลตัส` and scored both as misses; no scorer change was made for the test itself. The English name is printed on the page, so the current key counts it as correct: see [the answer-key change](#answer-key-change-nov-1-2026), which was made after these results were seen.
 
 Each single-page review set raised 11 missing-month items, one unknown-ownership item and one unverified-location item; each Thai capture also raised a possible intraday-peak item. These are actual review-severity items, not a measured false-positive count. No full-year reconciliation accuracy claim follows from a single page.
 

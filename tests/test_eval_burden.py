@@ -39,8 +39,9 @@ def test_burden_counts_occurrences_once_and_includes_unknown_accounts():
         "review_items_total": 5,
         "expected_review_items_matched": 1,
         "additional_review_items": 4,
+        "additional_items_from_printed_name_choice": 0,
         "additional_items_linked_to_header_misreads": 2,
-        "additional_items_without_header_misread_link": 2,
+        "additional_items_other": 2,
     }
 
 
@@ -61,7 +62,7 @@ def test_unreadable_header_item_links_to_its_scored_misread():
     summary = _review_burden(results, [], {("statement", "currency")}, {"page": "statement"})
     assert summary["additional_review_items"] == 1
     assert summary["additional_items_linked_to_header_misreads"] == 1
-    assert summary["additional_items_without_header_misread_link"] == 0
+    assert summary["additional_items_other"] == 0
 
 
 def test_duplicate_expected_items_match_individually():
@@ -73,3 +74,17 @@ def test_duplicate_expected_items_match_individually():
     burden = _review_burden([result], truth, set(), {})
     assert burden["expected_review_items_matched"] == 2
     assert burden["additional_review_items"] == 0
+
+
+def test_a_choice_between_printed_names_has_its_own_count_and_stays_in_the_workload():
+    chosen = Flag("institution_names_differ", "two printed names", [Source("p1", "institution", None)])
+    result = account("123", chosen, Flag("page_not_read", "unread page"))
+    burden = _review_burden([result], [], {("s1", "institution")}, {"p1": "s1"}, [chosen])
+    assert burden == {
+        "review_items_total": 2,
+        "expected_review_items_matched": 0,
+        "additional_review_items": 2,
+        "additional_items_from_printed_name_choice": 1,
+        "additional_items_linked_to_header_misreads": 0,
+        "additional_items_other": 1,
+    }
