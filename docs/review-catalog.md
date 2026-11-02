@@ -8,6 +8,8 @@ A misread amount, printed balance, opening balance or closing balance is correct
 
 The Korean gettext catalog is `src/cross_border_fbar/app/translations/ko.po`. Each stable message context names a label, with a translator comment identifying its grammar. English changes retain the old translation as fuzzy. A translation is reviewed only when `Last-Translator` names the human reviewer, the file header is not fuzzy and the matching entry is not fuzzy. Current fuzzy drafts can be used only with the preparer's explicit confirmation at approval. Stale English is never used as a reviewed translation.
 
+The client note is assembled from the signed figures by one routine, once with the English phrases and once with their Korean, so the two versions match line for line. The preparer sees them side by side and chooses what the client gets: Korean, English or both. The choice and the exact text are recorded with the approval, and both versions are in the draft and the export. English needs no translation or review, so it can be released even if the Korean is held back; Korean or both still require confirming any unreviewed phrase.
+
 Give `docs/korean-review.txt` to the native reviewer. It contains numbered English | Korean pairs and review status. After incorporating the review into the `.po` file, record the reviewer designation in `Last-Translator` and remove fuzzy only for approved entries. Regenerate the printout without an API call:
 
 ```

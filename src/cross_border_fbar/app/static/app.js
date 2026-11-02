@@ -204,6 +204,13 @@ function amountDirection(item, current) {
   return current.startsWith("-") ? "withdrawal" : "deposit";
 }
 
+// The direction states the sign, whichever way the figure was typed.
+function signedByDirection(typed, direction) {
+  const parenthesized = typed.startsWith("(") && typed.endsWith(")");
+  const unsigned = parenthesized ? typed.slice(1, -1) : typed.replace(/^-/, "").replace(/-$/, "");
+  return (direction === "withdrawal" ? "-" : "") + unsigned;
+}
+
 async function correctValue(upload, item) {
   const isAmount = item.field.endsWith(":amount");
   const current = item.correction ? item.correction.value : item.value;
@@ -212,8 +219,7 @@ async function correctValue(upload, item) {
     read: item.text || "nothing", value: shown, direction: isAmount ? amountDirection(item, current) : null,
   });
   if (!answer) return;
-  const sign = answer.direction === "withdrawal" ? "-" : "";
-  const value = isAmount ? sign + answer.value.replace(/^[-(]+|[-)]+$/g, "") : answer.value;
+  const value = isAmount ? signedByDirection(answer.value, answer.direction) : answer.value;
   try {
     state = await api("/api/value", { upload, field: item.field, value, note: answer.note, reviewer: reviewer() || "reviewer" });
     render(); toast("Correction saved; the worksheet recomputed");
