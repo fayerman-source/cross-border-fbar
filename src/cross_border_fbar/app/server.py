@@ -139,9 +139,12 @@ class Handler(BaseHTTPRequestHandler):
     def _translate(self, phrases: dict, language: str, fresh: bool = False) -> tuple[dict | None, dict]:
         return translate_phrases(phrases, language, fresh=fresh)
 
+    def _state(self) -> dict:
+        return self.review.view()
+
     def _api_get(self, path: str):
         if path == "/api/state":
-            return self.review.view()
+            return self._state()
         if path == "/api/export":
             return self.review.export()
         return None
@@ -202,7 +205,7 @@ class Handler(BaseHTTPRequestHandler):
             return {"error": f"missing field {e}"}, HTTPStatus.BAD_REQUEST
         except RuntimeError as e:  # model call failed
             return {"error": f"The summary couldn't be drafted: {e}"}, HTTPStatus.BAD_GATEWAY
-        return self.review.view(), HTTPStatus.OK
+        return self._state(), HTTPStatus.OK
 
     def do_POST(self):
         if not self._from_this_app(post=True):

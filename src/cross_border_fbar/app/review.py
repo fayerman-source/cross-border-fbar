@@ -112,6 +112,14 @@ def confined(path: Path, root: Path) -> Path:
     return target
 
 
+def _determination_message(comparison: dict) -> str:
+    """The comparison's text, adding that the upper bound is unknown only if it doesn't already say so."""
+    text = comparison["text"]
+    if comparison["upper_known"] or "upper bound is unknown" in text.lower():
+        return text
+    return f"{text.removesuffix(' Review')} Upper bound is unknown. Review"
+
+
 class ReviewError(Exception):
     pass
 
@@ -320,8 +328,7 @@ class Review:
                     "kind": "form8938_" + period,
                     "label": "Form 8938 · " + panel["labels"][period],
                     "result": comparison["result"],
-                    "message": comparison["text"]
-                    + (" Upper bound is unknown." if not comparison["upper_known"] else ""),
+                    "message": _determination_message(comparison),
                     "accounts": accounts,
                     "scope": panel["labels"]["scope"],
                 }
