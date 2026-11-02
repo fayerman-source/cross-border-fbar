@@ -9,7 +9,7 @@ from pathlib import Path
 from ..llm import Client
 
 PROMPT_VERSION = "statement_page_v3"
-PROMPT = (Path(__file__).parent / "prompts" / f"{PROMPT_VERSION}.md").read_text()
+PROMPT = (Path(__file__).parent / "prompts" / f"{PROMPT_VERSION}.md").read_text(encoding="utf-8")
 
 _BOX = {
     "type": "object",

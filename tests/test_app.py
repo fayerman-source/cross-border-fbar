@@ -235,10 +235,10 @@ def test_a_sign_off_is_invalidated_when_the_figures_change(inputs, tmp_path):
     for fid in first.open_review_flags():
         first.acknowledge(fid, "checked", "A. Rivera")
     first.sign_off("A. Rivera", "AR")
-    intake = json.loads(inputs.intake.read_text())
+    intake = json.loads(inputs.intake.read_text(encoding="utf-8"))
     intake["accounts"][0]["ownership"] = "joint"  # the figures that were signed no longer match
     changed = tmp_path / "intake-changed.json"
-    changed.write_text(json.dumps(intake))
+    changed.write_text(json.dumps(intake), encoding="utf-8")
     again = Review(Inputs(inputs.set_dir, inputs.readings, changed), tmp_path / "rv", root=tmp_path)
     assert again.state["signoff"] is None
     assert again.state["invalidated_signoffs"][0]["initials"] == "AR"
@@ -296,7 +296,7 @@ def test_every_flag_emitted_anywhere_is_in_the_catalog_and_no_catalog_entry_is_d
     pkg = Path(__file__).resolve().parents[1] / "src" / "cross_border_fbar"
     raised = set()
     for path in pkg.rglob("*.py"):
-        for node in ast.walk(ast.parse(path.read_text())):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "Flag":
                 assert isinstance(node.args[0], ast.Constant), f"dynamic flag code in {path}"
                 raised.add(node.args[0].value)
@@ -321,13 +321,13 @@ def test_every_flag_emitted_anywhere_is_in_the_catalog_and_no_catalog_entry_is_d
 def test_failed_pages_and_accounts_without_statements_block_sign_off(inputs, tmp_path):
     """Codex on #5: pages whose extraction failed were dropped, so a readings file of failures signed off
     as an empty $0 worksheet. Each failed page and each intake account with nothing read is a review item."""
-    readings = json.loads(READINGS.read_text())
+    readings = json.loads(READINGS.read_text(encoding="utf-8"))
     failed = {"statement_id": "kr-checking_2025-03", "page": 1, "error": "HTTP 503 from the model API"}
     readings["pages"] = [failed] + [
         p for p in readings["pages"] if not p["statement_id"].startswith("kr-checking")
     ]
     path = tmp_path / "readings.json"
-    path.write_text(json.dumps(readings))
+    path.write_text(json.dumps(readings), encoding="utf-8")
     ws = build(Inputs(inputs.set_dir, path, inputs.intake))
     codes = {(f["code"], f["account"]) for f in ws["flags"]}
     assert ("page_not_read", "unread:pages/kr-checking_2025-03-p1.png") in codes
@@ -348,15 +348,17 @@ def test_failed_pages_and_accounts_without_statements_block_sign_off(inputs, tmp
 
 
 def test_only_failed_pages_still_show_every_intake_account(inputs, tmp_path):
-    readings = json.loads(READINGS.read_text())
+    readings = json.loads(READINGS.read_text(encoding="utf-8"))
     readings["pages"] = [
         {"statement_id": p["statement_id"], "page": p.get("page", 1), "error": "timeout"}
         for p in readings["pages"]
     ]
     path = tmp_path / "readings.json"
-    path.write_text(json.dumps(readings))
+    path.write_text(json.dumps(readings), encoding="utf-8")
     ws = build(Inputs(inputs.set_dir, path, inputs.intake))
-    intake_numbers = {a["account_number"] for a in json.loads(inputs.intake.read_text())["accounts"]}
+    intake_numbers = {
+        a["account_number"] for a in json.loads(inputs.intake.read_text(encoding="utf-8"))["accounts"]
+    }
     assert {a["account_number"] for a in ws["accounts"] if a["identified"]} == intake_numbers
     assert sum(f["code"] == "page_not_read" for f in ws["flags"]) == len(readings["pages"])
     assert ws["totals"]["aggregate_usd"] == 0
@@ -376,10 +378,10 @@ def test_a_sign_off_is_invalidated_when_the_client_changes(inputs, tmp_path):
     for fid in first.open_review_flags():
         first.acknowledge(fid, "checked", "A. Rivera")
     first.sign_off("A. Rivera", "AR")
-    intake = json.loads(inputs.intake.read_text())
+    intake = json.loads(inputs.intake.read_text(encoding="utf-8"))
     intake["client"] = "Another Client"
     changed = tmp_path / "intake-client.json"
-    changed.write_text(json.dumps(intake))
+    changed.write_text(json.dumps(intake), encoding="utf-8")
     again = Review(Inputs(inputs.set_dir, inputs.readings, changed), tmp_path / "rv", root=tmp_path)
     assert again.state["signoff"] is None
     assert again.state["summary"] is None
@@ -428,7 +430,7 @@ def test_only_this_apps_own_page_can_act_or_read(inputs, tmp_path):
 def test_every_row_and_review_item_has_its_own_id(inputs, tmp_path):
     """Codex on #5: rows without an account number shared an empty key, so two of them missing the same
     month got one review ID and one acknowledgement covered both."""
-    readings = json.loads(READINGS.read_text())
+    readings = json.loads(READINGS.read_text(encoding="utf-8"))
     blanked = 0
     for page in readings["pages"]:
         if page["statement_id"].startswith("th-savings") and "reading" in page and blanked < 2:
@@ -440,7 +442,7 @@ def test_every_row_and_review_item_has_its_own_id(inputs, tmp_path):
             blanked += 1
     readings["pages"].append({"statement_id": "de-joint_2025-01", "page": 1, "error": "timeout"})
     path = tmp_path / "readings.json"
-    path.write_text(json.dumps(readings))
+    path.write_text(json.dumps(readings), encoding="utf-8")
     for ws in (build(inputs), build(Inputs(inputs.set_dir, path, inputs.intake))):
         keys = [a["key"] for a in ws["accounts"]]
         ids = [f["id"] for f in ws["flags"]]
@@ -453,23 +455,25 @@ def test_the_eval_does_not_count_intake_rows_as_found(inputs, tmp_path, monkeypa
     """Codex on #5: a row for every intake account made accounts_found perfect even with no page read."""
     from cross_border_fbar.eval import reconcile_eval
 
-    readings = json.loads(READINGS.read_text())
+    readings = json.loads(READINGS.read_text(encoding="utf-8"))
     readings["pages"] = [
         {"statement_id": p["statement_id"], "page": p.get("page", 1), "error": "x"} for p in readings["pages"]
     ]
     results = tmp_path / "results"
     results.mkdir()
-    (results / f"muse-spark-1.3_{inputs.set_dir.name}.json").write_text(json.dumps(readings))
+    (results / f"muse-spark-1.3_{inputs.set_dir.name}.json").write_text(
+        json.dumps(readings), encoding="utf-8"
+    )
     monkeypatch.setattr(reconcile_eval, "RESULTS", results)
     out = reconcile_eval.evaluate(inputs.set_dir, "muse-spark-1.3")
     assert out["summary"]["accounts_found"].startswith("0/")
 
 
 def altered_review(inputs, tmp_path, mutate):
-    doc = json.loads(inputs.readings.read_text())
+    doc = json.loads(inputs.readings.read_text(encoding="utf-8"))
     mutate(doc)
     readings = tmp_path / "altered-readings.json"
-    readings.write_text(json.dumps(doc))
+    readings.write_text(json.dumps(doc), encoding="utf-8")
     return Review(Inputs(inputs.set_dir, readings, inputs.intake), tmp_path / "changed-review", root=tmp_path)
 
 
@@ -667,7 +671,7 @@ def test_printout_uses_the_fixed_project_document_and_rejects_path_arguments(tmp
     monkeypatch.setattr(phrase_tables, "printout", lambda language: "English | Korean")
     target = phrase_tables.write_printout("ko", root=tmp_path)
     assert target == tmp_path / "docs" / "korean-review.txt"
-    assert target.read_text() == "English | Korean"
+    assert target.read_text(encoding="utf-8") == "English | Korean"
     monkeypatch.setattr(sys, "argv", ["phrases", "--printout", "../../outside.txt"])
     with pytest.raises(SystemExit) as error:
         phrase_tables.main()
@@ -709,10 +713,10 @@ def test_client_changes_reopen_acknowledgements_even_when_account_figures_stay_t
     review = Review(inputs, tmp_path / "client-review", root=tmp_path)
     flag_id = review.open_review_flags()[0]
     review.acknowledge(flag_id, "reviewed for the original client", "Preparer")
-    intake = json.loads(inputs.intake.read_text())
+    intake = json.loads(inputs.intake.read_text(encoding="utf-8"))
     intake["client"] = "Another Synthetic Client"
     changed = tmp_path / "new-client.json"
-    changed.write_text(json.dumps(intake))
+    changed.write_text(json.dumps(intake), encoding="utf-8")
     reopened = Review(Inputs(inputs.set_dir, inputs.readings, changed), review.dir, root=tmp_path)
     assert flag_id in reopened.open_review_flags()
     assert flag_id not in reopened.view()["review"]["acks"]
@@ -849,12 +853,12 @@ def test_form8938_panel_uses_distinct_evidence_and_account_keys(inputs):
 
 
 def test_field_corrections_preserve_other_intake_facts_and_record_source(inputs, tmp_path):
-    doc = json.loads(inputs.intake.read_text())
+    doc = json.loads(inputs.intake.read_text(encoding="utf-8"))
     account = next(a for a in doc["accounts"] if a["ownership"] == "joint")
     account["joint_with_spouse"] = True
     account["review_metadata"] = "retained"
     path = tmp_path / "intake.json"
-    path.write_text(json.dumps(doc))
+    path.write_text(json.dumps(doc), encoding="utf-8")
     review = Review(Inputs(inputs.set_dir, inputs.readings, path), tmp_path / "review", root=tmp_path)
     key = next(
         k
@@ -893,16 +897,16 @@ def test_conflicting_ownership_and_interest_needs_review_until_source_correction
     [("filing_status", "single"), ("lives_abroad", False), ("spouse_specified_individual", True)],
 )
 def test_each_household_change_invalidates_signed_worksheet(inputs, tmp_path, field, value):
-    doc = json.loads(inputs.intake.read_text())
+    doc = json.loads(inputs.intake.read_text(encoding="utf-8"))
     path = tmp_path / "intake.json"
-    path.write_text(json.dumps(doc))
+    path.write_text(json.dumps(doc), encoding="utf-8")
     local_inputs = Inputs(inputs.set_dir, inputs.readings, path)
     review = Review(local_inputs, tmp_path / "review", root=tmp_path)
     for fid in review.open_review_flags():
         review.acknowledge(fid, "reviewed", "Preparer")
     review.sign_off("Preparer", "PR")
     doc["household"][field] = value
-    path.write_text(json.dumps(doc))
+    path.write_text(json.dumps(doc), encoding="utf-8")
     restarted = Review(local_inputs, review.dir, root=tmp_path)
     assert restarted.state["signoff"] is None
     assert restarted.state["invalidated_signoffs"]

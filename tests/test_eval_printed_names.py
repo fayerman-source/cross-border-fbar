@@ -48,7 +48,7 @@ def test_the_key_lists_only_names_actually_printed_on_the_page(inputs):
     for what is on the page."""
     import pypdfium2 as pdfium
 
-    truth = json.loads((inputs.set_dir / "truth.json").read_text())
+    truth = json.loads((inputs.set_dir / "truth.json").read_text(encoding="utf-8"))
     for statement in truth["statements"]:
         if statement["bank"] is None:
             assert "institution" not in statement["fields"]  # the compiled list prints no bank name
@@ -101,9 +101,9 @@ def evaluated(inputs, tmp_path, monkeypatch, model, names=None):
     if names:
         truth = {
             s["statement_id"]: s
-            for s in json.loads((inputs.set_dir / "truth.json").read_text())["statements"]
+            for s in json.loads((inputs.set_dir / "truth.json").read_text(encoding="utf-8"))["statements"]
         }
-        doc = json.loads(target.read_text())
+        doc = json.loads(target.read_text(encoding="utf-8"))
         for page in doc["pages"]:
             if page["statement_id"] in names:
                 page["reading"]["institution"]["text"] = names[page["statement_id"]]
@@ -111,7 +111,7 @@ def evaluated(inputs, tmp_path, monkeypatch, model, names=None):
                     {"fields": {"institution": truth[page["statement_id"]]["fields"]["institution"]}},
                     page["reading"],
                 )["institution"]
-        target.write_text(json.dumps(doc))
+        target.write_text(json.dumps(doc), encoding="utf-8")
     monkeypatch.setattr(reconcile_eval, "RESULTS", results)
     return reconcile_eval.evaluate(inputs.set_dir, model)
 

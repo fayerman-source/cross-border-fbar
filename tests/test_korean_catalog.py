@@ -54,4 +54,4 @@ def test_no_user_facing_wording_says_cpa():
     assert not [text for text in fixed if "CPA" in text]
     static = Path(phrases.__file__).parent / "static"
     for name in ("app.js", "index.html"):
-        assert "CPA" not in (static / name).read_text()
+        assert "CPA" not in (static / name).read_text(encoding="utf-8")

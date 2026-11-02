@@ -129,8 +129,8 @@ def _review_burden(results, truth_accounts, misread, upload_to_statement, name_c
 
 
 def evaluate(set_dir: Path, model: str) -> dict:
-    truth = json.loads((set_dir / "truth.json").read_text())
-    extraction = json.loads((RESULTS / f"{model}_{set_dir.name}.json").read_text())
+    truth = json.loads((set_dir / "truth.json").read_text(encoding="utf-8"))
+    extraction = json.loads((RESULTS / f"{model}_{set_dir.name}.json").read_text(encoding="utf-8"))
     upload_to_statement, read_names, printed_names = {}, {}, {}
     observations = []
     misread = {
@@ -285,7 +285,7 @@ def main() -> None:
     a = p.parse_args()
     result = evaluate(a.set, a.model)
     out = RESULTS / f"{a.model}_{a.set.name}_reconcile.json"
-    out.write_text(json.dumps(result, ensure_ascii=False, indent=1) + "\n")
+    out.write_text(json.dumps(result, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     print(json.dumps(result["summary"], indent=1))
     for acct in result["accounts"]:
         if acct["flags_missed"] or acct["flags_extra"] or acct["unscored_review_flags"] or not acct["usd_ok"]:

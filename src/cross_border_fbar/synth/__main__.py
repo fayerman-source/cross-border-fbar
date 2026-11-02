@@ -131,7 +131,7 @@ def _compiled_statement(out: Path, seed: int, png: bool, dpi: int, accounts: lis
 
 def generate(out: Path, seed: int, png: bool, dpi: int, threshold_usd: int) -> dict:
     year_rates = rates.load(TAX_YEAR)
-    rates_doc = json.loads(rates.rates_path(TAX_YEAR).read_text())
+    rates_doc = json.loads(rates.rates_path(TAX_YEAR).read_text(encoding="utf-8"))
     accounts, statements_out, month_end_usd = [], [], {}
     for spec in household(TAX_YEAR):
         ledger = build_ledger(spec, TAX_YEAR, seed)
@@ -205,7 +205,7 @@ def generate(out: Path, seed: int, png: bool, dpi: int, threshold_usd: int) -> d
         "statements": statements_out,
     }
     out.mkdir(parents=True, exist_ok=True)
-    (out / "truth.json").write_text(json.dumps(truth, ensure_ascii=False, indent=2) + "\n")
+    (out / "truth.json").write_text(json.dumps(truth, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     # What the client states on the intake call (ownership isn't printed on statements). The worksheet
     # app reads this, never the answer key; voice intake will produce the same shape.
     intake = {
@@ -226,7 +226,9 @@ def generate(out: Path, seed: int, png: bool, dpi: int, threshold_usd: int) -> d
             if a.get("counted", True)
         ],
     }
-    (out / "intake.json").write_text(json.dumps(intake, ensure_ascii=False, indent=2) + "\n")
+    (out / "intake.json").write_text(
+        json.dumps(intake, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
     return truth
 
 
