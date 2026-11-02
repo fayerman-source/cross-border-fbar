@@ -252,12 +252,14 @@ class HostedHandler(Handler):
         """Run the block as this request's visitor, then send its response after letting the visitor go:
         a slow client must not keep the visitor locked, since evicting them waits for that lock."""
         self._held = []
-        with self.store.visit(self._token()) as (visitor, new_token):
-            self.review, self._new_token = visitor.review, new_token
-            yield visitor, new_token is not None
-        held, self._held = self._held, None
-        for response in held:
-            self._send(*response)
+        try:
+            with self.store.visit(self._token()) as (visitor, new_token):
+                self.review, self._new_token = visitor.review, new_token
+                yield visitor, new_token is not None
+        finally:
+            held, self._held = self._held, None
+            for response in held:
+                self._send(*response)
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
@@ -366,4 +368,4 @@ def serve(inputs: Inputs, public_host: str, port: int, limits: Limits | None = N
         ("0.0.0.0", port), make_hosted_handler(store, public_host), store.limits.max_connections
     )
     print(f"FBAR hosted demo: https://{public_host} (listening on port {port})", flush=True)
-    server.serve_forever()
+    server.serve_forever()  # NOSONAR: plain HTTP by design, behind the HTTPS proxy
