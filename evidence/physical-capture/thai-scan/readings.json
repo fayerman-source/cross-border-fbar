@@ -1,0 +1,238 @@
+{
+ "model": "muse-spark-1.3",
+ "prompt": "statement_page_v3",
+ "pages": [
+  {
+   "statement_id": "capture-850f0bf4f01c43b0a5f1cfcfa35394fd",
+   "page": 1,
+   "reading": {
+    "account_number": {
+     "bbox": {
+      "x_max": 341,
+      "x_min": 251,
+      "y_max": 124,
+      "y_min": 111
+     },
+     "status": "read",
+     "text": "714-2-38065-9"
+    },
+    "closing_balance": {
+     "bbox": {
+      "x_max": 535,
+      "x_min": 455,
+      "y_max": 267,
+      "y_min": 254
+     },
+     "status": "read",
+     "text": "407,150.25"
+    },
+    "currency": {
+     "bbox": {
+      "x_max": 282,
+      "x_min": 250,
+      "y_max": 175,
+      "y_min": 162
+     },
+     "status": "read",
+     "text": "THB"
+    },
+    "holder": {
+     "bbox": {
+      "x_max": 395,
+      "x_min": 253,
+      "y_max": 107,
+      "y_min": 94
+     },
+     "status": "read",
+     "text": "MS. JUNG SEULGI JOY"
+    },
+    "institution": {
+     "bbox": {
+      "x_max": 232,
+      "x_min": 118,
+      "y_max": 72,
+      "y_min": 58
+     },
+     "status": "read",
+     "text": "Siam Lotus Bank"
+    },
+    "opening_balance": {
+     "bbox": {
+      "x_max": 874,
+      "x_min": 808,
+      "y_max": 212,
+      "y_min": 200
+     },
+     "status": "read",
+     "text": "407,150.25"
+    },
+    "period": {
+     "bbox": {
+      "x_max": 415,
+      "x_min": 251,
+      "y_max": 155,
+      "y_min": 142
+     },
+     "status": "read",
+     "text": "01/05/2568 - 31/05/2568"
+    },
+    "rows": [
+     {
+      "account_text": "",
+      "amount_bbox": {
+       "x_max": 631,
+       "x_min": 562,
+       "y_max": 228,
+       "y_min": 216
+      },
+      "amount_column": "debit",
+      "amount_text": "300,000.00",
+      "balance_bbox": {
+       "x_max": 874,
+       "x_min": 809,
+       "y_max": 228,
+       "y_min": 216
+      },
+      "balance_text": "107,150.25",
+      "date_text": "16/05/2568",
+      "description": "โอนเงินไปต่างประเทศ",
+      "row_bbox": {
+       "x_max": 878,
+       "x_min": 115,
+       "y_max": 229,
+       "y_min": 214
+      }
+     },
+     {
+      "account_text": "",
+      "amount_bbox": {
+       "x_max": 750,
+       "x_min": 680,
+       "y_max": 245,
+       "y_min": 233
+      },
+      "amount_column": "credit",
+      "amount_text": "300,000.00",
+      "balance_bbox": {
+       "x_max": 874,
+       "x_min": 809,
+       "y_max": 245,
+       "y_min": 233
+      },
+      "balance_text": "407,150.25",
+      "date_text": "16/05/2568",
+      "description": "รับโอนเงิน ค่าขายรถยนต์",
+      "row_bbox": {
+       "x_max": 878,
+       "x_min": 115,
+       "y_max": 247,
+       "y_min": 231
+      }
+     }
+    ]
+   },
+   "call": {
+    "model": "muse-spark-1.3",
+    "prompt": "statement_page_v3",
+    "cost_usd": 0.0179552,
+    "latency_s": 13.52346920967102,
+    "replayed": false,
+    "request_key": "b8d355e8749569a3030260bf5f7968019a51ba5251b8b3e8b53b65217662d65f",
+    "usage": {
+     "completion_tokens": 3017,
+     "prompt_tokens": 4527,
+     "total_tokens": 7544,
+     "completion_tokens_details": {
+      "reasoning_tokens": 2328
+     },
+     "prompt_tokens_details": {
+      "cached_tokens": 478
+     }
+    }
+   },
+   "capture": {
+    "source_sha256": "7677a9208ed860548ad3e520ff40d9e518731f5d8bb9a8a11b8adc2e9c31f228",
+    "source_page": 1,
+    "truth_page": 1,
+    "boxes_verified": false,
+    "synthetic_confirmed": true,
+    "case": "th-savings_2025-05",
+    "corners": null,
+    "geometry": "unscored"
+   },
+   "score": {
+    "statement_id": "th-savings_2025-05",
+    "layout": "th",
+    "fields": {
+     "institution": {
+      "want": "ธนาคารสยามโลตัส",
+      "got": "Siam Lotus Bank",
+      "status": "read",
+      "value_ok": false
+     },
+     "currency": {
+      "want": "THB",
+      "got": "THB",
+      "status": "read",
+      "value_ok": true
+     },
+     "account_number": {
+      "want": "714-2-38065-9",
+      "got": "714-2-38065-9",
+      "status": "read",
+      "value_ok": true
+     },
+     "holder": {
+      "want": "MS. JUNG SEULGI JOY",
+      "got": "MS. JUNG SEULGI JOY",
+      "status": "read",
+      "value_ok": true
+     },
+     "opening_balance": {
+      "want": "407150.25",
+      "got": "407,150.25",
+      "status": "read",
+      "value_ok": true
+     },
+     "closing_balance": {
+      "want": "407150.25",
+      "got": "407,150.25",
+      "status": "read",
+      "value_ok": true
+     }
+    },
+    "rows": [
+     {
+      "txn_id": "th-savings-202505-001",
+      "returned": true,
+      "date_ok": true,
+      "amount_ok": true,
+      "balance_ok": true,
+      "account_ok": true
+     },
+     {
+      "txn_id": "th-savings-202505-002",
+      "returned": true,
+      "date_ok": true,
+      "amount_ok": true,
+      "balance_ok": true,
+      "account_ok": true
+     }
+    ],
+    "rows_expected": 2,
+    "rows_returned": 2,
+    "snapped": false
+   },
+   "value_summary": {
+    "fields_value_ok": "5/6",
+    "rows_returned": "2/2",
+    "extra_rows": 0,
+    "date_ok": "2/2",
+    "amount_ok": "2/2",
+    "balance_ok": "2/2",
+    "account_ok": "2/2"
+   },
+   "geometry_summary": null
+  }
+ ]
+}
