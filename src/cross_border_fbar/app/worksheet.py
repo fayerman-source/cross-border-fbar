@@ -43,6 +43,9 @@ class Inputs:
     readings: Path  # results/<model>_<set>.json from the extraction eval (recorded responses)
     intake: Path
     tax_year: int = 2025
+    # Line snapping reads the page's pixels and takes most of a build. Giving a dict here remembers each
+    # page's result; only for inputs known not to change while the process runs, such as the hosted demo.
+    snap_cache: dict | None = None
 
 
 def _source(src: Source) -> dict:
@@ -137,6 +140,15 @@ def readings_view(inp: Inputs, corrections: dict) -> dict:
     }
 
 
+def _snapped(inp: Inputs, reading: dict, image: Path) -> dict | None:
+    """Snapping depends only on the reading as returned and the page image, never on corrections."""
+    if inp.snap_cache is None:
+        return snap_rows(reading, image)
+    if image not in inp.snap_cache:
+        inp.snap_cache[image] = snap_rows(reading, image)
+    return copy.deepcopy(inp.snap_cache[image])
+
+
 def load_observations(
     inp: Inputs, value_corrections: dict | None = None
 ) -> tuple[list, dict[str, str], set[str]]:
@@ -163,7 +175,7 @@ def load_observations(
             unverified.add(upload)
             observations.append(observe(_without_unverified_boxes(corrected), upload))
         else:
-            observations.append(observe(corrected, upload, snap_rows(reading, image)))
+            observations.append(observe(corrected, upload, _snapped(inp, reading, image)))
     return observations, unread, unverified
 
 
