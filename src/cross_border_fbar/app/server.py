@@ -136,9 +136,6 @@ class Handler(BaseHTTPRequestHandler):
             return False
         return self.headers.get("Content-Type", "").split(";")[0].strip().lower() == "application/json"
 
-    def _asset_body(self, asset: Path) -> bytes:
-        return asset.read_bytes()
-
     def _translate(self, phrases: dict, language: str, fresh: bool = False) -> tuple[dict | None, dict]:
         return translate_phrases(phrases, language, fresh=fresh)
 
@@ -155,7 +152,7 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         asset = self.assets.get(path)
         if asset is not None:
-            return self._send(200, self._asset_body(asset), CONTENT_TYPES[asset.suffix])
+            return self._send(200, asset.read_bytes(), CONTENT_TYPES[asset.suffix])
         try:
             payload = self._api_get(path)
         except ReviewError as e:

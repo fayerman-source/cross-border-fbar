@@ -17,7 +17,6 @@ site's iframe, and the cookie is SameSite=Strict accordingly.
 from __future__ import annotations
 
 import contextlib
-import html
 import json
 import re
 import secrets
@@ -36,7 +35,7 @@ from pathlib import Path
 from . import phrases as phrase_tables
 from .phrases import LANGUAGES
 from .review import Review
-from .server import NOT_THIS_APP, STATIC, Handler, asset_index
+from .server import NOT_THIS_APP, Handler, asset_index
 from .worksheet import Inputs
 
 DEFAULT_PORT = 7860
@@ -46,10 +45,6 @@ COOKIE = "__Host-fbar_visitor"  # the prefix makes browsers require Secure, Path
 TOKEN = re.compile(r"[A-Za-z0-9_-]{43}")  # secrets.token_urlsafe(32)
 VISITOR_GETS = frozenset({"/api/state", "/api/export"})
 
-BANNER = (
-    "Demo with fictional people and accounts. The readings were recorded earlier, so no AI model runs here. "
-    "Your changes are private to this browser and temporary. Don't enter real client information."
-)
 SESSION_ENDED = (
     "Your demo session ended, so this is a fresh worksheet and earlier changes are gone. "
     "If this keeps happening, allow cookies for this site."
@@ -202,7 +197,6 @@ class HostedHandler(Handler):
     review = None  # set per request to the visitor's own Review
     store: VisitorStore
     public_host: str
-    page: bytes
     _new_token: str | None = None
     _held: list | None = None
 
@@ -218,11 +212,6 @@ class HostedHandler(Handler):
             host, origin = self.headers.get("Host", "")[:100], (self.headers.get("Origin") or "")[:100]
             print(f"refused {self.command}: host={host!r} origin={origin!r}", file=sys.stderr, flush=True)
         return allowed
-
-    def _asset_body(self, asset: Path) -> bytes:
-        return (
-            self.page if asset.resolve() == (STATIC / "index.html").resolve() else super()._asset_body(asset)
-        )
 
     def _translate(self, phrases: dict, language: str, fresh: bool = False):
         raise RuntimeError("the hosted demo uses only the reviewed catalog, and this phrase isn't in it")
@@ -343,18 +332,12 @@ class HostedServer(ThreadingHTTPServer):
 
 
 def make_hosted_handler(store: VisitorStore, public_host: str) -> type[HostedHandler]:
-    index = (STATIC / "index.html").read_text(encoding="utf-8")
-    banner = f'<p class="demo-banner" role="note">{html.escape(BANNER)}</p>'
-    if "<body>" not in index:
-        raise ValueError("index.html has no <body> tag for the demo banner")
-    page = index.replace("<body>", f"<body>\n  {banner}", 1)
     return type(
         "BoundHostedHandler",
         (HostedHandler,),
         {
             "store": store,
             "public_host": public_host,
-            "page": page.encode(),
             "assets": asset_index(store.inputs.set_dir),
             "timeout": store.limits.socket_timeout_seconds,
         },

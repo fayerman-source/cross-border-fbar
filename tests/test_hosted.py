@@ -17,7 +17,7 @@ import pytest
 
 from cross_border_fbar import llm
 from cross_border_fbar.app import hosted, phrases, server
-from cross_border_fbar.app.hosted import BANNER, COOKIE, Limits, VisitorStore, make_hosted_handler
+from cross_border_fbar.app.hosted import COOKIE, Limits, VisitorStore, make_hosted_handler
 from cross_border_fbar.app.review import Review
 from cross_border_fbar.app.server import make_handler
 from cross_border_fbar.app.worksheet import Inputs, worksheet_hash
@@ -185,9 +185,9 @@ def test_local_guard_is_unchanged(local):
         assert request(local, "POST", "/api/ack", {}, **kwargs)[0] == expected, kwargs
 
 
-def test_local_mode_has_no_banner_and_no_cookie(local):
+def test_local_mode_sets_no_cookie(local):
     status, page, set_cookie = request(local, "GET", "/", host=f"127.0.0.1:{local}")
-    assert status == 200 and b"demo-banner" not in page and set_cookie is None
+    assert status == 200 and set_cookie is None
     assert request(local, "GET", "/api/state", host=f"127.0.0.1:{local}")[2] is None
     index = Path(server.STATIC / "index.html").read_bytes()
     assert page == index
@@ -725,22 +725,6 @@ def test_hosted_mode_will_not_start_with_an_unreviewed_phrase(heading_unreviewed
 
 def test_the_committed_catalog_lets_hosted_mode_start():
     hosted.require_reviewed_catalog()
-
-
-# -- banner --------------------------------------------------------------------------------------------
-
-
-def test_the_banner_is_on_the_page_in_plain_words(start):
-    port, _ = start()
-    status, page, _ = request(port, "GET", "/")
-    assert status == 200
-    assert f'<p class="demo-banner" role="note">{BANNER.replace(chr(39), "&#x27;")}</p>'.encode() in page
-    assert request(port, "GET", "/index.html")[1] == page
-    assert request(port, "GET", "/static/index.html")[1] == page
-    for words in ("fictional", "recorded", "private", "temporary", "real client information"):
-        assert words in BANNER
-    assert "—" not in BANNER and "–" not in BANNER
-    assert not re.search(r"[가-힣]", BANNER)
 
 
 def test_snap_cache_gives_the_same_worksheet_and_each_build_its_own_copy(inputs, warm_inputs, tmp_path):
