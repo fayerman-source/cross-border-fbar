@@ -368,4 +368,5 @@ def serve(inputs: Inputs, public_host: str, port: int, limits: Limits | None = N
         ("0.0.0.0", port), make_hosted_handler(store, public_host), store.limits.max_connections
     )
     print(f"FBAR hosted demo: https://{public_host} (listening on port {port})", flush=True)
-    server.serve_forever()  # NOSONAR: plain HTTP by design, behind the HTTPS proxy
+    # Plain HTTP by design: the proxy in front terminates HTTPS, as the module docstring says.
+    server.serve_forever()  # NOSONAR
