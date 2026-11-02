@@ -2,6 +2,8 @@
 
 As a licensed attorney who works with U.S. tax preparers, I had a practical question for this hackathon: could a tool take on the tedious statement review without taking away control over the numbers? This tool was my answer. Built for preparers serving U.S. expats and immigrants with foreign bank accounts, it helps a Certified Public Accountant (CPA) or enrolled agent (EA) automate the reading of bank statements and identify each account's highest balance of the year. The preparer reviews and signs off on those numbers. Each identified highest balance links to its source page in the bank statement for **one-click verification**.
 
+**Try it without installing anything:** [live demo](https://sadhakadev-fbar-worksheet-demo.hf.space), with fictional data and recorded readings. The first visit after a quiet period may take a moment to load.
+
 ## The problem it solves
 
 U.S. citizens and U.S. tax residents generally must file an annual Report of Foreign Bank and Financial Accounts (FBAR) with the U.S. Treasury if they have a financial interest in or signature authority over foreign financial accounts whose combined value exceeds $10,000 at any time during the calendar year. Even a non-willful failure to comply with foreign account reporting requirements can carry substantial civil penalties. Willful violations can also lead to criminal prosecution.
