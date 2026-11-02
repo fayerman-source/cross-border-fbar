@@ -69,7 +69,7 @@ def test_recordings_never_contain_the_key(client, monkeypatch):
 
 
 def test_concurrent_calls_cannot_overshoot_the_cap(tmp_path, monkeypatch):
-    """Codex review on PR #2: four threads all passed the check before any cost was recorded."""
+    """Four threads all passed the check before any cost was recorded."""
     import threading
     import time
 

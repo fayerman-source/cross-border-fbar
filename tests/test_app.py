@@ -137,7 +137,7 @@ def test_a_translation_that_adds_anything_is_held_back(signed, bad):
 
 
 def test_unreviewed_phrases_are_approved_only_when_confirmed(signed):
-    """Codex on #5: 'you should file an FBAR' passed the word check. A phrase no one has reviewed is shown
+    """'you should file an FBAR' passed the word check. A phrase no one has reviewed is shown
     to the preparer and needs explicit confirmation; the reviewed table is the normal path."""
 
     def stray(phrases, language, fresh):
@@ -230,7 +230,7 @@ def test_server_serves_pages_but_not_files_outside_them(inputs, tmp_path):
 
 
 def test_a_sign_off_is_invalidated_when_the_figures_change(inputs, tmp_path):
-    """Codex review on #5: a restart with changed readings or intake kept the old sign-off."""
+    """A restart with changed readings or intake kept the old sign-off."""
     first = Review(inputs, tmp_path / "rv", root=tmp_path)
     for fid in first.open_review_flags():
         first.acknowledge(fid, "checked", "A. Rivera")
@@ -259,7 +259,7 @@ def test_a_sign_off_is_invalidated_when_the_figures_change(inputs, tmp_path):
     ],
 )
 def test_scope_guard_catches_obligation_wording_in_any_inflection(text):
-    """Codex review on #5: polite Korean inflections slipped past the literal patterns."""
+    """Polite Korean inflections slipped past the literal patterns."""
     from cross_border_fbar.app.review import OUT_OF_SCOPE
 
     assert OUT_OF_SCOPE.search(text)
@@ -279,7 +279,7 @@ def test_a_crafted_readings_file_cannot_reach_outside_the_pages_folder(inputs, s
 
 
 def test_two_coverage_gaps_on_one_account_need_separate_acknowledgements():
-    """Codex review on #5: same-code flags without month or sources shared one ID."""
+    """Same-code flags without month or sources shared one ID."""
     from cross_border_fbar.app.worksheet import flag_id
     from cross_border_fbar.reconcile.accounts import Flag
 
@@ -319,7 +319,7 @@ def test_every_flag_emitted_anywhere_is_in_the_catalog_and_no_catalog_entry_is_d
 
 
 def test_failed_pages_and_accounts_without_statements_block_sign_off(inputs, tmp_path):
-    """Codex on #5: pages whose extraction failed were dropped, so a readings file of failures signed off
+    """Pages whose extraction failed were dropped, so a readings file of failures signed off
     as an empty $0 worksheet. Each failed page and each intake account with nothing read is a review item."""
     readings = json.loads(READINGS.read_text(encoding="utf-8"))
     failed = {"statement_id": "kr-checking_2025-03", "page": 1, "error": "HTTP 503 from the model API"}
@@ -365,7 +365,7 @@ def test_only_failed_pages_still_show_every_intake_account(inputs, tmp_path):
 
 
 def test_every_worksheet_field_is_in_the_signed_fingerprint(inputs):
-    """Codex on #5: the fingerprint listed its fields, so the client's name could change under a sign-off.
+    """The fingerprint listed its fields, so the client's name could change under a sign-off.
     Changing any top-level field must change the fingerprint."""
     ws = build(inputs)
     for key in ws:
@@ -391,13 +391,13 @@ def test_a_sign_off_is_invalidated_when_the_client_changes(inputs, tmp_path):
 
 @pytest.mark.parametrize("language", ["../../outside", "/tmp/x", "ko/../..", "en"])
 def test_a_phrase_table_path_takes_only_a_listed_language(language):
-    """SonarCloud on #5: the language from the command line reached a file path."""
+    """The language from the command line reached a file path."""
     with pytest.raises(ValueError, match="no client language"):
         phrase_tables.table_path(language)
 
 
 def test_only_this_apps_own_page_can_act_or_read(inputs, tmp_path):
-    """Codex on #5: another site open in the preparer's browser could POST a sign-off to localhost, and a
+    """Another site open in the preparer's browser could POST a sign-off to localhost, and a
     rebound DNS name could read the state. Requests must name this app's host; POSTs must be JSON from
     this origin."""
     review = Review(inputs, tmp_path / "r", root=tmp_path)
@@ -428,7 +428,7 @@ def test_only_this_apps_own_page_can_act_or_read(inputs, tmp_path):
 
 
 def test_every_row_and_review_item_has_its_own_id(inputs, tmp_path):
-    """Codex on #5: rows without an account number shared an empty key, so two of them missing the same
+    """Rows without an account number shared an empty key, so two of them missing the same
     month got one review ID and one acknowledgement covered both."""
     readings = json.loads(READINGS.read_text(encoding="utf-8"))
     blanked = 0
@@ -452,7 +452,7 @@ def test_every_row_and_review_item_has_its_own_id(inputs, tmp_path):
 
 
 def test_the_eval_does_not_count_intake_rows_as_found(inputs, tmp_path, monkeypatch):
-    """Codex on #5: a row for every intake account made accounts_found perfect even with no page read."""
+    """A row for every intake account made accounts_found perfect even with no page read."""
     from cross_border_fbar.eval import reconcile_eval
 
     readings = json.loads(READINGS.read_text(encoding="utf-8"))

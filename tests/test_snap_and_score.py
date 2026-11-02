@@ -109,7 +109,7 @@ def test_alignment_abstains_when_two_runs_fit_equally():
 
 
 def test_eval_reports_statements_without_page_images(tmp_path):
-    """Codex review on #2: a set generated without --png used to evaluate nothing and still pass."""
+    """A set generated without --png used to evaluate nothing and still pass."""
     import json as _json
 
     from cross_border_fbar.eval.__main__ import evaluate
@@ -144,7 +144,7 @@ def test_fallback_alignment_accepts_strong_compression():
 
 
 def test_unprinted_fields_must_be_reported_absent_not_unreadable(page):
-    """Codex review on #4: empty-text 'unreadable' used to score as a correct absence."""
+    """Empty-text 'unreadable' used to score as a correct absence."""
     from cross_border_fbar.eval.score import _score_fields
 
     _, rec = page

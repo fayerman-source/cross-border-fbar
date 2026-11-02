@@ -374,7 +374,7 @@ def test_a_correction_to_a_reading_that_changed_is_retired_on_record(misread, tm
 
 
 def test_a_correction_does_not_move_to_another_transaction_when_a_row_is_inserted(inputs, tmp_path):
-    """Codex on #15: rows are addressed by index and this layout's balances are all empty, so the value at
+    """Rows are addressed by index and this layout's balances are all empty, so the value at
     that index still read the same after a missed row was recovered, and the correction moved to a different
     transaction. A correction is tied to the whole row it was made on."""
     statement, upload = "de-joint_2025-01", "pages/de-joint_2025-01-p1.png"

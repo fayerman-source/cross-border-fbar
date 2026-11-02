@@ -273,7 +273,7 @@ def test_won_unit_and_masked_keys():
 
 
 def test_a_statement_repeating_its_own_account_on_rows_keeps_its_balances():
-    """Codex review on #4: repeating the header account per row used to discard opening and closing."""
+    """Repeating the header account per row used to discard opening and closing."""
     o = obs("s", date(2025, 1, 1), date(2025, 1, 31), D(1000), D(500), [(date(2025, 1, 9), D(-500), None)])
     o.lines[0].account_text = "ACC1"
     (r,) = reconcile([o], SOLE, RATES, 2025)
@@ -309,7 +309,7 @@ def _named(observations, names):
 
 
 def test_different_printed_bank_names_go_to_review_with_a_page_for_each():
-    """Codex on #6, four rounds: every name-matching rule merged two banks or split one. Names are not
+    """Every name-matching rule merged two banks or split one. Names are not
     matched; the preparer sees each printed name, its months and a page where it was printed."""
     names = ["Rheinauen Privatbank"] * 6 + ["Bergwald Bank AG"] * 6
     (r,) = reconcile(_named(year_of(), names), SOLE, RATES, 2025)
