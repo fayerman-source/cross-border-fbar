@@ -21,7 +21,7 @@ from pathlib import Path
 from babel.numbers import format_currency
 
 from ..extract.parse import parse_typed_amount
-from ..reconcile.corrections import as_read, correction_key
+from ..reconcile.corrections import as_read, correction_key, line_as_read
 from ..reconcile.flags import CATALOG
 from . import phrases as phrase_tables
 from .phrases import LANGUAGES
@@ -116,6 +116,16 @@ class ReviewError(Exception):
     pass
 
 
+def _still_applies(correction: dict, pages: dict) -> bool:
+    page = pages.get(correction["upload"])
+    field = correction["field"]
+    return (
+        page is not None
+        and as_read(page, field) == correction["read"]
+        and line_as_read(page, field) == correction["line"]
+    )
+
+
 def _account_context(value, key, path="worksheet"):
     if isinstance(value, dict):
         if value.get("key") == key or value.get("account") == key:
@@ -170,22 +180,22 @@ class Review:
         )
 
     def _retire_stale_value_corrections(self) -> None:
-        """A correction says what was read and what it should be. If the readings changed so the page no
-        longer reads that way, it no longer applies: keep it on record, stop applying it, and say so."""
+        """A correction says what was read, on which row, and what it should be. If the readings changed so
+        the page no longer reads that way, it no longer applies: keep it on record, stop applying it, and
+        say so."""
         corrections = self.state["value_corrections"]
         pages = page_readings(self.inputs) if corrections else {}
-        for key, correction in list(corrections.items()):
-            page = pages.get(correction["upload"])
-            if page is None or as_read(page, correction["field"]) != correction["read"]:
-                del corrections[key]
-                self.state.setdefault("stale_value_corrections", []).append(correction)
-                self._audit(
-                    "value_correction_stale",
-                    "system",
-                    upload=correction["upload"],
-                    field=correction["field"],
-                    reason="the reading changed after the correction",
-                )
+        stale = [key for key, correction in corrections.items() if not _still_applies(correction, pages)]
+        for key in stale:
+            correction = corrections.pop(key)
+            self.state.setdefault("stale_value_corrections", []).append(correction)
+            self._audit(
+                "value_correction_stale",
+                "system",
+                upload=correction["upload"],
+                field=correction["field"],
+                reason="the reading changed after the correction",
+            )
 
     def _revalidate_signoff(self) -> None:
         """A sign-off covers the figures it fingerprinted. If the readings or intake changed since,
@@ -492,19 +502,19 @@ class Review:
                 note=note.strip(),
             )
 
-    def _value_as_read(self, upload, field) -> dict:
+    def _value_as_read(self, upload, field) -> tuple[dict, dict | None]:
         page = page_readings(self.inputs).get(upload) if isinstance(upload, str) else None
         read = as_read(page, field) if page is not None and isinstance(field, str) else None
         if read is None:
             raise ReviewError("That value isn't on a page of this worksheet.")
-        return read
+        return read, line_as_read(page, field)
 
     def correct_value(self, upload: str, field: str, value: str, note: str, reviewer: str) -> None:
         """Correct a misread amount or balance. The reading stays as it was; the correction sits beside it,
         and reconciliation runs on the corrected value."""
         with self.lock:
             self._require_open()
-            read = self._value_as_read(upload, field)
+            read, line = self._value_as_read(upload, field)
             if not note.strip():
                 raise ReviewError("Record where the corrected figure comes from.")
             text = str(value).strip()
@@ -519,6 +529,7 @@ class Review:
                 "upload": upload,
                 "field": field,
                 "read": read,
+                "line": line,
                 "text": text,
                 "value": str(corrected),
                 "note": note.strip(),

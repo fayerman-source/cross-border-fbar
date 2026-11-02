@@ -199,6 +199,12 @@ function renderValueCorrections() {
   }));
 }
 
+// An amount's sign is chosen separately as its direction, so the figure offered for editing has none.
+function figureToEdit(current, isAmount) {
+  if (current === null) return "";
+  return grouped(isAmount ? current.replace("-", "") : current);
+}
+
 function amountDirection(item, current) {
   if (current === null) return item.column === "debit" ? "withdrawal" : "deposit";
   return current.startsWith("-") ? "withdrawal" : "deposit";
@@ -214,9 +220,8 @@ function signedByDirection(typed, direction) {
 async function correctValue(upload, item) {
   const isAmount = item.field.endsWith(":amount");
   const current = item.correction ? item.correction.value : item.value;
-  const shown = current === null ? "" : grouped(isAmount ? current.replace("-", "") : current);
   const answer = await askNote(`Correct ${valueLabel(item.field).toLowerCase()} · ${item.wp}`, false, {
-    read: item.text || "nothing", value: shown, direction: isAmount ? amountDirection(item, current) : null,
+    read: item.text || "nothing", value: figureToEdit(current, isAmount), direction: isAmount ? amountDirection(item, current) : null,
   });
   if (!answer) return;
   const value = isAmount ? signedByDirection(answer.value, answer.direction) : answer.value;
@@ -233,20 +238,25 @@ async function removeCorrection(upload, item) {
   } catch (e) { toast(e.message); }
 }
 
+function correctionButtons(upload, item) {
+  if (state.review.signoff) return [];
+  const what = `${valueLabel(item.field).toLowerCase()}, ${item.wp}`;
+  const correct = el("button", { class: "link", type: "button", "aria-label": `Correct ${what}`,
+    onclick: () => correctValue(upload, item) }, item.correction ? "Change" : "Correct");
+  if (!item.correction) return [correct];
+  return [correct, el("button", { class: "link", type: "button", "aria-label": `Remove correction of ${what}`,
+    onclick: () => removeCorrection(upload, item) }, "Remove")];
+}
+
 function readingValue(upload, item) {
-  const signed = !!state.review.signoff;
   const c = item.correction;
   let figure = "none read";
   if (c) figure = grouped(c.value);
   else if (item.value !== null) figure = grouped(item.value);
   return el("span", { class: "reading-value" },
     el("span", { class: "amount" }, figure),
-    c ? el("span", { class: "corrected" }, "corrected by reviewer") : null,
-    c ? el("span", { class: "read-as" }, readAs(item.text)) : null,
-    signed ? null : el("button", { class: "link", type: "button", "aria-label": `Correct ${valueLabel(item.field).toLowerCase()}, ${item.wp}`,
-      onclick: () => correctValue(upload, item) }, c ? "Change" : "Correct"),
-    !signed && c ? el("button", { class: "link", type: "button", "aria-label": `Remove correction of ${valueLabel(item.field).toLowerCase()}, ${item.wp}`,
-      onclick: () => removeCorrection(upload, item) }, "Remove") : null);
+    c ? [el("span", { class: "corrected" }, "corrected by reviewer"), el("span", { class: "read-as" }, readAs(item.text))] : null,
+    correctionButtons(upload, item));
 }
 
 function labelledReading(upload, item) {
@@ -456,8 +466,28 @@ function acctLabel(ws, key) {
   return a ? `${(a.institutions[a.institutions.length - 1] || "Bank not named")} · ${a.account_number}` : key;
 }
 
-function accountRow(a, signed) {
+function highestBalanceFigure(a) {
   const m = a.max;
+  if (!m) return el("span", { class: "unknown" }, a.identified ? "could not be established from the documents read" : "not counted");
+  const key = `max:${a.key}`;
+  return el("button", { class: "traced", "data-key": key, "aria-pressed": "false",
+      onclick: () => show([m.source], key, `Highest observed balance, ${a.account_number}`) },
+    el("span", { class: "figure" }, el("span", { class: "amount" }, money(m.amount, a.currency)), el("span", { class: "ccy" }, a.currency)),
+    el("span", { class: "wp" }, m.source.wp),
+    m.kind === "computed" ? el("span", { class: "kind" }, "computed from lines") : null,
+    m.correction ? el("span", { class: "corrected" }, `corrected by reviewer · ${readAs(m.correction.read.text)}`) : null);
+}
+
+// Corrections on this account other than the one the figure itself shows.
+function otherCorrections(a) {
+  const direct = Boolean(a.max?.correction);
+  const others = state.worksheet.value_corrections.filter((c) => c.account === a.key).length - (direct ? 1 : 0);
+  if (others < 1) return null;
+  const word = direct ? "other reading" : "reading";
+  return el("span", { class: "corrected" }, `${plural(others, word)} on this account corrected by reviewer`);
+}
+
+function accountRow(a, signed) {
   const corrected = a.key in state.review.overrides;
   const select = el("select", { "aria-label": `Ownership of ${a.account_number}`, disabled: signed || !a.identified,
     onchange: async (ev) => {
@@ -469,17 +499,6 @@ function accountRow(a, signed) {
     } },
     ...Object.entries(OWNERSHIP).filter(([k]) => k !== "unknown" || a.ownership === "unknown")
       .map(([k, v]) => el("option", { value: k, selected: k === a.ownership }, v)));
-  const key = `max:${a.key}`;
-  const direct = m?.correction;
-  const others = state.worksheet.value_corrections.filter((c) => c.account === a.key).length - (direct ? 1 : 0);
-  const figure = m
-    ? el("button", { class: "traced", "data-key": key, "aria-pressed": "false",
-        onclick: () => show([m.source], key, `Highest observed balance, ${a.account_number}`) },
-        el("span", { class: "figure" }, el("span", { class: "amount" }, money(m.amount, a.currency)), el("span", { class: "ccy" }, a.currency)),
-        el("span", { class: "wp" }, m.source.wp),
-        m.kind === "computed" ? el("span", { class: "kind" }, "computed from lines") : null,
-        direct ? el("span", { class: "corrected" }, `corrected by reviewer · ${readAs(direct.read.text)}`) : null)
-    : el("span", { class: "unknown" }, a.identified ? "could not be established from the documents read" : "not counted");
   const banks = a.institutions;
   return el("tr", { class: a.identified ? "" : "unidentified" },
     el("td", { class: "bank" }, banks.length ? banks[banks.length - 1] : "—",
@@ -487,8 +506,7 @@ function accountRow(a, signed) {
       a.holders[0] ? el("span", { class: "sub holder", title: a.holders.join("; ") }, a.holders[0]) : null),
     el("td", {}, el("span", { class: "acct" }, a.account_number), currencyControl(a, signed)),
     el("td", { class: "ownership" }, select, corrected ? el("span", { class: "corrected" }, "corrected by reviewer") : null),
-    el("td", { class: "num" }, figure,
-      others > 0 ? el("span", { class: "corrected" }, `${plural(others, direct ? "other reading" : "reading")} on this account corrected by reviewer`) : null),
+    el("td", { class: "num" }, highestBalanceFigure(a), otherCorrections(a)),
     el("td", { class: "num usd" }, el("span", { class: "amount" }, usd(a.max_usd)),
       a.rate && a.max_usd !== null ? el("span", { class: "rate" }, `@ ${a.rate} ${a.currency}/USD`) : null,
       a.rate_basis === "cpa" ? el("span", { class: "sub" }, `Preparer-recorded, ${a.rate_date}: ${a.rate_source}`) : null),

@@ -15,6 +15,7 @@ from .observe import signed_amount
 
 BALANCE_FIELDS = ("opening_balance", "closing_balance")
 _ROW_FIELD = re.compile(r"row:(0|[1-9]\d*):(amount|balance)", re.ASCII)
+_ROW_TEXT = ("date_text", "description", "amount_text", "amount_column", "balance_text", "account_text")
 
 
 def correction_key(upload: str, field: str) -> str:
@@ -42,6 +43,16 @@ def as_read(reading: dict, field: str) -> dict | None:
         else:
             text, value = row["balance_text"], parse_amount(row["balance_text"])
     return {"text": text, "value": None if value is None else str(value)}
+
+
+def line_as_read(reading: dict, field: str) -> dict | None:
+    """The whole row a row field sits on, as read; None for a page field. Rows are addressed by index and
+    many share a value (or have no balance at all), so this is what ties a correction to its transaction."""
+    match = _ROW_FIELD.fullmatch(field)
+    if not match:
+        return None
+    row = reading["rows"][int(match[1])]
+    return {name: row.get(name, "") for name in _ROW_TEXT}
 
 
 def corrected_reading(reading: dict, corrections: list[dict]) -> dict:

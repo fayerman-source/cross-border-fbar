@@ -99,7 +99,7 @@ def test_the_release_choice_is_recorded_with_the_approval_and_exported(signed, r
     assert exported["approved"]["client_text"] == approved["client_text"]
 
 
-def test_a_summary_survives_a_restart_with_both_versions_and_the_choice(signed, tmp_path_factory):
+def test_a_summary_survives_a_restart_with_both_versions_and_the_choice(signed):
     signed.draft_summary(no_call)
     signed.approve_summary("A. Rivera", release="en")
     restarted = Review(signed.inputs, signed.dir, root=signed.dir.parent)

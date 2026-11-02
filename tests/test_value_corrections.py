@@ -11,7 +11,8 @@ import pytest
 
 from cross_border_fbar.app.review import Review, ReviewError
 from cross_border_fbar.app.server import make_handler
-from cross_border_fbar.app.worksheet import Inputs, worksheet_hash
+from cross_border_fbar.app.worksheet import Inputs, page_readings, worksheet_hash
+from cross_border_fbar.reconcile.corrections import as_read, line_as_read
 
 MARCH = "kr-checking_2025-03"
 MARCH_PAGE = f"pages/{MARCH}-p1.png"
@@ -203,16 +204,18 @@ def review_signed(inputs, tmp_path) -> Review:
 
 
 def test_a_correction_is_in_the_fingerprint_and_invalidates_a_sign_off_on_reload(review_signed, tmp_path):
-    """Even a correction that changes no derived figure changes what was signed."""
+    """Corrections are refused after sign-off, so one found in the saved state wasn't what was signed."""
     signed = review_signed.state["signoff"]["hash"]
     assert signed == worksheet_hash(review_signed.worksheet)
     state = json.loads(review_signed.state_path.read_text())
-    read = {"text": "287,450,200", "value": TRUE_PEAK}
+    field = f"row:{PEAK_ROW}:balance"
+    page = page_readings(review_signed.inputs)[MARCH_PAGE]
     state["value_corrections"] = {
-        f"{MARCH_PAGE}#row:{PEAK_ROW}:balance": {
+        f"{MARCH_PAGE}#{field}": {
             "upload": MARCH_PAGE,
-            "field": f"row:{PEAK_ROW}:balance",
-            "read": read,
+            "field": field,
+            "read": as_read(page, field),
+            "line": line_as_read(page, field),
             "text": "287,450,201",
             "value": "287450201",
             "note": "added after signing",
@@ -233,7 +236,8 @@ def test_a_correction_voids_that_accounts_acknowledgements_only(misread):
         if flag["severity"] == "review" and flag["account"] not in acknowledged:
             acknowledged[flag["account"]] = flag["id"]
     key = checking(misread)["key"]
-    assert len(acknowledged) > 2 and key in acknowledged
+    assert len(acknowledged) > 2
+    assert key in acknowledged
     for flag_id in acknowledged.values():
         misread.acknowledge(flag_id, "reviewed", "A. Rivera")
     hashes = {account: misread._account_hash(account) for account in acknowledged}
@@ -367,6 +371,47 @@ def test_a_correction_to_a_reading_that_changed_is_retired_on_record(misread, tm
     assert again.state["stale_value_corrections"][0]["value"] == TRUE_PEAK
     assert checking(again)["max"]["amount"] == "287450900"
     assert again.audit_tail(1)[0]["action"] == "value_correction_stale"
+
+
+def test_a_correction_does_not_move_to_another_transaction_when_a_row_is_inserted(inputs, tmp_path):
+    """Codex on #15: rows are addressed by index and this layout's balances are all empty, so the value at
+    that index still read the same after a missed row was recovered, and the correction moved to a different
+    transaction. A correction is tied to the whole row it was made on."""
+    statement, upload = "de-joint_2025-01", "pages/de-joint_2025-01-p1.png"
+    review = Review(inputs, tmp_path / "review", root=tmp_path)
+    assert review.view()["page_readings"][upload]["rows"][1]["balance"]["value"] is None
+    review.correct_value(upload, "row:1:balance", "1.000,00", "balance from the bank's letter", "A. Rivera")
+    assert review.state["value_corrections"]
+
+    doc = json.loads(inputs.readings.read_text())
+    (page,) = [p for p in doc["pages"] if p["statement_id"] == statement]
+    rows = page["reading"]["rows"]
+    assert rows[0]["balance_text"] == rows[1]["balance_text"] == ""
+    assert rows[0]["description"] != rows[1]["description"]
+    rows.insert(0, {**rows[0], "description": "a row the first reading missed"})
+    changed = tmp_path / "reread.json"
+    changed.write_text(json.dumps(doc))
+
+    again = Review(Inputs(inputs.set_dir, changed, inputs.intake), review.dir, root=tmp_path)
+    assert again.state["value_corrections"] == {}
+    assert again.state["stale_value_corrections"][0]["field"] == "row:1:balance"
+    assert again.worksheet["value_corrections"] == []
+    assert again.audit_tail(1)[0]["action"] == "value_correction_stale"
+
+
+def test_a_row_correction_survives_a_change_elsewhere_on_the_page(inputs, tmp_path):
+    review = misread_review(inputs, tmp_path, misread_peak)
+    correct_peak(review)
+
+    def closing_changed(statement, reading):
+        misread_peak(statement, reading)
+        if statement == MARCH:
+            reading["closing_balance"]["text"] = "40,657,000"
+
+    reread = readings_with(inputs, tmp_path, closing_changed)
+    again = Review(reread, review.dir, root=tmp_path)
+    assert checking(again)["max"]["amount"] == TRUE_PEAK
+    assert list(again.state["value_corrections"]) == [f"{MARCH_PAGE}#row:{PEAK_ROW}:balance"]
 
 
 def test_a_row_on_a_list_of_several_accounts_belongs_to_the_rows_account(inputs, tmp_path):
