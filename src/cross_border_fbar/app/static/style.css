@@ -32,6 +32,13 @@ body {
 button, input, textarea, select { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--review); outline-offset: 2px; }
 
+/* Hosted demo only: stays in view, so the source viewer sits below it. */
+.demo-banner {
+  position: sticky; top: 0; z-index: 10; display: flex; align-items: center; height: 52px; margin: 0;
+  padding: 0 var(--s6); background: var(--ink); color: var(--paper); font-size: 13px; line-height: 1.35;
+}
+.demo-banner ~ .layout .viewer { top: 52px; height: calc(100vh - 52px); }
+
 /* Header: the working-paper heading block */
 .wp-header {
   display: flex; justify-content: space-between; align-items: flex-end; gap: var(--s5);
@@ -227,7 +234,8 @@ dialog::backdrop { background: rgba(43, 47, 42, .35); }
 
 @media (max-width: 1000px) {
   .layout { grid-template-columns: 1fr; }
-  .viewer { position: static; height: auto; }
+  .viewer, .demo-banner ~ .layout .viewer { position: static; height: auto; }
+  .demo-banner { height: auto; padding: var(--s2) var(--s4); }
   .wp-header { flex-direction: column; align-items: flex-start; }
   .paper, .wp-header, .scope { padding-left: var(--s4); padding-right: var(--s4); }
 }

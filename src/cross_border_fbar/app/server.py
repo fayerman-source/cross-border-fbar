@@ -2,13 +2,15 @@
 
     python -m cross_border_fbar.app --set out/synth --readings results/muse-spark-1.3_synth.json
 
-Binds to 127.0.0.1. Page images are served only from the set's pages/ folder.
+Binds to 127.0.0.1. Page images are served only from the set's pages/ folder. --hosted runs the public
+demo instead (see hosted.py); nothing about this local mode changes unless that flag is passed.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -68,6 +70,7 @@ CONTENT_TYPES = {
     ".ttf": "font/ttf",
     ".txt": "text/plain; charset=utf-8",
 }
+NOT_THIS_APP = {"error": "requests must come from this app's own page"}
 SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Content-Security-Policy": "default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'; "
@@ -115,6 +118,12 @@ class Handler(BaseHTTPRequestHandler):
         port = self.server.server_address[1]
         return {f"127.0.0.1:{port}", f"localhost:{port}"}
 
+    def _origin_allowed(self, origin: str | None) -> bool:
+        if origin is None:
+            return True
+        parts = urlsplit(origin)
+        return parts.scheme == "http" and parts.netloc in self._own_hosts() and not parts.path
+
     def _from_this_app(self, post: bool) -> bool:
         """Only this app's own page may use it. The Host must be the app's own address, which stops a
         rebound DNS name from reading it; a POST must be JSON (other sites can't send that without a
@@ -123,12 +132,15 @@ class Handler(BaseHTTPRequestHandler):
             return False
         if not post:
             return True
-        origin = self.headers.get("Origin")
-        if origin is not None:
-            parts = urlsplit(origin)
-            if parts.scheme != "http" or parts.netloc not in self._own_hosts() or parts.path:
-                return False
+        if not self._origin_allowed(self.headers.get("Origin")):
+            return False
         return self.headers.get("Content-Type", "").split(";")[0].strip().lower() == "application/json"
+
+    def _asset_body(self, asset: Path) -> bytes:
+        return asset.read_bytes()
+
+    def _translate(self, phrases: dict, language: str, fresh: bool = False) -> tuple[dict | None, dict]:
+        return translate_phrases(phrases, language, fresh=fresh)
 
     def _api_get(self, path: str):
         if path == "/api/state":
@@ -139,11 +151,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if not self._from_this_app(post=False):
-            return self._json({"error": "requests must come from this app's own page"}, HTTPStatus.FORBIDDEN)
+            return self._json(NOT_THIS_APP, HTTPStatus.FORBIDDEN)
         path = self.path.split("?", 1)[0]
         asset = self.assets.get(path)
         if asset is not None:
-            return self._send(200, asset.read_bytes(), CONTENT_TYPES[asset.suffix])
+            return self._send(200, self._asset_body(asset), CONTENT_TYPES[asset.suffix])
         try:
             payload = self._api_get(path)
         except ReviewError as e:
@@ -173,33 +185,37 @@ class Handler(BaseHTTPRequestHandler):
             ),
             "/api/value/remove": lambda: review.remove_value_correction(body["upload"], body["field"], who),
             "/api/signoff": lambda: review.sign_off(who, str(body.get("initials", ""))),
-            "/api/summary/draft": lambda: review.draft_summary(translate_phrases),
+            "/api/summary/draft": lambda: review.draft_summary(self._translate),
             "/api/summary/approve": lambda: review.approve_summary(
                 who, body.get("confirm_unreviewed") is True, body.get("release", "ko")
             ),
         }
         return actions.get(self.path)
 
+    def _run_action(self, body: dict) -> tuple[dict, int]:
+        """The response to a POST: its payload and status."""
+        action = self._post_action(body)
+        if action is None:
+            return {"error": "not found"}, HTTPStatus.NOT_FOUND
+        try:
+            action()
+        except ReviewError as e:
+            return {"error": str(e)}, HTTPStatus.CONFLICT
+        except KeyError as e:
+            return {"error": f"missing field {e}"}, HTTPStatus.BAD_REQUEST
+        except RuntimeError as e:  # model call failed
+            return {"error": f"The summary couldn't be drafted: {e}"}, HTTPStatus.BAD_GATEWAY
+        return self.review.view(), HTTPStatus.OK
+
     def do_POST(self):
         if not self._from_this_app(post=True):
-            return self._json({"error": "requests must come from this app's own page"}, HTTPStatus.FORBIDDEN)
+            return self._json(NOT_THIS_APP, HTTPStatus.FORBIDDEN)
         length = int(self.headers.get("Content-Length") or 0)
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
         except json.JSONDecodeError:
             return self._json({"error": "invalid JSON"}, HTTPStatus.BAD_REQUEST)
-        action = self._post_action(body)
-        if action is None:
-            return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
-        try:
-            action()
-        except ReviewError as e:
-            return self._json({"error": str(e)}, HTTPStatus.CONFLICT)
-        except KeyError as e:
-            return self._json({"error": f"missing field {e}"}, HTTPStatus.BAD_REQUEST)
-        except RuntimeError as e:  # model call failed
-            return self._json({"error": f"The summary couldn't be drafted: {e}"}, HTTPStatus.BAD_GATEWAY)
-        self._json(self.review.view())
+        self._json(*self._run_action(body))
 
 
 def make_handler(review: Review, set_dir: Path) -> type[Handler]:
@@ -211,11 +227,34 @@ def main() -> None:
     p.add_argument("--set", type=Path, default=Path("out/synth"))
     p.add_argument("--readings", type=Path, default=Path("results/muse-spark-1.3_synth.json"))
     p.add_argument("--intake", type=Path)
-    p.add_argument("--review-dir", type=Path, default=Path("out/review"))
-    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--review-dir", type=Path)
+    p.add_argument("--port", type=int)
+    p.add_argument(
+        "--hosted",
+        action="store_true",
+        help="run the public demo behind an HTTPS proxy: one temporary worksheet per visitor, no model calls",
+    )
+    p.add_argument(
+        "--public-host", help="with --hosted: the demo's public host name, such as demo.example.org"
+    )
     a = p.parse_args()
     inputs = Inputs(a.set, a.readings, a.intake or a.set / "intake.json")
-    review = Review(inputs, a.review_dir)
-    server = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(review, a.set))
-    print(f"FBAR review: open 127.0.0.1:{a.port} in a browser  (review state in {a.review_dir})")
+    if a.hosted or a.public_host:
+        from . import hosted
+
+        if not a.hosted:
+            p.error("--public-host only applies with --hosted")
+        if a.review_dir is not None:
+            p.error("--hosted keeps each visitor's worksheet in a temporary folder; drop --review-dir")
+        try:
+            public_host = hosted.public_host_from(a.public_host, os.environ)
+        except ValueError as e:
+            p.error(str(e))
+        port = a.port if a.port is not None else int(os.environ.get("PORT") or hosted.DEFAULT_PORT)
+        return hosted.serve(inputs, public_host, port)
+    review_dir = a.review_dir if a.review_dir is not None else Path("out/review")
+    port = a.port if a.port is not None else 8765
+    review = Review(inputs, review_dir)
+    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(review, a.set))
+    print(f"FBAR review: open 127.0.0.1:{port} in a browser  (review state in {review_dir})")
     server.serve_forever()

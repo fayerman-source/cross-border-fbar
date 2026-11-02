@@ -40,12 +40,17 @@ function toast(msg) {
   t.textContent = msg;
   t.classList.add("show");
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => t.classList.remove("show"), 2600);
+  toast.timer = setTimeout(() => t.classList.remove("show"), Math.max(2600, msg.length * 60)); // long enough to read
 }
 
 async function api(path, body) {
   const res = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
   const data = await res.json();
+  if (data.reset) { // the hosted demo ended this visitor's session: show the fresh worksheet it started
+    state = await api("/api/state");
+    render();
+    toast(data.error);
+  }
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
 }
