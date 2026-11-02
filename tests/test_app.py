@@ -767,7 +767,7 @@ def test_acknowledged_limitation_remains_visible_after_signoff_and_in_export(rev
 
 def test_open_determinations_include_threshold_uncertainty_and_unidentified_account_labels():
     review = Review.__new__(Review)
-    incomplete = {"result": "incomplete", "upper_known": False, "text": "Incomplete — review"}
+    incomplete = {"result": "incomplete", "upper_known": False, "text": "Incomplete. Review"}
     review.worksheet = {
         "totals": {
             "above_threshold": None,
