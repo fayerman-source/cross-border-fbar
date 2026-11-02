@@ -85,7 +85,7 @@ The direct URL is `https://<user>-fbar-worksheet-demo.hf.space`, in lower case. 
 
 Check these at the direct URL before sharing it:
 
-1. The page loads with the dark banner at the top, six rows and an aggregate of $373,618.
+1. The page loads with six rows and an aggregate of $373,618.
 2. Acknowledge one item and reload. The acknowledgement is still there.
 3. Open the same URL in a private window. It shows no acknowledgements.
 

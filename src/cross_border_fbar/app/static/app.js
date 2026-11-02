@@ -308,27 +308,48 @@ function form8938Sources(row, field, label) {
       : el("p", {}, "No source line available. Review the missing evidence."));
 }
 
+const FILING_STATUS_TEXT = {
+  single: "Single", mfj: "Married filing jointly", mfs: "Married filing separately",
+  hoh: "Head of household", qss: "Qualifying surviving spouse",
+};
+
+function statedFact(value, missing) {
+  if (value === null || value === undefined) return missing;
+  if (value === true) return "Yes";
+  if (value === false) return "No";
+  return FILING_STATUS_TEXT[value] || String(value);
+}
+
+function factsTable(rows) {
+  return el("div", { class: "table-wrap" }, el("table", { class: "form8938-facts" }, el("tbody", {},
+    ...rows.map(([label, value]) => el("tr", {}, el("th", { scope: "row" }, label), el("td", {}, value))))));
+}
+
 function form8938Account(row, panel) {
   const labels = panel.labels;
   const displayName = row.number || row.uploads.join(", ") || row.key;
-  const children = [el("h4", {}, displayName),
-    el("p", {}, labels[row.inclusion], row.reason ? ` · ${row.reason}` : "")];
+  const stated = panel.effective_accounts[row.key];
+  const facts = [["Status", labels[row.inclusion] + (row.reason ? ` · ${row.reason}` : "")]];
   if (row.year_end) {
-    children.push(el("p", {}, labels[row.share] + (row.share_note ? " · " + row.share_note : "")));
+    facts.push(["Share counted", labels[row.share] + (row.share_note ? ` · ${row.share_note}` : "")]);
     for (const [field, label] of [["year_end", labels.year_end], ["maximum", labels.maximum_sources]]) {
       const range = row[field];
-      children.push(el("p", { class: "bound-values" }, `${label}: ${exactUsd(range.display_low_usd, labels.unknown)} to ${exactUsd(range.display_high_usd, labels.unknown)}`));
+      facts.push([label, el("span", { class: "bound-values" }, `${exactUsd(range.display_low_usd, labels.unknown)} to ${exactUsd(range.display_high_usd, labels.unknown)}`)]);
     }
   }
-  if (row.rate.units_per_usd) {
-    children.push(el("p", {}, `Exchange rate: ${row.rate.units_per_usd} ${row.rate.currency || "units"}/USD · ${row.rate.date || "identity"} · ${row.rate.basis || "recorded"} · source: ${row.rate.source || "USD identity"}`));
-  } else children.push(el("p", {}, "Exchange rate unavailable. Review."));
-  const stated = panel.effective_accounts[row.key];
+  facts.push(["Exchange rate", row.rate.units_per_usd
+    ? `${row.rate.units_per_usd} ${row.rate.currency || "units"}/USD · ${row.rate.date || "identity"} · ${row.rate.basis || "recorded"} · source: ${row.rate.source || "USD identity"}`
+    : "Exchange rate unavailable. Review."]);
+  facts.push(["Classification", OWNERSHIP[row.ownership] || String(row.ownership)]);
+  facts.push(["Financial interest", statedFact(row.financial_interest, labels.missing_intake)]);
+  facts.push(["Joint with spouse", stated ? statedFact(stated.joint_with_spouse, labels.missing_intake) : "No account intake record."]);
+  const children = [factsTable(facts)];
   const corrections = [panel.corrections.ownership[row.key], panel.corrections.financial_interest[row.key]]
     .filter(Boolean).map((c) => `Correction: ${c.value ?? "unknown"}: ${c.note} (${c.reviewer})`);
   children.push(...corrections.map((note) => el("p", { class: "hint" }, note)));
+  children.push(...row.reviews.map((note) => el("p", { class: "hint" }, note)));
   if (row.identified) {
-    children.push(el("label", {}, "Financial interest correction ", el("select", {
+    children.push(el("label", { class: "form8938-correction" }, "Financial interest correction", el("select", {
       "aria-label": `Financial interest of ${row.number}`, disabled: !!state.review.signoff,
       onchange: async (ev) => {
         const chosen = ev.target.value;
@@ -343,14 +364,13 @@ function form8938Account(row, panel) {
     el("option", { value: "no" }, "No financial interest stated"),
     el("option", { value: "unknown" }, "Financial interest unknown"))));
   }
-  children.push(el("p", {}, `Classification: ${row.ownership}; financial interest: ${String(row.financial_interest ?? labels.missing_intake)}. `,
-    `Intake: ${panel.intake_source || labels.missing_intake}. `,
-    stated ? `Joint with spouse: ${String(stated.joint_with_spouse ?? labels.missing_intake)}. Corrections: see audit trail.` : "No account intake record."),
-    ...row.reviews.map((note) => el("p", { class: "hint" }, note)),
-    form8938Sources(row, "upload_sources", "Uploaded pages"),
+  children.push(form8938Sources(row, "upload_sources", "Uploaded pages"),
     form8938Sources(row, "year_end_sources", labels.year_end_sources),
     form8938Sources(row, "maximum_sources", labels.maximum_sources));
-  return el("details", { class: "form8938-account" }, el("summary", {}, `${displayName} · ${labels[row.inclusion]}`), ...children);
+  return el("details", { class: "form8938-account" },
+    el("summary", {}, el("span", { class: "form8938-account-name" }, displayName),
+      el("span", { class: "form8938-account-status" }, labels[row.inclusion])),
+    el("div", { class: "form8938-account-body" }, ...children));
 }
 
 function renderForm8938() {
@@ -359,21 +379,28 @@ function renderForm8938() {
   const labels = panel.labels;
   $("form8938-title").textContent = labels.title;
   const facts = Object.entries(panel.household_labels).map(([key, label]) =>
-    el("li", {}, `${label}: ${panel.household[key] ?? labels.missing_intake}`));
+    [label, statedFact(panel.household[key], labels.missing_intake)]);
   const tests = [["year_end", labels.year_end], ["any_time", labels.any_time]].map(([key, label]) => {
     const test = panel[key];
     return el("tr", {}, el("th", { scope: "row" }, label),
-      el("td", { class: "bound-values" }, exactUsd(test.display_low_usd, labels.unknown)),
-      el("td", { class: "bound-values" }, exactUsd(test.display_high_usd, labels.unknown)),
-      el("td", {}, exactUsd(test.threshold_usd, labels.missing_intake)), el("td", {}, test.text));
+      el("td", { class: "money" }, exactUsd(test.display_low_usd, labels.unknown)),
+      el("td", { class: "money" }, exactUsd(test.display_high_usd, labels.unknown)),
+      el("td", { class: "money" }, exactUsd(test.threshold_usd, labels.missing_intake)), el("td", {}, test.text));
   });
-  $("form8938-content").replaceChildren(el("p", {}, labels.scope), el("p", {}, labels.intake),
-    el("p", {}, `Intake source: ${panel.intake_source || labels.missing_intake}`), el("ul", {}, ...facts),
+  const numeric = new Set([labels.lower, labels.upper, labels.threshold]);
+  const notes = [labels.annual, labels.precision, labels.year_end_formula, labels.any_time_formula, ...panel.notes];
+  $("form8938-content").replaceChildren(el("p", { class: "hint form8938-scope" }, labels.scope),
+    el("h4", {}, "Stated at intake"),
+    factsTable([...facts, ["Source", panel.intake_source || labels.missing_intake]]),
+    el("p", { class: "hint" }, labels.intake),
+    el("h4", {}, "Comparison"),
     el("div", { class: "table-wrap" }, el("table", {}, el("thead", {}, el("tr", {},
-      ...["Test", labels.lower, labels.upper, labels.threshold, labels.review].map((text) => el("th", { scope: "col" }, text)))),
-    el("tbody", {}, ...tests))), el("p", {}, labels.annual), el("p", {}, labels.precision),
-    el("p", {}, labels.year_end_formula), el("p", {}, labels.any_time_formula),
-    ...panel.notes.map((note) => el("p", { class: "hint" }, note)),
+      ...["Test", labels.lower, labels.upper, labels.threshold, labels.review].map((text) =>
+        el("th", { scope: "col", class: numeric.has(text) ? "money" : "" }, text)))),
+    el("tbody", {}, ...tests))),
+    el("details", { class: "form8938-notes" }, el("summary", {}, "How these bounds are calculated"),
+      el("ul", {}, ...notes.map((note) => el("li", {}, note)))),
+    el("h4", {}, "Accounts"),
     ...panel.accounts.map((row) => form8938Account(row, panel)));
 }
 
