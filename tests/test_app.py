@@ -948,3 +948,17 @@ def test_new_shared_worksheet_context_invalidates_existing_acknowledgement(revie
     review.acknowledge(flag_id, "reviewed before new context", "Preparer")
     review.worksheet["new_shared_context"] = {"added_fact": "material"}
     assert flag_id in review.open_review_flags()
+
+
+def test_a_determination_says_the_upper_bound_is_unknown_once():
+    from cross_border_fbar.app.form8938 import RESULT_TEXT
+    from cross_border_fbar.app.review import _determination_message
+
+    stated = _determination_message(
+        {"result": "incomplete", "upper_known": False, "text": RESULT_TEXT["incomplete"]}
+    )
+    assert stated == RESULT_TEXT["incomplete"]
+    added = _determination_message({"result": "above", "upper_known": False, "text": RESULT_TEXT["above"]})
+    assert added == "Known lower bound exceeds the threshold. Upper bound is unknown. Review"
+    known = _determination_message({"result": "above", "upper_known": True, "text": RESULT_TEXT["above"]})
+    assert known == RESULT_TEXT["above"]

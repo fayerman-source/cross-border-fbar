@@ -44,6 +44,7 @@ PUBLIC_HOST = re.compile(rf"{HOST_LABEL}(?:\.{HOST_LABEL})*(?::[0-9]{{1,5}})?")
 COOKIE = "__Host-fbar_visitor"  # the prefix makes browsers require Secure, Path=/ and no Domain
 TOKEN = re.compile(r"[A-Za-z0-9_-]{43}")  # secrets.token_urlsafe(32)
 VISITOR_GETS = frozenset({"/api/state", "/api/export"})
+RESET_PATH = "/api/demo/reset"
 
 SESSION_ENDED = (
     "Your demo session ended, so this is a fresh worksheet and earlier changes are gone. "
@@ -147,6 +148,13 @@ class VisitorStore:
             return None
         return visitor
 
+    def forget(self, token: str | None) -> None:
+        """Delete this visitor's worksheet now. Their next request starts a fresh one."""
+        with self._lock:
+            visitor = self._visitors.pop(token, None) if token else None
+        if visitor:
+            visitor.retire()
+
     def _create(self) -> tuple[str, Visitor]:
         # The folder has its own random name, so a token can't be learned from it or the reverse. The
         # build runs outside the store's lock, so other visitors aren't held up by it.
@@ -212,6 +220,9 @@ class HostedHandler(Handler):
             host, origin = self.headers.get("Host", "")[:100], (self.headers.get("Origin") or "")[:100]
             print(f"refused {self.command}: host={host!r} origin={origin!r}", file=sys.stderr, flush=True)
         return allowed
+
+    def _state(self) -> dict:
+        return {**super()._state(), "hosted": True}
 
     def _translate(self, phrases: dict, language: str, fresh: bool = False):
         raise RuntimeError("the hosted demo uses only the reviewed catalog, and this phrase isn't in it")
@@ -292,6 +303,9 @@ class HostedHandler(Handler):
         body = self._read_body()
         if body is None:
             return
+        if self.path == RESET_PATH:
+            self.store.forget(self._token())
+            return self._json({"ok": True})
         if self._post_action(body) is None:  # checked first so an unknown path can't start a visitor
             return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
         with self._visiting() as (visitor, is_new):

@@ -141,12 +141,12 @@ tfoot .num .amount { font-weight: 600; font-size: 17px; }
 .item-actions { display: flex; flex-direction: column; align-items: flex-end; gap: var(--s1); }
 .ack-note { grid-column: 1 / -1; margin: 0; color: var(--review); font-size: 13.5px; }
 .ack-note::before { content: "Reviewed: "; font-weight: 600; }
-button.primary, .signoff-form button, #draft-summary, #approve-summary, .item-actions button {
+button.primary, .signoff-form button, #draft-summary, #approve-summary, #copy-summary, .item-actions button {
   border: 1.5px solid var(--ink); background: var(--paper); padding: 6px 12px; cursor: pointer; border-radius: 2px;
   font-weight: 500;
 }
 .item-actions button.ack { border-color: var(--review); color: var(--review); }
-.item-actions button.link, .reading-value button.link { border: 0; background: none; color: var(--ink-soft); text-decoration: underline; padding: 2px 0; cursor: pointer; }
+#start-over button.link, .item-actions button.link, .reading-value button.link { border: 0; background: none; color: var(--ink-soft); text-decoration: underline; padding: 2px 0; cursor: pointer; }
 .item.done .item-title { color: var(--ink-soft); }
 .item.done .item-title::before { content: "✓ "; color: var(--review); }
 .info-items { margin-top: var(--s3); font-size: 13.5px; color: var(--ink-soft); }

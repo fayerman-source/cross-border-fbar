@@ -737,3 +737,47 @@ def test_snap_cache_gives_the_same_worksheet_and_each_build_its_own_copy(inputs,
     copy_of = _snapped(warm_inputs, {}, image)
     copy_of["rows"].clear()
     assert warm_inputs.snap_cache[image] == snapped and snapped["rows"]
+
+
+# -- starting over -------------------------------------------------------------------------------------
+
+
+def test_start_over_clears_only_this_visitors_worksheet(start):
+    port, _ = start()
+    status, state, set_cookie = request(port, "GET", "/api/state")
+    assert status == 200 and state["hosted"] is True
+    mine = token_of(set_cookie)
+    other = token_of(request(port, "GET", "/api/state")[2])
+    flag = next(f["id"] for f in state["worksheet"]["flags"] if f["severity"] == "review")
+    for token in (mine, other):
+        assert request(port, "POST", "/api/ack", {"flag": flag, "note": "seen"}, cookie=token)[0] == 200
+
+    assert request(port, "POST", "/api/demo/reset", {}, cookie=mine)[0] == 200
+
+    status, fresh, set_cookie = request(port, "GET", "/api/state", cookie=mine)
+    assert status == 200 and set_cookie and token_of(set_cookie) != mine and not fresh["review"]["acks"]
+    assert flag in request(port, "GET", "/api/state", cookie=other)[1]["review"]["acks"]
+
+
+def test_start_over_unlocks_a_signed_worksheet(start):
+    port, _ = start()
+    _, state, set_cookie = request(port, "GET", "/api/state")
+    token = token_of(set_cookie)
+    for flag in state["open_review_flags"]:
+        assert request(port, "POST", "/api/ack", {"flag": flag, "note": "seen"}, cookie=token)[0] == 200
+    assert request(port, "POST", "/api/signoff", {"reviewer": "A", "initials": "A"}, cookie=token)[0] == 200
+    assert request(port, "POST", "/api/demo/reset", {}, cookie=token)[0] == 200
+    assert request(port, "GET", "/api/state", cookie=token)[1]["review"]["signoff"] is None
+
+
+def test_start_over_is_refused_from_another_site(start):
+    port, _ = start()
+    token = token_of(request(port, "GET", "/api/state")[2])
+    assert request(port, "POST", "/api/demo/reset", {}, cookie=token, origin="https://evil.example")[0] == 403
+    assert request(port, "GET", "/api/state", cookie=token)[2] is None
+
+
+def test_the_local_app_has_no_start_over(local):
+    host = f"127.0.0.1:{local}"
+    assert request(local, "POST", "/api/demo/reset", {}, host=host, origin=f"http://{host}")[0] == 404
+    assert "hosted" not in request(local, "GET", "/api/state", host=host)[1]

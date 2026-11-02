@@ -33,7 +33,7 @@
                 <th scope="col">Bank</th>
                 <th scope="col">Account</th>
                 <th scope="col">Ownership</th>
-                <th scope="col" class="num">Highest observed balance</th>
+                <th scope="col" class="num">Highest observed balance <span class="th-sub">✓ traced to a source line</span></th>
                 <th scope="col" class="num">USD <span class="th-sub">at recorded rate</span></th>
               </tr>
             </thead>
@@ -70,6 +70,7 @@
           <button type="submit" id="signoff-btn">Sign off worksheet</button>
         </form>
         <p class="hint" id="signoff-hint"></p>
+        <p id="start-over" hidden><button type="button" class="link" id="start-over-btn">Start over with a fresh worksheet</button></p>
         <div id="after-signoff" hidden>
           <p class="signed" id="signed-line"></p>
           <section aria-labelledby="remaining-title">
@@ -104,6 +105,7 @@
               </fieldset>
               <button type="button" id="approve-summary">Approve for release</button>
               <p class="signed" id="summary-approved" hidden></p>
+              <button type="button" id="copy-summary" hidden>Copy what the client gets</button>
             </div>
           </div>
         </div>

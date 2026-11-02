@@ -325,6 +325,13 @@ function factsTable(rows) {
     ...rows.map(([label, value]) => el("tr", {}, el("th", { scope: "row" }, label), el("td", {}, value))))));
 }
 
+function rateCell(rate) {
+  const basis = rate.basis === "treasury" ? "Treasury" : rate.basis || "recorded";
+  const text = `${rate.units_per_usd} ${rate.currency || "units"}/USD · ${rate.date || "identity"} · ${basis}`;
+  if (!/^https:\/\//.test(rate.source || "")) return `${text} · source: ${rate.source || "USD identity"}`;
+  return el("span", {}, `${text} · `, el("a", { href: rate.source, target: "_blank", rel: "noopener" }, "Source query"));
+}
+
 function form8938Account(row, panel) {
   const labels = panel.labels;
   const displayName = row.number || row.uploads.join(", ") || row.key;
@@ -337,9 +344,7 @@ function form8938Account(row, panel) {
       facts.push([label, el("span", { class: "bound-values" }, `${exactUsd(range.display_low_usd, labels.unknown)} to ${exactUsd(range.display_high_usd, labels.unknown)}`)]);
     }
   }
-  facts.push(["Exchange rate", row.rate.units_per_usd
-    ? `${row.rate.units_per_usd} ${row.rate.currency || "units"}/USD · ${row.rate.date || "identity"} · ${row.rate.basis || "recorded"} · source: ${row.rate.source || "USD identity"}`
-    : "Exchange rate unavailable. Review."]);
+  facts.push(["Exchange rate", row.rate.units_per_usd ? rateCell(row.rate) : "Exchange rate unavailable. Review."]);
   facts.push(["Classification", OWNERSHIP[row.ownership] || String(row.ownership)]);
   facts.push(["Financial interest", statedFact(row.financial_interest, labels.missing_intake)]);
   facts.push(["Joint with spouse", stated ? statedFact(stated.joint_with_spouse, labels.missing_intake) : "No account intake record."]);
@@ -432,6 +437,7 @@ function determinationText(d) {
 function renderSignoff(signed) {
   const open = state.open_review_flags;
   $("signoff-btn").disabled = signed || open.length > 0;
+  $("start-over").hidden = !state.hosted;
   $("signoff-form").hidden = signed;
   $("signoff-hint").textContent = signed ? "" : signoffHint(open);
   $("after-signoff").hidden = !signed;
@@ -468,6 +474,7 @@ function renderSummary(s) {
   $("summary-release").hidden = Boolean(s.approved);
   $("approve-summary").hidden = Boolean(s.approved);
   $("summary-approved").hidden = !s.approved;
+  $("copy-summary").hidden = !s.approved;
   if (s.approved) $("summary-approved").textContent = `Approved for release by ${s.approved.reviewer}, ${s.approved.ts}. The client gets: ${RELEASE_LABELS[s.approved.release]}.`;
   renderSummaryConfirmation(s);
 }
@@ -505,9 +512,19 @@ function highestBalanceFigure(a) {
   return el("button", { class: "traced", "data-key": key, "aria-pressed": "false",
       onclick: () => show([m.source], key, `Highest observed balance, ${a.account_number}`) },
     el("span", { class: "figure" }, el("span", { class: "amount" }, money(m.amount, a.currency)), el("span", { class: "ccy" }, a.currency)),
-    el("span", { class: "wp" }, m.source.wp),
+    el("span", { class: "wp", title: m.source.wp }, plainCitation(m.source.wp)),
     m.kind === "computed" ? el("span", { class: "kind" }, "computed from lines") : null,
     m.correction ? el("span", { class: "corrected" }, `corrected by reviewer · ${readAs(m.correction.read.text)}`) : null);
+}
+
+// A short citation for the table; the exact reference stays in the viewer, the audit trail and the export.
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function plainCitation(wp) {
+  const match = /^.+ · (\d{4})-(\d{2})-p(\d+) · (.+)$/.exec(wp);
+  const month = match && MONTHS[Number(match[2]) - 1];
+  if (!month) return wp;
+  const line = /^r(\d+)$/.exec(match[4]);
+  return `${month} ${match[1]} · p. ${match[3]} · ${line ? `line ${line[1]}` : match[4]}`;
 }
 
 // Corrections on this account other than the one the figure itself shows.
@@ -618,6 +635,20 @@ $("draft-summary").addEventListener("click", async () => {
 document.querySelectorAll('input[name="release"]').forEach((input) => input.addEventListener("change", () => {
   if (state.review.summary) renderSummaryConfirmation(state.review.summary);
 }));
+$("copy-summary").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(state.review.summary.approved.client_text);
+    toast("Copied");
+  } catch { toast("The browser blocked copying. The approved text is in the export."); }
+});
+
+$("start-over-btn").addEventListener("click", async () => {
+  try {
+    await api("/api/demo/reset", {});
+    location.reload();
+  } catch (e) { toast(e.message); }
+});
+
 $("approve-summary").addEventListener("click", async () => {
   const release = chosenRelease();
   try { state = await api("/api/summary/approve", { reviewer: reviewer() || state.review.signoff.reviewer, release,
