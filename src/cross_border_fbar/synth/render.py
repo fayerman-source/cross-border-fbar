@@ -250,10 +250,12 @@ def render_statement(spec: AccountSpec, stmt: Statement, fonts: Path, out: Path)
         doc.new_page()
         x, y = MARGIN, MARGIN
         bank_pos = doc.text(x, y, 120, 8, stmt.bank.name, size=15, bold=True)
-        if first:
-            field("institution", stmt.bank.name, bank_pos)
+        printed_names = [stmt.bank.name]
         if key == "th":
             doc.text(x, y + 7, 120, 5, stmt.bank.name_en, size=9, font="latin")
+            printed_names.append(stmt.bank.name_en)
+        if first:
+            field("institution", stmt.bank.name, {**bank_pos, "printed_names": printed_names})
         if key == "de_saldo":
             doc.text(x, y + 7, 120, 5, "Rechtsnachfolgerin der Rheinauen Privatbank", size=8, grey=True)
         doc.text(x, y + 12, 120, 5, stmt.bank.address, size=8, grey=True)

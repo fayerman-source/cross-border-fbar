@@ -11,7 +11,7 @@ LABELS = {
     "scope": "Accounts read only; not an inventory of specified foreign financial assets. "
     "Other assets, spouse-only accounts, client eligibility and return exceptions are not assessed. "
     "This comparison does not determine whether anyone files.",
-    "intake": "Stated at intake; CPA determines filing status and qualifying foreign residence. "
+    "intake": "Stated at intake; the preparer determines filing status and qualifying foreign residence. "
     "Living overseas alone does not establish qualifying foreign residence.",
     "annual": "The any-time range bounds the accounts read; it is not an exact daily aggregate. "
     "Individual account maxima can occur on different days.",

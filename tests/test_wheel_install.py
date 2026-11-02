@@ -46,7 +46,7 @@ from cross_border_fbar.synth.render import render_statement, static_font
 assert Path(cross_border_fbar.__file__).resolve().is_relative_to(Path(sys.argv[1]).resolve())
 loaded = rates.load(2025)
 assert {'KRW', 'EUR', 'THB'} <= set(loaded)
-assert len(phrases.reviewed('ko', phrases.current_phrases())) == 27
+assert set(phrases.drafts('ko', phrases.current_phrases())) == set(phrases.current_phrases())
 assert all(rate.record_date == '2025-12-31' and rate.source_url.startswith(rates.API_URL)
            for rate in loaded.values())
 font_names = ('NotoSans-VF.ttf', 'NotoSansKR-VF.ttf', 'NotoSansThai-VF.ttf')

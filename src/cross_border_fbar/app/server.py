@@ -1,4 +1,4 @@
-"""Local review app: the worksheet, its sources, and the CPA's sign-off. Standard library only.
+"""Local review app: the worksheet, its sources, and the preparer's sign-off. Standard library only.
 
     python -m cross_border_fbar.app --set out/synth --readings results/muse-spark-1.3_synth.json
 
@@ -20,7 +20,7 @@ from .worksheet import Inputs
 
 STATIC = Path(__file__).parent / "static"
 FONTS_DIR = (Path(__file__).resolve().parents[1] / "fonts").resolve()
-PHRASES_PROMPT = (Path(__file__).parent / "prompts" / "client_phrases_v3.md").read_text()
+PHRASES_PROMPT = (Path(__file__).parent / "prompts" / "client_phrases_v4.md").read_text()
 SUMMARY_MODEL = "muse-spark-1.3"
 
 
@@ -51,7 +51,7 @@ def translate_phrases(phrases: dict, language: str, fresh: bool = False) -> tupl
         translations = None
     meta = {
         "model": SUMMARY_MODEL,
-        "prompt": "client_phrases_v3",
+        "prompt": "client_phrases_v4",
         "cost_usd": r.cost_usd,
         "replayed": r.replayed,
     }
@@ -168,10 +168,14 @@ class Handler(BaseHTTPRequestHandler):
             "/api/interest": lambda: review.set_financial_interest(
                 body["account"], body["value"], str(body.get("note", "")), who
             ),
+            "/api/value": lambda: review.correct_value(
+                body["upload"], body["field"], body["value"], str(body.get("note", "")), who
+            ),
+            "/api/value/remove": lambda: review.remove_value_correction(body["upload"], body["field"], who),
             "/api/signoff": lambda: review.sign_off(who, str(body.get("initials", ""))),
             "/api/summary/draft": lambda: review.draft_summary(translate_phrases),
             "/api/summary/approve": lambda: review.approve_summary(
-                who, body.get("confirm_unreviewed") is True
+                who, body.get("confirm_unreviewed") is True, body.get("release", "ko")
             ),
         }
         return actions.get(self.path)

@@ -12,7 +12,7 @@
  "summary": {
   "all": {
    "pages": 49,
-   "fields_value_ok": "243/294",
+   "fields_value_ok": "244/294",
    "fields_centre_in_cell": "270/283",
    "rows_returned": "280/280",
    "extra_rows": 0,
@@ -88,7 +88,7 @@
    },
    "th": {
     "pages": 12,
-    "fields_value_ok": "65/72",
+    "fields_value_ok": "66/72",
     "fields_centre_in_cell": "65/72",
     "rows_returned": "7/7",
     "extra_rows": 0,
@@ -16356,7 +16356,7 @@
      "want": "ธนาคารสยามโลตัส",
      "got": "Siam Lotus Bank",
      "status": "read",
-     "value_ok": false,
+     "value_ok": true,
      "centre_in_cell": true,
      "iou_text": 0.172
     },

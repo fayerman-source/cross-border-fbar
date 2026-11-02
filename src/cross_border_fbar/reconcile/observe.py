@@ -56,7 +56,7 @@ def parse_period(text: str) -> tuple[date | None, date | None]:
     return start, end
 
 
-def _signed(row: dict) -> Decimal | None:
+def signed_amount(row: dict) -> Decimal | None:
     amount = parse_amount(row["amount_text"])
     if amount is None or row["amount_column"] == "signed":
         return amount
@@ -92,7 +92,7 @@ def observe(reading: dict, upload: str, snapped: dict | None = None) -> Observat
             Line(
                 i,
                 _row_date(row["date_text"], start, end),
-                _signed(row),
+                signed_amount(row),
                 parse_amount(row["balance_text"]),
                 row["description"],
                 src,

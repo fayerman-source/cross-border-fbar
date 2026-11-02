@@ -1,11 +1,11 @@
-"""The CPA's review: acknowledgements, ownership corrections, sign-off, client summary; all audited.
+"""The preparer's review: acknowledgements, corrections, sign-off, client summary; all audited.
 
 Rules the review enforces:
 - Every review flag must be acknowledged, with a note, before sign-off.
 - After sign-off the worksheet is frozen: corrections and acknowledgements are refused, and the
   signed fingerprint is recorded. Export and the client summary exist only after sign-off.
 - The client-language summary is generated from the signed figures only, checked against the
-  scope line, and released only when the CPA approves it.
+  scope line, and released only when the preparer approves it.
 """
 
 from __future__ import annotations
@@ -20,10 +20,12 @@ from pathlib import Path
 
 from babel.numbers import format_currency
 
+from ..extract.parse import parse_typed_amount
+from ..reconcile.corrections import as_read, correction_key, line_as_read
 from ..reconcile.flags import CATALOG
 from . import phrases as phrase_tables
 from .phrases import LANGUAGES
-from .worksheet import Inputs, build, worksheet_hash
+from .worksheet import Inputs, build, page_readings, readings_view, worksheet_hash
 
 OWNERSHIPS = ("sole", "joint", "signature_authority")
 # The client summary is assembled from a fixed table of phrases, translated, plus the signed figures; the
@@ -38,7 +40,7 @@ OUT_OF_SCOPE = re.compile(
 
 # The summary's own words. Every line of the note is built from these and CLIENT_LABELS.
 SUMMARY_PHRASES = {
-    "heading": "What your CPA reviewed",
+    "heading": "What your tax preparer reviewed",
     "account_ending": "account ending",
     "highest_balance": "highest observed balance",
     "reviewed": "Items reviewed",
@@ -48,7 +50,7 @@ SUMMARY_PHRASES = {
     "excluded_items": "Items left out of the totals",
 }
 
-# Client-facing descriptions of review items; the model translates these, never the CPA's notes.
+# Client-facing descriptions of review items; the model translates these, never the preparer's notes.
 CLIENT_LABELS = {
     code: definition.client_phrase
     for code, definition in CATALOG.items()
@@ -77,7 +79,8 @@ def _translation_problem(phrases: dict, got) -> str | None:
     return None
 
 
-def _assemble(facts: dict, t: dict) -> str:
+def _assemble(facts: dict, t: dict) -> list[str]:
+    """The note's lines. Each language runs this same code over the same facts, so its lines correspond."""
     lines = [t["heading"]]
     for a in facts["accounts"]:
         head = f"{a['bank'] or t['bank_not_named']} · {t['account_ending']} {a['account_ending']}"
@@ -90,7 +93,7 @@ def _assemble(facts: dict, t: dict) -> str:
         lines += [head, f"  {t['reviewed']}: " + "; ".join(items)]
     if facts["excluded_items"]:
         lines.append(t["excluded_items"] + ": " + "; ".join(t[c] for c in facts["excluded_items"]))
-    return "\n".join(lines)
+    return lines
 
 
 def _money(amount: str | int | None, currency: str | None, language: str = "en_US") -> str | None:
@@ -111,6 +114,16 @@ def confined(path: Path, root: Path) -> Path:
 
 class ReviewError(Exception):
     pass
+
+
+def _still_applies(correction: dict, pages: dict) -> bool:
+    page = pages.get(correction["upload"])
+    field = correction["field"]
+    return (
+        page is not None
+        and as_read(page, field) == correction["read"]
+        and line_as_read(page, field) == correction["line"]
+    )
 
 
 def _account_context(value, key, path="worksheet"):
@@ -150,6 +163,8 @@ class Review:
         self.state.setdefault("currencies", {})
         self.state.setdefault("interest", {})
         self.state.setdefault("ownership_details", {})
+        self.state.setdefault("value_corrections", {})
+        self._retire_stale_value_corrections()
         self.worksheet = self._build()
         self._revalidate_signoff()
 
@@ -161,7 +176,26 @@ class Review:
             currency_overrides=self.state["currencies"],
             interest_overrides=self.state["interest"],
             ownership_details=self.state["ownership_details"],
+            value_corrections=self.state["value_corrections"],
         )
+
+    def _retire_stale_value_corrections(self) -> None:
+        """A correction says what was read, on which row, and what it should be. If the readings changed so
+        the page no longer reads that way, it no longer applies: keep it on record, stop applying it, and
+        say so."""
+        corrections = self.state["value_corrections"]
+        pages = page_readings(self.inputs) if corrections else {}
+        stale = [key for key, correction in corrections.items() if not _still_applies(correction, pages)]
+        for key in stale:
+            correction = corrections.pop(key)
+            self.state.setdefault("stale_value_corrections", []).append(correction)
+            self._audit(
+                "value_correction_stale",
+                "system",
+                upload=correction["upload"],
+                field=correction["field"],
+                reason="the reading changed after the correction",
+            )
 
     def _revalidate_signoff(self) -> None:
         """A sign-off covers the figures it fingerprinted. If the readings or intake changed since,
@@ -188,7 +222,9 @@ class Review:
         panel = self.worksheet["form8938"]
         # Exclude only account containers and aggregate results; new shared fields count by default.
         shared = {
-            k: v for k, v in self.worksheet.items() if k not in {"accounts", "flags", "totals", "form8938"}
+            k: v
+            for k, v in self.worksheet.items()
+            if k not in {"accounts", "flags", "value_corrections", "totals", "form8938"}
         }
         shared_panel = {
             k: v
@@ -299,6 +335,7 @@ class Review:
             "open_review_flags": self.open_review_flags(),
             "remaining_review_items": self.remaining_review_items() if self.state["signoff"] else [],
             "open_determinations": self.open_determinations() if self.state["signoff"] else [],
+            "page_readings": readings_view(self.inputs, self.state["value_corrections"]),
             "audit": self.audit_tail(40),
         }
 
@@ -465,6 +502,71 @@ class Review:
                 note=note.strip(),
             )
 
+    def _value_as_read(self, upload, field) -> tuple[dict, dict | None]:
+        page = page_readings(self.inputs).get(upload) if isinstance(upload, str) else None
+        read = as_read(page, field) if page is not None and isinstance(field, str) else None
+        if read is None:
+            raise ReviewError("That value isn't on a page of this worksheet.")
+        return read, line_as_read(page, field)
+
+    def correct_value(self, upload: str, field: str, value: str, note: str, reviewer: str) -> None:
+        """Correct a misread amount or balance. The reading stays as it was; the correction sits beside it,
+        and reconciliation runs on the corrected value."""
+        with self.lock:
+            self._require_open()
+            read, line = self._value_as_read(upload, field)
+            if not note.strip():
+                raise ReviewError("Record where the corrected figure comes from.")
+            text = str(value).strip()
+            corrected = parse_typed_amount(text)
+            if corrected is None:
+                raise ReviewError("Enter the figure as printed, such as 1,234.56 or 1.234,56.")
+            if read["value"] is not None and corrected == Decimal(read["value"]):
+                raise ReviewError("That is the value as read. Remove the correction instead.")
+            key = correction_key(upload, field)
+            before = self.state["value_corrections"].get(key, read)["value"]
+            self.state["value_corrections"][key] = {
+                "upload": upload,
+                "field": field,
+                "read": read,
+                "line": line,
+                "text": text,
+                "value": str(corrected),
+                "note": note.strip(),
+                "reviewer": reviewer,
+                "ts": time.time(),
+            }
+            self.worksheet = self._build()
+            self._audit(
+                "correct_value",
+                reviewer,
+                upload=upload,
+                field=field,
+                original=read,
+                before=before,
+                after=str(corrected),
+                note=note.strip(),
+            )
+
+    def remove_value_correction(self, upload: str, field: str, reviewer: str) -> None:
+        with self.lock:
+            self._require_open()
+            correction = None
+            if isinstance(upload, str) and isinstance(field, str):
+                correction = self.state["value_corrections"].pop(correction_key(upload, field), None)
+            if correction is None:
+                raise ReviewError("That value has no correction to remove.")
+            self.worksheet = self._build()
+            self._audit(
+                "remove_value_correction",
+                reviewer,
+                upload=upload,
+                field=field,
+                original=correction["read"],
+                before=correction["value"],
+                after=correction["read"]["value"],
+            )
+
     def sign_off(self, reviewer: str, initials: str) -> None:
         with self.lock:
             self._require_open()
@@ -498,6 +600,7 @@ class Review:
             "remaining_review_items": self.remaining_review_items(),
             "open_determinations": self.open_determinations(),
             "corrections": self.state["overrides"],
+            "client_summary": self.state["summary"],
             "audit": self.audit_tail(10_000),
         }
 
@@ -505,7 +608,7 @@ class Review:
     def summary_facts(self, language: str = "en_US") -> dict:
         """Only the signed figures, formatted, with plain descriptions of what was reviewed.
 
-        The CPA's acknowledgement notes are internal working-paper notes and are not passed on;
+        The preparer's acknowledgement notes are internal working-paper notes and are not passed on;
         account numbers are reduced to their last four digits; statement contents are not included.
         """
         ws = self.worksheet
@@ -548,10 +651,12 @@ class Review:
     def draft_summary(self, translate, language: str = "ko") -> dict:
         """translate(phrases, language, fresh) -> (translations, meta). Runs only after sign-off.
 
-        The note is assembled from fixed phrases and the signed figures. Phrases come from the language's
-        reviewed table; only phrases missing from it are sent to the model, and the draft lists them as
-        unreviewed. A translation that adds keys, digits, line breaks or out-of-scope words holds the draft
-        back. A redraft asks for a fresh translation, so a held draft can't be replayed."""
+        The note is assembled from fixed phrases and the signed figures, in English and in the client's
+        language, line for line. English is the phrases themselves, so it needs no translation or review.
+        The other language's phrases come from its reviewed table; only phrases missing from it are sent to
+        the model, and the draft lists them as unreviewed. A translation that adds keys, digits, line breaks
+        or out-of-scope words, or that can't be produced, holds that language back; English stays available.
+        A redraft asks for a fresh translation, so a held draft can't be replayed."""
         if not self.state["signoff"]:
             raise ReviewError("Sign off before drafting the client summary.")
         if language not in LANGUAGES:
@@ -566,17 +671,25 @@ class Review:
         missing = {k: v for k, v in phrases.items() if k not in known and k not in catalog_drafts}
         meta, problem, new = {"model": None, "source": f"gettext catalog ({language})"}, None, {}
         if missing:
-            new, meta = translate(missing, LANGUAGES[language], fresh=self.state["summary"] is not None)
-            problem = _translation_problem(missing, new)
+            try:
+                new, meta = translate(missing, LANGUAGES[language], fresh=self.state["summary"] is not None)
+                problem = _translation_problem(missing, new)
+            except RuntimeError as e:  # no key, spend cap or a failed call: English doesn't depend on it
+                problem = f"couldn't be produced: {e}"
             if problem:
                 new = {}
         unreviewed = {**catalog_drafts, **new}
         if not problem:
             problem = _translation_problem(phrases, {**known, **unreviewed})
+        english = _assemble(self.summary_facts("en_US"), phrases)
+        translated = [None] * len(english) if problem else _assemble(facts, {**known, **unreviewed})
         self.state["summary"] = {
-            "text": None if problem else _assemble(facts, {**known, **unreviewed}),
+            "text": None if problem else "\n".join(translated),
+            "text_en": "\n".join(english),
+            "lines": [{"en": en, language: text} for en, text in zip(english, translated, strict=True)],
             "language": language,
             "unreviewed": unreviewed if not problem else {},
+            "unreviewed_en": {k: phrases[k] for k in unreviewed} if not problem else {},
             "meta": meta,
             "approved": None,
             "blocked": problem,
@@ -590,19 +703,33 @@ class Review:
         )
         return self.state["summary"]
 
-    def approve_summary(self, reviewer: str, confirm_unreviewed: bool = False) -> None:
-        """Phrases translated for this draft, not taken from a reviewed table, are approved only when the
-        CPA confirms them; they are listed in the draft and recorded with the approval."""
+    def approve_summary(self, reviewer: str, confirm_unreviewed: bool = False, release: str = "ko") -> None:
+        """release is what the client gets: the client's language, English or both.
+
+        Phrases translated for this draft, not taken from a reviewed table, are approved only when the
+        preparer confirms them; they are listed in the draft and recorded with the approval. An English note
+        has no translation to hold back or confirm."""
         with self.lock:
             s = self.state["summary"]
             if not s:
                 raise ReviewError("Draft the summary first.")
-            if s["blocked"]:
+            if release not in (s["language"], "en", "both"):
+                raise ReviewError(f"Choose what the client gets: {s['language']}, en or both.")
+            needs_translation = release != "en"
+            if needs_translation and s["blocked"]:
                 raise ReviewError(f"This draft can't be released: it {s['blocked']}. Draft it again.")
-            if s["unreviewed"] and not confirm_unreviewed:
+            if needs_translation and s["unreviewed"] and not confirm_unreviewed:
                 raise ReviewError(
                     f"{len(s['unreviewed'])} phrases were translated for this draft and haven't been "
                     "reviewed. Read them and confirm to approve."
                 )
-            s["approved"] = {"reviewer": reviewer, "ts": time.strftime("%Y-%m-%d %H:%M")}
-            self._audit("approve_summary", reviewer, confirmed_unreviewed=sorted(s["unreviewed"]))
+            confirmed = sorted(s["unreviewed"]) if needs_translation else []
+            released = {"en": [s["text_en"]], "both": [s["text"], s["text_en"]]}.get(release, [s["text"]])
+            s["approved"] = {
+                "reviewer": reviewer,
+                "ts": time.strftime("%Y-%m-%d %H:%M"),
+                "release": release,
+                "confirmed_unreviewed": confirmed,
+                "client_text": "\n\n".join(released),
+            }
+            self._audit("approve_summary", reviewer, release=release, confirmed_unreviewed=confirmed)
