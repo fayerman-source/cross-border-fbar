@@ -1,6 +1,6 @@
 # cross-border-fbar
 
-I am a licensed attorney who works with U.S. tax preparers. For this hackathon, I asked a practical question: could a tool take on the tedious statement review without taking away control over the numbers? This tool was my answer. I built it for preparers serving U.S. expats and immigrants with foreign bank accounts. It helps a Certified Public Accountant (CPA) or enrolled agent (EA) automate reading bank statements and identifying each account's highest balance of the year. The preparer reviews and signs off on those numbers. Each number links to its source page in the bank statement for **one-click verification**.
+As a licensed attorney who works with U.S. tax preparers, I had a practical question for this hackathon: could a tool take on the tedious statement review without taking away control over the numbers? This tool was my answer. Built for preparers serving U.S. expats and immigrants with foreign bank accounts, it helps a Certified Public Accountant (CPA) or enrolled agent (EA) automate reading bank statements and identifying each account's highest balance of the year. The preparer reviews and signs off on those numbers. Each number links to its source page in the bank statement for **one-click verification**.
 
 ## The problem it solves
 
