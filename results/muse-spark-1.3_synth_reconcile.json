@@ -9,14 +9,16 @@
    "true_positive": 9,
    "false_positive": 0,
    "missed": 0,
-   "raised_by_misreads": 0
+   "raised_by_misreads": 0,
+   "raised_by_printed_name_choice": 0
   },
   "review_burden": {
    "review_items_total": 6,
    "expected_review_items_matched": 6,
    "additional_review_items": 0,
+   "additional_items_from_printed_name_choice": 0,
    "additional_items_linked_to_header_misreads": 0,
-   "additional_items_without_header_misread_link": 0
+   "additional_items_other": 0
   },
   "aggregate_usd": {
    "got": 373618,
@@ -42,7 +44,8 @@
    "flags_missed": [],
    "flags_extra": [],
    "unscored_review_flags": [],
-   "flags_from_misreads": {}
+   "flags_from_misreads": {},
+   "flags_from_printed_name_choice": {}
   },
   {
    "account_id": "kr-parents",
@@ -61,7 +64,8 @@
    "flags_missed": [],
    "flags_extra": [],
    "unscored_review_flags": [],
-   "flags_from_misreads": {}
+   "flags_from_misreads": {},
+   "flags_from_printed_name_choice": {}
   },
   {
    "account_id": "de-joint",
@@ -80,7 +84,8 @@
    "flags_missed": [],
    "flags_extra": [],
    "unscored_review_flags": [],
-   "flags_from_misreads": {}
+   "flags_from_misreads": {},
+   "flags_from_printed_name_choice": {}
   },
   {
    "account_id": "th-savings",
@@ -99,7 +104,8 @@
    "flags_missed": [],
    "flags_extra": [],
    "unscored_review_flags": [],
-   "flags_from_misreads": {}
+   "flags_from_misreads": {},
+   "flags_from_printed_name_choice": {}
   },
   {
    "account_id": "kr-mmda",
@@ -118,7 +124,8 @@
    "flags_missed": [],
    "flags_extra": [],
    "unscored_review_flags": [],
-   "flags_from_misreads": {}
+   "flags_from_misreads": {},
+   "flags_from_printed_name_choice": {}
   },
   {
    "account_id": "masked-checking",
@@ -137,7 +144,8 @@
    "flags_missed": [],
    "flags_extra": [],
    "unscored_review_flags": [],
-   "flags_from_misreads": {}
+   "flags_from_misreads": {},
+   "flags_from_printed_name_choice": {}
   }
  ]
 }

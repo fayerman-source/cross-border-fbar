@@ -14,17 +14,9 @@ from cross_border_fbar.app import phrases as phrase_tables
 from cross_border_fbar.app.review import CLIENT_LABELS, SUMMARY_PHRASES, Review, ReviewError
 from cross_border_fbar.app.server import make_handler
 from cross_border_fbar.app.worksheet import Inputs, build, worksheet_hash
-from cross_border_fbar.synth.__main__ import generate
 
 REPO = Path(__file__).resolve().parents[1]
 READINGS = REPO / "results" / "muse-spark-1.3_synth.json"
-
-
-@pytest.fixture(scope="module")
-def inputs(tmp_path_factory) -> Inputs:
-    out = tmp_path_factory.mktemp("synth")
-    generate(out, 2025, png=True, dpi=150, threshold_usd=1000)
-    return Inputs(out, READINGS, out / "intake.json")
 
 
 @pytest.fixture

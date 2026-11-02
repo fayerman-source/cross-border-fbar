@@ -6,7 +6,7 @@ Reads the page readings saved by the extraction eval (results/<model>_<set>.json
 re-snaps their boxes from the page images, reconciles them with intake facts,
 and scores each account's maximum, its source statement, its USD value and its
 flags. Intake (ownership) comes from the answer key here; in the product it
-comes from the client call or the CPA.
+comes from the client call or the preparer.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from ..reconcile.accounts import reconcile
 from ..reconcile.fbar import fbar_totals
 from ..reconcile.intake import IntakeDocument
 from ..reconcile.observe import observe
+from .score import printed_bank_names, reads_printed_name
 
 RESULTS = Path(__file__).resolve().parents[3] / "results"
 SCORED_CODES = {
@@ -37,10 +38,17 @@ SCORED_CODES = {
     "account_number_masked",
 }
 
-# Review flags that follow from a field read differently on some pages. When one of the flag's own source
-# pages has that field scored as misread, the tool was right to raise it: it is counted as raised by a
-# misread, not as a false positive.
+# Review flags that follow from a field read differently on some pages. For the workload numbers, a flag is
+# linked to a misread when one of its own source pages has that field scored as misread.
 FIELD_OF_FLAG = {"institution_names_differ": "institution", "currency_conflict": "currency"}
+
+# A currency flag whose source page is misread was right to be raised: it counts as raised by a misread, not
+# as a false positive.
+EXCUSED_BY_MISREAD = {"currency_conflict"}
+
+# A bank-name flag is judged against what the pages print. Choosing different printed names on different
+# pages is a real review item and is counted as that. A name a page doesn't print is a false positive.
+NAME_FLAG = "institution_names_differ"
 
 
 def _expected_identity(flag):
@@ -75,12 +83,22 @@ def _linked_header_misread(flag, misread, upload_to_statement):
     )
 
 
-def _review_burden(results, truth_accounts, misread, upload_to_statement):
+def _only_printed_names(result, read_names, printed_names):
+    """Every bank name read for this account is printed on the page it was read from."""
+    return all(
+        reads_printed_name(read_names[upload], printed_names[upload])
+        for upload in result.uploads
+        if read_names.get(upload)
+    )
+
+
+def _review_burden(results, truth_accounts, misread, upload_to_statement, name_choices=()):
     """Count actual review items, including duplicates and unrecognized accounts.
 
     An expected review flag matches one actual flag with the same account, code and month.
     Remaining review flags are additional work, not necessarily false positives: they can
-    reflect reader errors or sensible review of uncertainty not modeled by the answer key.
+    reflect reader errors, the reader choosing between names a page prints (name_choices),
+    or sensible review of uncertainty not modeled by the answer key.
     """
     expected = {
         account_key(account["account_number"]): Counter(
@@ -97,20 +115,23 @@ def _review_burden(results, truth_accounts, misread, upload_to_statement):
             matched += 1
         else:
             additional.append(flag)
-    linked = sum(_linked_header_misread(flag, misread, upload_to_statement) for flag in additional)
+    chosen = [flag for flag in additional if flag in name_choices]
+    others = [flag for flag in additional if flag not in name_choices]
+    linked = sum(_linked_header_misread(flag, misread, upload_to_statement) for flag in others)
     return {
         "review_items_total": len(items),
         "expected_review_items_matched": matched,
         "additional_review_items": len(additional),
+        "additional_items_from_printed_name_choice": len(chosen),
         "additional_items_linked_to_header_misreads": linked,
-        "additional_items_without_header_misread_link": len(additional) - linked,
+        "additional_items_other": len(others) - linked,
     }
 
 
 def evaluate(set_dir: Path, model: str) -> dict:
     truth = json.loads((set_dir / "truth.json").read_text())
     extraction = json.loads((RESULTS / f"{model}_{set_dir.name}.json").read_text())
-    upload_to_statement = {}
+    upload_to_statement, read_names, printed_names = {}, {}, {}
     observations = []
     misread = {
         (page["statement_id"], name)
@@ -125,10 +146,14 @@ def evaluate(set_dir: Path, model: str) -> dict:
         image = set_dir / page_image["file"]
         upload = page_image["file"]  # an upload name per page; reconciliation never parses it
         upload_to_statement[upload] = st["statement_id"]
+        bank = st["fields"].get("institution")
+        printed_names[upload] = printed_bank_names(bank) if bank else []
         if "reading" not in page:
             unread[upload] = str(page.get("error") or "no reading for this page")
             continue
-        observations.append(observe(page["reading"], upload, snap_rows(page["reading"], image)))
+        observation = observe(page["reading"], upload, snap_rows(page["reading"], image))
+        read_names[upload] = observation.institution
+        observations.append(observation)
 
     intake = IntakeDocument.from_dict({"accounts": truth["accounts"]}).accounts
     results = reconcile(
@@ -140,6 +165,12 @@ def evaluate(set_dir: Path, model: str) -> dict:
         unread,
     )
     by_key = {r.account_key: r for r in results}
+    name_choices = [
+        f
+        for r in results
+        for f in r.flags
+        if f.code == NAME_FLAG and _only_printed_names(r, read_names, printed_names)
+    ]
 
     accounts, tp, fp, fn = [], 0, 0, 0
     for acct in truth["accounts"]:
@@ -148,25 +179,23 @@ def evaluate(set_dir: Path, model: str) -> dict:
             r = None  # a row for an intake account with no page read: the documents didn't find it
         want_max = acct["max_value"]
         want_flags = _expected_flags(acct)
+        unexpected = [f for f in (r.flags if r else []) if f.code not in {c for c, _ in want_flags}]
         from_misreads = {
             f.code: sorted({upload_to_statement[src.upload] for src in f.sources})
-            for f in (r.flags if r else [])
-            if f.code in FIELD_OF_FLAG
-            and f.code not in {c for c, _ in want_flags}
+            for f in unexpected
+            if f.code in EXCUSED_BY_MISREAD
             and any((upload_to_statement[src.upload], FIELD_OF_FLAG[f.code]) in misread for src in f.sources)
         }
+        from_name_choice = {
+            f.code: sorted({upload_to_statement[src.upload] for src in f.sources})
+            for f in unexpected
+            if f in name_choices
+        }
+        explained = set(from_misreads) | set(from_name_choice)
         got_flags = (
-            {f for f in _got_flags(r) if f[0] in SCORED_CODES and f[0] not in from_misreads} if r else set()
+            {f for f in _got_flags(r) if f[0] in SCORED_CODES and f[0] not in explained} if r else set()
         )
-        extra_review = (
-            sorted(
-                {f.code for f in r.flags if f.severity == "review"}
-                - {c for c, _ in want_flags}
-                - set(from_misreads)
-            )
-            if r
-            else []
-        )
+        extra_review = sorted({f.code for f in unexpected if f.severity == "review"} - explained)
         tp += len(want_flags & got_flags)
         fp += len(got_flags - want_flags)
         fn += len(want_flags - got_flags)
@@ -200,6 +229,7 @@ def evaluate(set_dir: Path, model: str) -> dict:
                 "flags_extra": sorted(got_flags - want_flags),
                 "unscored_review_flags": extra_review,
                 "flags_from_misreads": from_misreads,
+                "flags_from_printed_name_choice": from_name_choice,
             }
         )
 
@@ -217,8 +247,13 @@ def evaluate(set_dir: Path, model: str) -> dict:
                 "false_positive": fp,
                 "missed": fn,
                 "raised_by_misreads": sum(len(a["flags_from_misreads"]) for a in accounts),
+                "raised_by_printed_name_choice": sum(
+                    len(a["flags_from_printed_name_choice"]) for a in accounts
+                ),
             },
-            "review_burden": _review_burden(results, truth["accounts"], misread, upload_to_statement),
+            "review_burden": _review_burden(
+                results, truth["accounts"], misread, upload_to_statement, name_choices
+            ),
             "aggregate_usd": {
                 "got": totals.aggregate_max_usd,
                 "want": truth["household"]["aggregate_max_usd"],
@@ -229,6 +264,18 @@ def evaluate(set_dir: Path, model: str) -> dict:
         },
         "accounts": accounts,
     }
+
+
+def passes(result: dict) -> bool:
+    """The clean synthetic set must reconcile exactly; CI fails on anything less."""
+    s = result["summary"]
+    perfect = all(
+        not (a["flags_missed"] or a["flags_extra"] or a["unscored_review_flags"])
+        and a["max_ok"]
+        and a["usd_ok"]
+        for a in result["accounts"]
+    )
+    return perfect and not s["extra_accounts"] and s["aggregate_usd"]["got"] == s["aggregate_usd"]["want"]
 
 
 def main() -> None:
@@ -244,14 +291,7 @@ def main() -> None:
         if acct["flags_missed"] or acct["flags_extra"] or acct["unscored_review_flags"] or not acct["usd_ok"]:
             print("ISSUE", json.dumps(acct, ensure_ascii=False))
     print(f"wrote {out}")
-    s = result["summary"]
-    perfect = all(
-        not (a["flags_missed"] or a["flags_extra"] or a["unscored_review_flags"])
-        and a["max_ok"]
-        and a["usd_ok"]
-        for a in result["accounts"]
-    )
-    if not perfect or s["extra_accounts"] or s["aggregate_usd"]["got"] != s["aggregate_usd"]["want"]:
+    if not passes(result):
         raise SystemExit(1)  # a regression on the clean synthetic set fails CI
 
 
