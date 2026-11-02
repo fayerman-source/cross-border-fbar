@@ -310,7 +310,7 @@ def _named(observations, names):
 
 def test_different_printed_bank_names_go_to_review_with_a_page_for_each():
     """Codex on #6, four rounds: every name-matching rule merged two banks or split one. Names are not
-    matched; the CPA sees each printed name, its months and a page where it was printed."""
+    matched; the preparer sees each printed name, its months and a page where it was printed."""
     names = ["Rheinauen Privatbank"] * 6 + ["Bergwald Bank AG"] * 6
     (r,) = reconcile(_named(year_of(), names), SOLE, RATES, 2025)
     (f,) = [f for f in r.flags if f.code == "institution_names_differ"]

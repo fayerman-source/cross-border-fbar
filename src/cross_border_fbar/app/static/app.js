@@ -1,4 +1,4 @@
-// FBAR worksheet review: render the worksheet, trace any figure to its source line, record the CPA's review.
+// FBAR worksheet review: render the worksheet, trace any figure to its source line, record the preparer's review.
 
 const $ = (id) => document.getElementById(id);
 const DOC = window.DOC_BASE ?? "/doc/"; // where page images are served (a static snapshot overrides it)
@@ -469,7 +469,7 @@ function accountRow(a, signed) {
       others > 0 ? el("span", { class: "corrected" }, `${plural(others, direct ? "other reading" : "reading")} on this account corrected by reviewer`) : null),
     el("td", { class: "num usd" }, el("span", { class: "amount" }, usd(a.max_usd)),
       a.rate && a.max_usd !== null ? el("span", { class: "rate" }, `@ ${a.rate} ${a.currency}/USD`) : null,
-      a.rate_basis === "cpa" ? el("span", { class: "sub" }, `CPA-recorded, ${a.rate_date}: ${a.rate_source}`) : null),
+      a.rate_basis === "cpa" ? el("span", { class: "sub" }, `Preparer-recorded, ${a.rate_date}: ${a.rate_source}`) : null),
   );
 }
 

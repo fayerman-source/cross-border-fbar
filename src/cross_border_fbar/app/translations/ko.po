@@ -29,11 +29,13 @@ msgctxt "reviewed"
 msgid "Items reviewed"
 msgstr "검토 항목"
 
-# Reviewed by native Korean speaker on 2026-10-31.
+# Review note: 세무 대리인 replaces 공인회계사 because enrolled agents prepare returns too; needs the native reviewer.
+# | msgid "What your CPA reviewed"
 #. label: noun phrase, plural-safe, no semicolon
+#, fuzzy
 msgctxt "heading"
-msgid "What your CPA reviewed"
-msgstr "공인회계사가 검토한 항목"
+msgid "What your tax preparer reviewed"
+msgstr "세무 대리인이 검토한 항목"
 
 # Reviewed by native Korean speaker on 2026-10-31.
 #. label: noun phrase, plural-safe, no semicolon
@@ -78,8 +80,8 @@ msgid "days of the year that no statement covers"
 msgstr "거래명세서에서 확인되지 않는 날짜"
 
 # Reviewed by native Korean speaker on 2026-10-31.
+# | msgid "highest observed balance not determined"
 #. label: noun phrase, plural-safe, no semicolon
-#| msgid "highest observed balance not determined"
 msgctxt "balance_not_confirmed"
 msgid "highest balance could not be established from the documents read"
 msgstr "검토한 서류로는 최고 잔액을 확인할 수 없음"

@@ -119,7 +119,7 @@ def _by_printed_name(obs: list[Observation]) -> dict[str, list[Observation]]:
 
 
 def _institution_flag(by_name: dict[str, list[Observation]]) -> Flag | None:
-    """Different printed names go to the CPA for review, with the months and a page for each name."""
+    """Different printed names go to the preparer for review, with the months and a page for each name."""
     if len(by_name) < 2:
         return None
     parts, sources = [], []

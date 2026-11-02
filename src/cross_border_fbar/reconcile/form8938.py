@@ -16,7 +16,7 @@
   unknown. A threshold between the bounds is reported as such instead of picking a reading.
 
 Only accounts read from statements are included; other specified foreign financial assets are not. The
-CPA determines filing status, residence and every input here. Nothing here says whether anyone must file.
+preparer determines filing status, residence and every input here. Nothing here says whether anyone must file.
 """
 
 from __future__ import annotations

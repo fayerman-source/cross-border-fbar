@@ -1,11 +1,11 @@
-"""The CPA's review: acknowledgements, ownership corrections, sign-off, client summary; all audited.
+"""The preparer's review: acknowledgements, corrections, sign-off, client summary; all audited.
 
 Rules the review enforces:
 - Every review flag must be acknowledged, with a note, before sign-off.
 - After sign-off the worksheet is frozen: corrections and acknowledgements are refused, and the
   signed fingerprint is recorded. Export and the client summary exist only after sign-off.
 - The client-language summary is generated from the signed figures only, checked against the
-  scope line, and released only when the CPA approves it.
+  scope line, and released only when the preparer approves it.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ OUT_OF_SCOPE = re.compile(
 
 # The summary's own words. Every line of the note is built from these and CLIENT_LABELS.
 SUMMARY_PHRASES = {
-    "heading": "What your CPA reviewed",
+    "heading": "What your tax preparer reviewed",
     "account_ending": "account ending",
     "highest_balance": "highest observed balance",
     "reviewed": "Items reviewed",
@@ -50,7 +50,7 @@ SUMMARY_PHRASES = {
     "excluded_items": "Items left out of the totals",
 }
 
-# Client-facing descriptions of review items; the model translates these, never the CPA's notes.
+# Client-facing descriptions of review items; the model translates these, never the preparer's notes.
 CLIENT_LABELS = {
     code: definition.client_phrase
     for code, definition in CATALOG.items()
@@ -595,7 +595,7 @@ class Review:
     def summary_facts(self, language: str = "en_US") -> dict:
         """Only the signed figures, formatted, with plain descriptions of what was reviewed.
 
-        The CPA's acknowledgement notes are internal working-paper notes and are not passed on;
+        The preparer's acknowledgement notes are internal working-paper notes and are not passed on;
         account numbers are reduced to their last four digits; statement contents are not included.
         """
         ws = self.worksheet
@@ -682,7 +682,7 @@ class Review:
 
     def approve_summary(self, reviewer: str, confirm_unreviewed: bool = False) -> None:
         """Phrases translated for this draft, not taken from a reviewed table, are approved only when the
-        CPA confirms them; they are listed in the draft and recorded with the approval."""
+        preparer confirms them; they are listed in the draft and recorded with the approval."""
         with self.lock:
             s = self.state["summary"]
             if not s:

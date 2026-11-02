@@ -74,7 +74,7 @@ def reviewed(language: str, phrases: dict[str, str]) -> dict[str, str]:
 
 
 def drafts(language: str, phrases: dict[str, str]) -> dict[str, str]:
-    """Current catalog text, including fuzzy drafts, which still requires CPA confirmation."""
+    """Current catalog text, including fuzzy drafts, which still requires the preparer's confirmation."""
     catalog = load(language)
     return {
         key: message.string
@@ -147,9 +147,10 @@ def printout(language: str) -> str:
         message = catalog.get(english, context=key)
         text = message.string if message else "[translation needed]"
         status = "reviewed" if key in known else "UNREVIEWED"
-        lines += [f"{n}. {key} ({status}, noun phrase)", f"   {english} | {text}", ""]
+        lines += [f"{n}. {key} ({status}, noun phrase)", f"   {english} | {text}"]
         if message:
             lines.extend(f"   {note}" for note in message.user_comments if note.startswith("Review note:"))
+        lines.append("")
     return "\n".join(lines)
 
 

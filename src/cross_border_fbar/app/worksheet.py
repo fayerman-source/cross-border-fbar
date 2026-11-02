@@ -1,4 +1,4 @@
-"""Build the reviewable FBAR worksheet from page readings, intake facts and the CPA's corrections.
+"""Build the reviewable FBAR worksheet from page readings, intake facts and the preparer's corrections.
 
 Everything here is derived: model readings (recorded) go through observe -> snap -> reconcile.
 The answer key is never read. Each number and flag carries its sources, so the UI can show
@@ -32,7 +32,9 @@ from ..reconcile.intake import IntakeDocument
 from ..reconcile.observe import Source, observe
 from .form8938 import build_panel
 
-SCOPE_LINE = "Balances, thresholds and review flags only. Not tax advice; every flag needs a CPA's review."
+SCOPE_LINE = (
+    "Balances, thresholds and review flags only. Not tax advice; every flag needs a preparer's review."
+)
 
 
 @dataclass
@@ -386,7 +388,7 @@ def _account(
 
 
 def worksheet_hash(ws: dict) -> str:
-    """Fingerprint of what the CPA signs: the whole worksheet. Review state lives outside it, so no field
+    """Fingerprint of what the preparer signs: the whole worksheet. Review state lives outside it, so no field
     is left out of the signature by a list someone has to keep current."""
     return hashlib.sha256(json.dumps(ws, sort_keys=True, default=str).encode()).hexdigest()
 
