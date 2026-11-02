@@ -15,7 +15,7 @@ from cross_border_fbar.app.review import (
     ReviewError,
 )
 
-HEADING_DRAFT = "세무 대리인이 검토한 항목"
+HEADING = "세무대리인이 검토한 항목"
 
 
 @pytest.fixture(scope="module")
@@ -40,12 +40,22 @@ def no_model_or_key(monkeypatch):
     monkeypatch.setattr(socket, "create_connection", lambda *a, **k: pytest.fail("network was used"))
 
 
-def test_a_first_draft_needs_no_model_or_key_and_lists_the_unreviewed_catalog_draft(signed, no_model_or_key):
+def test_a_first_draft_needs_no_model_or_key_and_nothing_is_unreviewed(signed, no_model_or_key):
     draft = signed.draft_summary(no_call)
-    assert draft["unreviewed"] == {"heading": HEADING_DRAFT}
+    assert draft["unreviewed"] == {}
+    assert draft["meta"]["model"] is None
+    assert draft["text"].splitlines()[0] == HEADING
+    assert draft["text_en"].splitlines()[0] == "What your tax preparer reviewed"
+
+
+def test_a_draft_phrase_in_the_catalog_is_listed_without_a_model_call(
+    signed, heading_unreviewed, no_model_or_key
+):
+    draft = signed.draft_summary(no_call)
+    assert draft["unreviewed"] == {"heading": heading_unreviewed}
     assert draft["unreviewed_en"] == {"heading": "What your tax preparer reviewed"}
     assert draft["meta"]["model"] is None
-    assert draft["text"].splitlines()[0] == HEADING_DRAFT
+    assert draft["text"].splitlines()[0] == heading_unreviewed
     assert draft["text_en"].splitlines()[0] == "What your tax preparer reviewed"
 
 
@@ -108,7 +118,7 @@ def test_a_summary_survives_a_restart_with_both_versions_and_the_choice(signed):
 
 
 @pytest.mark.parametrize("release", ["ko", "both"])
-def test_unreviewed_korean_still_needs_confirmation(signed, release):
+def test_unreviewed_korean_still_needs_confirmation(signed, heading_unreviewed, release):
     signed.draft_summary(no_call)
     with pytest.raises(ReviewError, match="haven't been reviewed"):
         signed.approve_summary("A. Rivera", release=release)

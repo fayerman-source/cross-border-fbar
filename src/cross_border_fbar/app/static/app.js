@@ -463,7 +463,7 @@ function renderAudit() {
 
 function acctLabel(ws, key) {
   const a = ws.accounts.find((x) => x.key === key);
-  return a ? `${(a.institutions[a.institutions.length - 1] || "Bank not named")} · ${a.account_number}` : key;
+  return a ? `${(a.institutions[a.institutions.length - 1] || "Bank name not available")} · ${a.account_number}` : key;
 }
 
 function highestBalanceFigure(a) {
