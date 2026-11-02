@@ -37,7 +37,7 @@ jobs:
       - run: uv sync --locked
       - name: Portability and app tests
         run: uv run pytest -q tests/test_portability.py tests/test_llm.py tests/test_app.py tests/test_value_corrections.py tests/test_client_summary.py tests/test_korean_catalog.py
-      - name: README path: generate, reconcile from recorded readings, open the app
+      - name: "README path: generate, reconcile from recorded readings, open the app"
         shell: pwsh
         run: |
           uv run python -m cross_border_fbar.synth --out out/synth --png
