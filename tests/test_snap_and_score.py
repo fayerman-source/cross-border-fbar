@@ -3,7 +3,7 @@
 import pytest
 
 from cross_border_fbar.eval.score import score_page, summarize
-from cross_border_fbar.extract.snap import align_rows, snap_rows
+from cross_border_fbar.extract.snap import align_rows, snap_field, snap_fields, snap_rows
 from cross_border_fbar.synth.__main__ import FONTS, TAX_YEAR, rasterize
 from cross_border_fbar.synth.household import household
 from cross_border_fbar.synth.ledger import build_ledger, monthly_statements
@@ -154,3 +154,50 @@ def test_unprinted_fields_must_be_reported_absent_not_unreadable(page):
     assert _score_fields(view, reading)["holder"]["value_ok"] is False
     reading["holder"]["status"] = "absent"
     assert _score_fields(view, reading)["holder"]["value_ok"] is True
+
+
+def _field_mask(lines):
+    """A white page with black bars standing in for printed lines: (y0, y1, x0, x1) on the 0-1000 grid."""
+    from PIL import Image, ImageDraw
+
+    mask = Image.new("L", (1000, 1000), 0)
+    draw = ImageDraw.Draw(mask)
+    for y0, y1, x0, x1 in lines:
+        draw.rectangle((x0, y0, x1 - 1, y1 - 1), fill=255)
+    return mask
+
+
+def test_a_field_box_snaps_past_a_narrower_column_heading_to_its_value():
+    # A drifted box sits nearer the heading above the value. Only the value fills the box's columns.
+    mask = _field_mask([(235, 247, 880, 925), (263, 274, 851, 924)])
+    box = {"x_min": 850, "y_min": 249, "x_max": 929, "y_max": 261}
+    assert snap_field(box, mask) == {"x_min": 851, "y_min": 263, "x_max": 924, "y_max": 274}
+
+
+def test_a_field_box_abstains_between_two_lines_that_both_match():
+    mask = _field_mask([(240, 250, 850, 925), (270, 280, 850, 925)])
+    assert snap_field({"x_min": 850, "y_min": 255, "x_max": 925, "y_max": 265}, mask) is None
+
+
+def test_a_field_box_abstains_when_nothing_on_the_page_matches():
+    mask = _field_mask([(263, 274, 100, 160)])
+    assert snap_field({"x_min": 850, "y_min": 249, "x_max": 929, "y_max": 261}, mask) is None
+
+
+def test_recorded_opening_balance_highlight_lands_on_its_printed_line(inputs):
+    import json
+
+    from cross_border_fbar.extract.parse import parse_amount
+
+    truth = json.loads((inputs.set_dir / "truth.json").read_text(encoding="utf-8"))
+    want = next(s for s in truth["statements"] if s["statement_id"] == "th-savings_2025-01")
+    recorded = json.loads(inputs.readings.read_text(encoding="utf-8"))
+    page = next(p for p in recorded["pages"] if p["statement_id"] == "th-savings_2025-01")
+    reading = page["reading"]
+    assert parse_amount(reading["opening_balance"]["text"]) == parse_amount("412,350.25")
+    cell = want["fields"]["opening_balance"]["bbox"]
+    raw = reading["opening_balance"]["bbox"]
+    raw_centre = (raw["y_min"] + raw["y_max"]) / 2
+    assert not cell["y0"] <= raw_centre <= cell["y1"]  # the model's own box misses the line
+    box = snap_fields(reading, inputs.set_dir / want["page_images"][0]["file"])["opening_balance"]
+    assert box and cell["y0"] <= (box["y_min"] + box["y_max"]) / 2 <= cell["y1"]

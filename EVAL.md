@@ -21,7 +21,7 @@ Replay uses the model responses recorded in `recordings/`, keyed by a hash of th
   - A bank name counts if it is one or more of the names the page prints and nothing else. The renderer records those names as it draws them, so `Saebyeol Bank` is not accepted on a Korean page that doesn't print it. See [the answer-key change](#answer-key-change-nov-1-2026).
   - A box is "in the right row" if its centre falls inside the true row.
   - Box overlap (IoU) is measured against the tight box of the printed text.
-- **Snapping:** the model's row boxes drift vertically, by different amounts on different runs. `extract/snap.py` finds printed lines in the image alone, with no answer key. Its primary signal is the model's horizontal positions, which stay accurate. Each row's amount sits in a debit or credit column, so its true line has ink in that column and none in the other. When that pattern can't decide (one-column layouts), a fit-plus-anchor cost is used, and the code abstains rather than guess.
+- **Snapping:** the model's row boxes drift vertically, by different amounts on different runs. `extract/snap.py` finds printed lines in the image alone, with no answer key. Its primary signal is the model's horizontal positions, which stay accurate. Each row's amount sits in a debit or credit column, so its true line has ink in that column and none in the other. When that pattern can't decide (one-column layouts), a fit-plus-anchor cost is used, and the code abstains rather than guess. Header fields such as an opening balance are placed separately: the printed line must fill about the same columns as the model's box and lie within one line of it, and if two lines fit equally well, no highlight is drawn.
 - **Reviewer workload:** every actual review-severity flag is counted, including multiple items of the same type and flags on unmatched accounts. Each expected review item matches at most one actual flag for the same account, code, and month; unmatched actual review items are additional workload. Two subsets are reported separately and are already in that count: items raised because the reader chose different printed bank names across pages, and items linked to scored header-field misreads. The misread link covers mapped institution/currency flags and unreadable header fields; other items may still arise from misreads. Additional review items are not necessarily false positives. Matching by code and month cannot distinguish multiple causes represented by one flag, so this counts items on this test set and does not estimate time or cost.
 - **Reconciliation scoring:**
   - Per account: the maximum, the statement it came from, and its USD value. A value counts only if it matches the answer key exactly.
@@ -46,6 +46,8 @@ One recorded run per page; median latency is about 10 s per page. The 49 per-pag
 | Per-row account numbers (compiled list, including a masked one) | 280/280 |
 | Row box in the right row: raw → snapped | 177/280 → 278/280 |
 | Balance box IoU ≥ 0.5: raw → snapped | 33/212 → 182/212 |
+| Header field box in the right place: raw → snapped | 237/283 → 262/283 (2 wrong, 19 with no highlight) |
+| Opening and closing balance boxes, snapped | 84/94 (0 wrong, 10 with no highlight) |
 
 Two of the 280 rows don't count as snapped:
 - **One is a single-row Thai page.** One row gives no pattern to align, so snapping abstains, and the raw box was off.
@@ -83,6 +85,9 @@ Meta's open-weights model read the same 49 pages with the same prompt v3, on the
 | Header fields (strict: status must be "read") | 244/294 | 294/294 |
 | Row box in the right row, raw | 211/280 | 177/280 |
 | Row box in the right row, snapped | 244/280 | 278/280 |
+| Header field box in the right place, raw | 270/283 | 237/283 |
+| Header field box in the right place, snapped | 275/283 (1 wrong, 7 with no highlight) | 262/283 (2 wrong, 19 with no highlight) |
+| Opening and closing balance boxes, snapped | 93/94 (0 wrong, 1 with no highlight) | 84/94 (0 wrong, 10 with no highlight) |
 | Reconciliation: maximum / USD | 6/6 / 6/6 | 6/6 / 6/6 |
 | Reconciliation: flags | 9 correct, 0 false, 0 missed, 1 raised by a printed-name choice | 9 correct, 0 false, 0 missed |
 | Actual review workload | 7 items: 6 expected, 1 additional from a printed-name choice | 6 items: 6 expected, 0 additional |
@@ -122,7 +127,7 @@ Box placement changes from run to run, and snapping has had to change with it:
 - **Run 2:** 187/240 raw. The anchor rule snapped one page confidently onto the wrong lines; the column-pattern rule replaced it.
 - **Run 3 (prompt v3):** the model compressed row spacing on one German page by 16%. The fallback path's ±15% scale guard excluded the right alignment, so it snapped confidently wrong again. The guard is now ±35%, and the fallback must also sit near the model's rows.
 
-The current clean-run snapped result is 278/280; snapping was revised after inspecting failures and is in-sample. The capture test below did not score box placement.
+The current clean-run snapped result is 278/280; snapping was revised after inspecting failures and is in-sample. The header-field rule's thresholds were also chosen on these same pages. The capture test below did not score box placement.
 
 ## Physical capture test: Muse Spark (Oct 30, 2026)
 
@@ -150,7 +155,7 @@ No page corners were supplied: photo **and scan** box placement was not scored, 
 ## What these numbers do not show
 
 - **Small physical set.** Only three previously used synthetic pages were tested, each as a scan and a WhatsApp-forwarded photo. No new layouts were tested, and capture box placement was not scored.
-- **Snapping was revised after seeing failures.** The current clean-run result of 278/280 is in-sample.
+- **Snapping was revised after seeing failures.** The current clean-run result of 278/280 and the header-field counts are in-sample.
 - **One recorded run per model on the current clean set.** These are not repeated-run reliability estimates.
 - **No intentionally unreadable document fields in the clean set.** Expected absent fields are scored; abstention on unreadable input is not yet established.
 - **Same author.** The answer key and the reconciliation were written separately but by the same author, so a shared misunderstanding of the rules would not show up here.

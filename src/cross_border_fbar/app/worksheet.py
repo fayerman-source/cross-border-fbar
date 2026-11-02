@@ -17,7 +17,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from .. import rates
-from ..extract.snap import snap_rows
+from ..extract.snap import snap_reading
 from ..reconcile.accounts import AccountResult, Flag, Intake, reconcile, split_by_row_account
 from ..reconcile.corrections import (
     BALANCE_FIELDS,
@@ -143,9 +143,9 @@ def readings_view(inp: Inputs, corrections: dict) -> dict:
 def _snapped(inp: Inputs, reading: dict, image: Path) -> dict | None:
     """Snapping depends only on the reading as returned and the page image, never on corrections."""
     if inp.snap_cache is None:
-        return snap_rows(reading, image)
+        return snap_reading(reading, image)
     if image not in inp.snap_cache:
-        inp.snap_cache[image] = snap_rows(reading, image)
+        inp.snap_cache[image] = snap_reading(reading, image)
     return copy.deepcopy(inp.snap_cache[image])
 
 
