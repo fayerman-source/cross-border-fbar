@@ -36,3 +36,4 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["committed_catalog: use the committed Korean catalog as it is, not a copy marked reviewed"]

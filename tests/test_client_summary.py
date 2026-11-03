@@ -15,7 +15,7 @@ from cross_border_fbar.app.review import (
     ReviewError,
 )
 
-HEADING = "세무대리인이 검토한 항목"
+HEADING = phrase_tables.drafts("ko", phrase_tables.current_phrases())["heading"]
 
 
 @pytest.fixture(scope="module")

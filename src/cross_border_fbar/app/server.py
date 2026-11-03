@@ -22,7 +22,7 @@ from .worksheet import Inputs
 
 STATIC = Path(__file__).parent / "static"
 FONTS_DIR = (Path(__file__).resolve().parents[1] / "fonts").resolve()
-PHRASES_PROMPT = (Path(__file__).parent / "prompts" / "client_phrases_v4.md").read_text(encoding="utf-8")
+PHRASES_PROMPT = (Path(__file__).parent / "prompts" / "client_phrases_v5.md").read_text(encoding="utf-8")
 SUMMARY_MODEL = "muse-spark-1.3"
 
 
@@ -53,7 +53,7 @@ def translate_phrases(phrases: dict, language: str, fresh: bool = False) -> tupl
         translations = None
     meta = {
         "model": SUMMARY_MODEL,
-        "prompt": "client_phrases_v4",
+        "prompt": "client_phrases_v5",
         "cost_usd": r.cost_usd,
         "replayed": r.replayed,
     }

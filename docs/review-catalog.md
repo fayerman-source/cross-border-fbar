@@ -10,10 +10,10 @@ The Korean gettext catalog is `src/cross_border_fbar/app/translations/ko.po`. Ea
 
 The client note is assembled from the signed figures by one routine, once with the English phrases and once with their Korean, so the two versions match line for line. The preparer sees them side by side and chooses what the client gets: Korean, English or both. The choice and the exact text are recorded with the approval, and both versions are in the draft and the export. English needs no translation or review, so it can be released even if the Korean is held back; Korean or both still require confirming any unreviewed phrase.
 
-Give `docs/korean-review.txt` to the native reviewer. It contains numbered English | Korean pairs and review status. After incorporating the review into the `.po` file, record the reviewer designation in `Last-Translator` and remove fuzzy only for approved entries. Regenerate the printout without an API call:
+To review the catalog, give `docs/korean-review.txt` to a native reviewer. It contains numbered English | Korean pairs and review status. After incorporating the review into the `.po` file, record the reviewer designation in `Last-Translator` and remove fuzzy only for approved entries. Regenerate the printout without an API call:
 
 ```
 uv run python -m cross_border_fbar.app.phrases --printout
 ```
 
-`--refresh` deliberately records a new translation of all phrases in one call and resets their review status. Terminology follows IRS Publication 850 (EN-KR), September 2023, where terms exist. A native Korean speaker reviewed the catalog on 2026-10-31, and every entry in the current catalog is reviewed.
+`--refresh` deliberately records a new translation of all phrases in one call and resets their review status. Terminology follows IRS Publication 850 (EN-KR), September 2023, where terms exist. The current catalog was translated by `muse-spark-1.3` and no Korean speaker has reviewed it, so every entry is marked unreviewed and the preparer must confirm the phrases a summary uses.
