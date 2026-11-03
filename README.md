@@ -10,6 +10,8 @@ U.S. citizens and U.S. tax residents generally must file an annual Report of For
 
 For a preparer, the hard part is that the FBAR requires reporting each account's **highest balance during the year**, not simply its year-end balance. Finding that balance can require reviewing individual transactions. A brief spike between month ends can be missed by looking only at month-end balances, even on a clean English statement. Foreign languages, unfamiliar date formats and phone photos make the review harder.
 
+Preparers describe it themselves. One wrote in [r/taxpros](https://www.reddit.com/r/taxpros/comments/1mr9imx/stop_sending_me_photos_of_bank_statements_for/) about a client with 15 foreign accounts and 47 phone photos of statements, some blurry, some sideways: "I spent 3 hours squinting at photos trying to make out account numbers and max balances." Others in the thread said they read statements with Google Translate on their phones, or refuse photos altogether.
+
 ## Meet Joy Seulgi Jung (정슬기)
 
 Joy is a fictional U.S. citizen working in Seoul making about $4,700 a month. Last year she moved to a new apartment. Korea's *jeonse* (전세) rental system requires a large refundable deposit instead of monthly rent. Her old landlord sent back her $173,160 deposit. Two days later, she paid it to her new landlord, so it only passed through her checking account. Another $99,882 from a family inheritance passed through a joint account in Germany for four days. She also has signature authority over her retired parents' foreign bank account. Adding each account's highest month-end balance gives **$121,350**. Adding each account's highest balance at any point during the year gives **$373,618**, capturing spikes that month-end balances miss.
