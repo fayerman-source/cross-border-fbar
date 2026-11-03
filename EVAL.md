@@ -100,6 +100,24 @@ What the gaps are:
 - **Thai bank name:** on two statements it read the English name, or both names, instead of the Thai one; both are printed. The tool doesn't decide from the text whether two names are one bank, so it raises a review flag listing each name, its months and a page for it. The flag costs the reviewer one item and stays in the workload count. The eval reports it as raised by a printed-name choice because every name on its source pages is printed there. An earlier version matched names by script, then by containment; each rule either merged two different banks or split one bank in two.
 - **Boxes on the compiled list:** only 5/40 rows, raw and snapped. The single in/out column gives no column pattern, and the fallback's anchor rule doesn't fit Glimmer's drift on that layout. Values on those rows are all correct; only the highlighted line would be off. This is open work.
 
+## Reasoning effort: low against high (Nov 2, 2026)
+
+The Glimmer results above use `reasoning_strength` low. The same 49 pages were read again at high, one call per page, on the same hardware, with the same prompt and schema. Low did better or the same on everything scored here, so it stays the setting. The high readings and scores are in `results/muse-glimmer-high-effort_synth.json`; those responses aren't in `recordings/`.
+
+| Measure | Low | High |
+|---|---:|---:|
+| Dates / amounts / balances | 280/280 each | 280/280 each |
+| Row account numbers | 280/280 | 276/280 |
+| Header fields (strict) | 244/294 | 198/294 |
+| Pages with every header field labeled `absent` | 8 | 16 |
+| Row box in the right row, snapped | 244/280 | 203/280 |
+| Header field box in the right place, snapped | 275/283 | 270/283 |
+| Reconciliation: maximum / USD | 6/6 / 6/6 | 5/6 / 5/6 |
+| Median time per page | 344 s | 785 s |
+| Total time on the GPU | 4.9 h | 11.3 h |
+
+The one account high got wrong is the partly masked one, which its readings didn't surface as a separate account, so its `account_number_masked` flag was missed. This is one run per page at each setting, so it doesn't establish that high is always worse. A few of the high run's page times were inflated by other work on the machine; the accuracy counts aren't affected.
+
 ## Answer-key change (Nov 1, 2026)
 
 The answer key was changed **after seeing these results**, so the counts below are not blind. Thai statements print both `ธนาคารสยามโลตัส` and `Siam Lotus Bank`. The key listed only the Thai name, so returning the English one scored as a miss even though it is a correct read of the page. The key now lists every name each page prints, and the scorer accepts one or more of them with nothing added. Empty text and any other name still fail. The page images did not change: regenerated PNGs are byte-identical, so the recordings replay unchanged and no model was called.
