@@ -20,7 +20,7 @@ msgstr ""
 #, fuzzy
 msgctxt "excluded_items"
 msgid "Items left out of the totals"
-msgstr "합계 제외 항목"
+msgstr "합계에서 제외된 항목"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
@@ -32,7 +32,7 @@ msgstr "검토 항목"
 #, fuzzy
 msgctxt "heading"
 msgid "What your tax preparer reviewed"
-msgstr "귀하의 세무 전문가 검토 항목"
+msgstr "담당 세무대리인이 검토한 사항"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
@@ -44,136 +44,136 @@ msgstr "계좌 끝자리"
 #, fuzzy
 msgctxt "currency_unknown"
 msgid "accounts with no Treasury exchange rate, whose dollar amounts depend on a separately recorded rate"
-msgstr "재무부 환율 없음으로 별도 기록 환율 기준 달러 금액 계좌"
+msgstr "적용할 미 재무부 환율이 없어 미 달러 금액이 별도로 기록한 환율에 따라 결정되는 계좌"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "no_usable_balance"
 msgid "accounts with no readable balance for the year"
-msgstr "연중 판독 가능 잔액이 없는 계좌"
+msgstr "해당 연도 자료에 읽을 수 있는 잔액이 없는 계좌"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "no_statements"
 msgid "accounts with no statement among the documents read"
-msgstr "서류 중 명세서 없는 계좌"
+msgstr "검토한 서류에 계좌 명세서가 포함되어 있지 않은 계좌"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "bank_not_named"
 msgid "bank name not available"
-msgstr "은행명 없음"
+msgstr "은행 이름을 확인할 수 없음"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "continuity_break"
 msgid "closing balances that did not match the next statement's opening balance"
-msgstr "다음 명세서 기초 잔액과 불일치 기말 잔액"
+msgstr "다음 계좌 명세서의 기초 잔액과 일치하지 않은 기말 잔액"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "coverage_gap"
 msgid "days of the year that no statement covers"
-msgstr "명세서가 없는 연중 일"
+msgstr "해당 연도 중 어느 계좌 명세서의 대상 기간에도 포함되지 않은 날짜"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "balance_not_confirmed"
 msgid "highest balance could not be established from the documents read"
-msgstr "서류 기준 미확정 최고 잔액"
+msgstr "검토한 서류만으로는 최고 잔액을 확정할 수 없음"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "highest_balance"
 msgid "highest observed balance"
-msgstr "관찰 최고 잔액"
+msgstr "검토한 서류에서 확인된 최고 잔액"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "missing_statement"
 msgid "months of the year that no statement covers"
-msgstr "명세서가 없는 연중 월"
+msgstr "해당 연도 중 계좌 명세서의 대상 기간에 포함되는 날이 하루도 없는 달"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "nothing_further"
 msgid "none flagged"
-msgstr "표시 사항 없음"
+msgstr "검토 대상으로 표시된 항목 없음"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "page_not_read"
 msgid "pages that could not be read and were left out of the totals"
-msgstr "합계 제외 대상 판독 불가 페이지"
+msgstr "내용을 읽을 수 없는 페이지"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "field_unreadable"
 msgid "parts of a statement that could not be read, such as a date, currency or balance"
-msgstr "날짜와 통화와 잔액 등 판독 불가 명세서 부분"
+msgstr "날짜, 통화, 잔액 등 계좌 명세서에서 읽을 수 없었던 부분"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "balance_readings_conflict"
 msgid "readings of the same opening or closing balance that disagree"
-msgstr "기초 또는 기말 잔액에 대한 상이한 판독값"
+msgstr "같은 기초 잔액 또는 기말 잔액을 서로 다르게 읽은 경우"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "account_number_masked"
 msgid "rows with partly masked account numbers left out of the totals"
-msgstr "합계 제외 대상 일부 가림 계좌번호 행"
+msgstr "계좌번호가 일부 가려진 행"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "account_unidentified"
 msgid "rows with unreadable account numbers left out of the totals"
-msgstr "합계 제외 대상 판독 불가 계좌번호 행"
+msgstr "계좌번호를 읽을 수 없는 행"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "arithmetic_mismatch"
 msgid "statement balances that did not match the transactions as read"
-msgstr "판독 거래 내역과 불일치 명세서 잔액"
+msgstr "읽어 낸 거래 내역과 일치하지 않은 계좌 명세서상의 잔액"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "currency_conflict"
 msgid "statements showing different currencies for this account"
-msgstr "동일 계좌에 대한 상이한 통화 표기 명세서"
+msgstr "같은 계좌의 통화가 서로 다르게 표시된 계좌 명세서"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "no_balance_anchor"
 msgid "statements that list transactions but show no balance"
-msgstr "잔액 없이 거래 내역만 있는 명세서"
+msgstr "거래 내역은 있으나 잔액은 표시되지 않은 계좌 명세서"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "institution_names_differ"
 msgid "the bank names printed differently on statements"
-msgstr "명세서별 상이한 은행명 표기"
+msgstr "계좌 명세서마다 다르게 기재된 은행명"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "possible_intraday_peak"
 msgid "the order of same-day deposits and withdrawals, which can change the highest balance"
-msgstr "당일 입금과 출금 순서에 따른 최고 잔액 변동 가능성"
+msgstr "최고 잔액에 영향을 줄 수 있는 같은 날의 입금·출금 순서"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "financial_interest_unknown"
 msgid "whether you have a financial interest in accounts you can sign on"
-msgstr "서명 가능 계좌에 대한 귀하의 금전적 이해관계 여부"
+msgstr "서명 권한이 있는 계좌에 귀하가 재정적 이해관계를 갖고 있는지 여부"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "ownership_unknown"
 msgid "who owns the account, which has not been recorded"
-msgstr "소유자 미기재 계좌"
+msgstr "계좌를 누가 소유하는지에 대한 기록이 없는 경우"
 
 #. label: noun phrase, plural-safe, no semicolon
 #, fuzzy
 msgctxt "signature_authority_only"
 msgid "your authority to sign on an account owned by someone else"
-msgstr "타인 소유 계좌에 대한 귀하의 서명 권한"
+msgstr "다른 사람이 소유한 계좌에 대한 귀하의 서명 권한"

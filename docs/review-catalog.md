@@ -16,4 +16,4 @@ To review the catalog, give `docs/korean-review.txt` to a native reviewer. It co
 uv run python -m cross_border_fbar.app.phrases --printout
 ```
 
-`--refresh` deliberately records a new translation of all phrases in one call and resets their review status. Terminology follows IRS Publication 850 (EN-KR), September 2023, where terms exist. The current catalog was translated by `muse-spark-1.3` and no Korean speaker has reviewed it, so every entry is marked unreviewed and the preparer must confirm the phrases a summary uses.
+`--refresh` deliberately records a new translation of all phrases in one call and resets their review status. Terminology follows IRS Publication 850 (EN-KR), September 2023, where terms exist. The current catalog was drafted by `muse-spark-1.3` and refined with AI tools, and no Korean speaker has reviewed it, so every entry is marked unreviewed and the preparer must confirm the phrases a summary uses.
