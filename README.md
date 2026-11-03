@@ -2,6 +2,12 @@
 
 As a licensed attorney who works with U.S. tax preparers, I had a practical question for this hackathon: could a tool take on the tedious statement review without taking away control over the numbers? This tool was my answer. Built for preparers serving U.S. expats and immigrants with foreign bank accounts, it helps a Certified Public Accountant (CPA) or enrolled agent (EA) automate the reading of bank statements and identify each account's highest balance shown in those statements. The preparer reviews and signs off on those numbers. Each identified highest balance links to its source page in the bank statement for **one-click verification**.
 
+**Manual review:** The preparer reviews every statement, line by line, to find each account's highest balance.
+
+**With Meta Muse:** Each page is read in about 10 seconds for about 2 cents. Code handles the arithmetic, and each account's highest observed balance links to its source line.
+
+In the example below, month-end balances total $121,350, while the highest observed balances total $373,618.
+
 **Try it without installing anything:** [live demo](https://sadhakadev-fbar-worksheet-demo.hf.space), with fictional data and recorded readings. The first visit after a quiet period may take a moment to load.
 
 ## The problem it solves
@@ -14,7 +20,7 @@ Preparers describe it themselves. In a widely upvoted [r/taxpros thread](https:/
 
 ## Meet Joy Seulgi Jung (정슬기)
 
-Joy is a fictional U.S. citizen working in Seoul making about $4,700 a month. Last year she moved to a new apartment. Korea's *jeonse* (전세) rental system requires a large refundable deposit instead of monthly rent. Her old landlord sent back her $173,160 deposit. Two days later, she paid it to her new landlord, so it only passed through her checking account. Another $99,882 from a family inheritance passed through a joint account in Germany for four days. She also has signature authority over her retired parents' foreign bank account. Adding each account's highest month-end balance gives **$121,350**. Adding each account's highest balance at any point during the year gives **$373,618**, capturing spikes that month-end balances miss.
+Joy is a fictional U.S. citizen working in Seoul making about $4,700 a month. Last year she moved to a new apartment. Korea's *jeonse* (전세) rental system requires a large refundable deposit instead of monthly rent. Her old landlord sent back her $173,160 deposit. Two days later, she paid it to her new landlord, so it only passed through her checking account. Another $99,882 from a family inheritance passed through a joint account in Germany for four days. She also has signature authority over her retired parents' foreign bank account. Adding each account's highest month-end balance gives **$121,350**. Adding each account's highest balance at any point during the year gives **$373,618**, capturing spikes that month-end balances miss. The FBAR test adds each account's own highest balance, even when those fall on different dates; it isn't the highest combined balance on a single day.
 
 ## How it works
 
