@@ -48,7 +48,7 @@ Anyone can make the demo forget other visitors' work by opening 100 new sessions
 
 ## No model calls
 
-The client summary uses the reviewed Korean catalog. The app won't start if a phrase is unreviewed, and if one were ever missing at run time the Korean summary is held back and the English stays available. Hosted mode has no path to the model client, with or without a key in the environment. The image contains no recordings, statements or answer key.
+The client summary uses the Korean catalog. Its phrases are machine-translated and unreviewed, so the visitor must confirm them before approving. The app won't start if a phrase has no text, and if one were ever missing at run time the Korean summary is held back and the English stays available. Hosted mode has no path to the model client, with or without a key in the environment. The image contains no recordings, statements or answer key.
 
 ## Link the direct URL
 

@@ -18,6 +18,25 @@ def inputs(tmp_path_factory) -> Inputs:
     return Inputs(out, READINGS, out / "intake.json")
 
 
+@pytest.fixture(autouse=True)
+def reviewed_catalog(request, tmp_path_factory, monkeypatch):
+    """Most tests exercise the reviewed path, so they get a copy of the catalog marked reviewed. Tests of the
+    committed catalog itself opt out with @pytest.mark.committed_catalog."""
+    if request.node.get_closest_marker("committed_catalog"):
+        return
+    folder = tmp_path_factory.getbasetemp() / "reviewed-catalog"
+    if not folder.exists():
+        catalog = phrases.load("ko")
+        catalog.last_translator = "test reviewer"
+        for message in catalog:
+            if message.id:
+                message.flags.discard("fuzzy")
+        with monkeypatch.context() as m:
+            m.setattr(phrases, "PHRASES_DIR", folder)
+            phrases.save("ko", catalog)
+    monkeypatch.setattr(phrases, "PHRASES_DIR", folder)
+
+
 @pytest.fixture
 def heading_unreviewed(tmp_path, monkeypatch) -> str:
     """The committed catalog with its heading back in draft, to exercise the unreviewed-phrase path."""

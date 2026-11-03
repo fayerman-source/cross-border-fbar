@@ -1,0 +1,19 @@
+{
+ "label": "client-phrases",
+ "model": "muse-spark-1.3",
+ "content": "{\"account_ending\":\"계좌 끝자리\",\"account_number_masked\":\"합계 제외 대상 일부 가림 계좌번호 행\",\"account_unidentified\":\"합계 제외 대상 판독 불가 계좌번호 행\",\"arithmetic_mismatch\":\"판독 거래 내역과 불일치 명세서 잔액\",\"balance_not_confirmed\":\"서류 기준 미확정 최고 잔액\",\"balance_readings_conflict\":\"기초 또는 기말 잔액에 대한 상이한 판독값\",\"bank_not_named\":\"은행명 없음\",\"continuity_break\":\"다음 명세서 기초 잔액과 불일치 기말 잔액\",\"coverage_gap\":\"명세서가 없는 연중 일\",\"currency_conflict\":\"동일 계좌에 대한 상이한 통화 표기 명세서\",\"currency_unknown\":\"재무부 환율 없음으로 별도 기록 환율 기준 달러 금액 계좌\",\"excluded_items\":\"합계 제외 항목\",\"field_unreadable\":\"날짜와 통화와 잔액 등 판독 불가 명세서 부분\",\"financial_interest_unknown\":\"서명 가능 계좌에 대한 귀하의 금전적 이해관계 여부\",\"heading\":\"귀하의 세무 전문가 검토 항목\",\"highest_balance\":\"관찰 최고 잔액\",\"institution_names_differ\":\"명세서별 상이한 은행명 표기\",\"missing_statement\":\"명세서가 없는 연중 월\",\"no_balance_anchor\":\"잔액 없이 거래 내역만 있는 명세서\",\"no_statements\":\"서류 중 명세서 없는 계좌\",\"no_usable_balance\":\"연중 판독 가능 잔액이 없는 계좌\",\"nothing_further\":\"표시 사항 없음\",\"ownership_unknown\":\"소유자 미기재 계좌\",\"page_not_read\":\"합계 제외 대상 판독 불가 페이지\",\"possible_intraday_peak\":\"당일 입금과 출금 순서에 따른 최고 잔액 변동 가능성\",\"reviewed\":\"검토 항목\",\"signature_authority_only\":\"타인 소유 계좌에 대한 귀하의 서명 권한\"}",
+ "usage": {
+  "completion_tokens": 9353,
+  "prompt_tokens": 665,
+  "total_tokens": 10018,
+  "completion_tokens_details": {
+   "reasoning_tokens": 8939
+  },
+  "prompt_tokens_details": {
+   "cached_tokens": 0
+  }
+ },
+ "cost_usd": 0.040581,
+ "latency_s": 76.0,
+ "finish_reason": "stop"
+}

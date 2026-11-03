@@ -709,7 +709,7 @@ def test_a_phrase_missing_from_the_catalog_is_refused_not_sent_to_a_model(
     status, view = a.post("/api/summary/draft")
     assert status == 200
     summary = view["review"]["summary"]
-    assert "reviewed catalog" in summary["blocked"]
+    assert "its catalog" in summary["blocked"]
     assert summary["text"] is None and summary["text_en"] and summary["unreviewed"] == {}
     assert all(line["ko"] is None for line in summary["lines"])
     assert a.post("/api/summary/approve", {"reviewer": "A", "release": "ko"})[0] == 409
@@ -718,13 +718,34 @@ def test_a_phrase_missing_from_the_catalog_is_refused_not_sent_to_a_model(
     )  # English needs no model
 
 
-def test_hosted_mode_will_not_start_with_an_unreviewed_phrase(heading_unreviewed):
+def test_hosted_mode_will_not_start_with_a_phrase_missing_from_the_catalog(tmp_path, monkeypatch):
+    catalog = phrases.load("ko")
+    catalog.delete(phrases.current_phrases()["heading"], context="heading")
+    monkeypatch.setattr(phrases, "PHRASES_DIR", tmp_path / "catalog")
+    phrases.save("ko", catalog)
     with pytest.raises(SystemExit, match="heading"):
-        hosted.require_reviewed_catalog()
+        hosted.require_complete_catalog()
 
 
+@pytest.mark.committed_catalog
 def test_the_committed_catalog_lets_hosted_mode_start():
-    hosted.require_reviewed_catalog()
+    hosted.require_complete_catalog()
+
+
+@pytest.mark.committed_catalog
+def test_unreviewed_korean_needs_confirming_and_calls_no_model(start, no_model):
+    port, _ = start()
+    a = Browser(port)
+    sign_off_everything(a)
+    status, view = a.post("/api/summary/draft")
+    assert status == 200
+    summary = view["review"]["summary"]
+    assert summary["unreviewed"] and summary["meta"]["model"] is None and summary["text"]
+    assert a.post("/api/summary/approve", {"reviewer": "A", "release": "ko"})[0] == 409
+    status, view = a.post(
+        "/api/summary/approve", {"reviewer": "A", "release": "ko", "confirm_unreviewed": True}
+    )
+    assert status == 200 and view["review"]["summary"]["approved"]["confirmed_unreviewed"]
 
 
 def test_snap_cache_gives_the_same_worksheet_and_each_build_its_own_copy(inputs, warm_inputs, tmp_path):

@@ -76,13 +76,14 @@ def public_host_from(flag: str | None, env: Mapping[str, str]) -> str:
     return host
 
 
-def require_reviewed_catalog() -> None:
-    """Visitors only ever see Korean a person reviewed, so an unreviewed phrase stops the demo starting."""
+def require_complete_catalog() -> None:
+    """Every phrase comes from the catalog, since the demo can't call the model. The worksheet lists any
+    unreviewed phrase and has the visitor confirm it before approving, as it does for a preparer."""
     phrases = phrase_tables.current_phrases()
     for language in LANGUAGES:
-        unreviewed = sorted(set(phrases) - set(phrase_tables.reviewed(language, phrases)))
-        if unreviewed:
-            raise SystemExit(f"the {language} catalog has phrases not yet reviewed: {unreviewed}")
+        missing = sorted(set(phrases) - set(phrase_tables.drafts(language, phrases)))
+        if missing:
+            raise SystemExit(f"the {language} catalog has no text for: {missing}")
 
 
 @dataclass(eq=False)
@@ -225,7 +226,7 @@ class HostedHandler(Handler):
         return {**super()._state(), "hosted": True}
 
     def _translate(self, phrases: dict, language: str, fresh: bool = False):
-        raise RuntimeError("the hosted demo uses only the reviewed catalog, and this phrase isn't in it")
+        raise RuntimeError("the hosted demo uses only its catalog, and this phrase isn't in it")
 
     def end_headers(self) -> None:
         if self._new_token:
@@ -359,7 +360,7 @@ def make_hosted_handler(store: VisitorStore, public_host: str) -> type[HostedHan
 
 
 def serve(inputs: Inputs, public_host: str, port: int, limits: Limits | None = None) -> None:
-    require_reviewed_catalog()
+    require_complete_catalog()
     store = VisitorStore(inputs, limits)
     server = HostedServer(
         ("0.0.0.0", port), make_hosted_handler(store, public_host), store.limits.max_connections
