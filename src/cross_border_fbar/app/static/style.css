@@ -234,6 +234,13 @@ dialog::backdrop { background: rgba(43, 47, 42, .35); }
   .paper, .wp-header, .scope { padding-left: var(--s4); padding-right: var(--s4); }
 }
 
+/* Narrow screens: the accounts table keeps its desktop columns and scrolls sideways inside .table-wrap,
+   so the fixed-layout columns never squeeze the amounts into their neighbours. */
+@media (max-width: 760px) {
+  .layout > * { min-width: 0; }  /* a grid item otherwise grows to the table's width and the page zooms out */
+  table.accounts { min-width: 720px; }
+}
+
 /* Indicative preparer comparisons remain secondary to the FBAR schedule. */
 .form8938 > summary {
   cursor: pointer; padding: var(--s2) 0; border-bottom: 2px solid var(--ink);
