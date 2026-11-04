@@ -10,6 +10,10 @@ In the example below, month-end balances total $121,350, while the highest obser
 
 **Try it without installing anything:** [live demo](https://sadhakadev-fbar-worksheet-demo.hf.space), with fictional data and recorded readings. The first visit after a quiet period may take a moment to load.
 
+**Demo video (3 minutes):** [watch on YouTube](https://youtu.be/BL4UVxhOP9Y).
+
+[![Three-minute demo video of the worksheet: statements, highest balances, one-click source check, correction, sign-off and the Korean client summary](https://img.youtube.com/vi/BL4UVxhOP9Y/maxresdefault.jpg)](https://youtu.be/BL4UVxhOP9Y)
+
 ## The problem it solves
 
 U.S. citizens and U.S. tax residents generally must file an annual Report of Foreign Bank and Financial Accounts (FBAR) with the U.S. Treasury if they have a financial interest in or signature authority over foreign financial accounts whose combined value exceeds $10,000 at any time during the calendar year. Even a non-willful failure to comply with foreign account reporting requirements can carry substantial civil penalties. Willful violations can also lead to criminal prosecution.
