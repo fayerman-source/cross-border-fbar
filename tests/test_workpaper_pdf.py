@@ -195,6 +195,35 @@ def test_workpaper_pdf_preserves_reviewer_value_correction_provenance(workpaper_
     assert not OUT_OF_SCOPE.search(extracted)
 
 
+def test_workpaper_pdf_preserves_preparer_recorded_rate_source_and_date(
+    workpaper_inputs, tmp_path, monkeypatch
+):
+    monkeypatch.setattr("cross_border_fbar.app.worksheet.rates.load", lambda _year: {})
+    review = Review(workpaper_inputs, tmp_path / "rv_rate", root=tmp_path)
+    for flag in list(review.worksheet["flags"]):
+        if flag["code"] == "currency_unknown":
+            review.acknowledge(
+                flag["id"],
+                "verified year-end central bank bulletin",
+                "A. Rivera",
+                rate={
+                    "units_per_usd": "1450.25",
+                    "record_date": "2025-12-31",
+                    "source": "Bank of Korea Reference Bulletin",
+                },
+            )
+    for fid in review.open_review_flags():
+        review.acknowledge(fid, "checked synthetic statement", "A. Rivera")
+    review.sign_off("A. Rivera", "AR")
+
+    flat = " ".join(_pdf_text(review.export_pdf()).split())
+    assert "1450.25 (preparer-recorded, as of 2025-12-31, source: Bank of Korea Reference Bulletin)" in flat
+    assert "record_exchange_rate" in flat
+    assert "KRW 1450.25 as of 2025-12-31 (Bank of Korea Reference Bulletin)" in flat
+    assert "CPA" not in flat
+    assert not OUT_OF_SCOPE.search(flat)
+
+
 def test_local_and_hosted_servers_serve_pdf_workpaper_only_after_signoff(workpaper_inputs, tmp_path):
     rv = Review(workpaper_inputs, tmp_path / "local_rv", root=tmp_path)
     srv = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(rv, workpaper_inputs.set_dir))

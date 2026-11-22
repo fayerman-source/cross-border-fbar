@@ -82,6 +82,19 @@ def _format_correction_line(corr: dict) -> str:
     )
 
 
+def _format_rate_summary(acct: dict) -> str:
+    if not acct.get("rate"):
+        return "n/a (n/a)"
+    raw_basis = acct.get("rate_basis") or "n/a"
+    basis = raw_basis if raw_basis in ("treasury", "identity", "n/a") else "preparer-recorded"
+    meta = [basis]
+    if acct.get("rate_date"):
+        meta.append(f"as of {acct['rate_date']}")
+    if acct.get("rate_source"):
+        meta.append(f"source: {acct['rate_source']}")
+    return f"{acct['rate']} ({', '.join(meta)})"
+
+
 def _format_audit_entry(entry: dict) -> str:
     who = entry.get("reviewer") or entry.get("initials") or ""
     if entry.get("upload") and entry.get("field"):
@@ -89,8 +102,17 @@ def _format_audit_entry(entry: dict) -> str:
     else:
         target = entry.get("flag") or entry.get("field") or entry.get("account") or entry.get("hash", "")[:12]
     change = f"{entry.get('before')} -> {entry.get('after')}" if "before" in entry else ""
+    rate_obj = entry.get("rate")
+    rate_detail = (
+        f"{rate_obj.get('currency', '')} {rate_obj.get('units_per_usd', '')} "
+        f"as of {rate_obj.get('record_date', '')} ({rate_obj.get('source', '')})".strip()
+        if isinstance(rate_obj, dict)
+        else ""
+    )
     note = f"Note: {entry['note']}" if entry.get("note") else ""
-    parts = [p for p in (entry.get("ts", ""), entry.get("action", ""), who, target, change, note) if p]
+    parts = [
+        p for p in (entry.get("ts", ""), entry.get("action", ""), who, target, change, rate_detail, note) if p
+    ]
     return " · ".join(parts)
 
 
@@ -122,7 +144,7 @@ def _render_account_block(
         native_line = (
             f"Holders: {holders} · Max observed: {max_info['amount']} {acct['currency'] or ''} "
             f"({kind_label}, {max_info['day'] or 'date unstated'}) · "
-            f"Rate: {acct['rate'] or 'n/a'} ({acct['rate_basis'] or 'n/a'}) · "
+            f"Rate: {_format_rate_summary(acct)} · "
             f"Source: {max_info['source']['wp']}"
         )
     else:
