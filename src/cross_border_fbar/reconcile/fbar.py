@@ -8,10 +8,14 @@ whether anyone must file.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from datetime import date
 
-from .accounts import AccountResult
+from ..rates import Rate
+from .accounts import AccountResult, Intake, reconcile
 from .flags import CATALOG
+from .observe import Observation
 
 FBAR_AGGREGATE_USD = 10_000
 
@@ -59,3 +63,28 @@ def fbar_totals(accounts: list[AccountResult]) -> FbarTotals:
         crossing_depends_on_flags=(total <= FBAR_AGGREGATE_USD) != (possible <= FBAR_AGGREGATE_USD),
         threshold_review_reasons=reasons if above is None else [],
     )
+
+
+def _relevant_to_year(page: Observation, year: int) -> bool:
+    year_start, year_end = date(year, 1, 1), date(year, 12, 31)
+    if page.period_start is not None and page.period_end is not None:
+        return page.period_start <= year_end and page.period_end >= year_start
+    days = [ln.day for ln in page.lines if ln.day is not None]
+    if days:
+        return any(d.year == year for d in days)
+    return True
+
+
+def reconcile_years(
+    pages: list[Observation],
+    intake: Mapping[str, Intake],
+    years: Iterable[int],
+    rates_by_year: Mapping[int, Mapping[str, Rate]],
+) -> dict[int, tuple[list[AccountResult], FbarTotals]]:
+    """Reconcile multi-year lookbacks (such as 6-year Streamlined filings) year by year."""
+    out: dict[int, tuple[list[AccountResult], FbarTotals]] = {}
+    for year in years:
+        year_pages = [p for p in pages if _relevant_to_year(p, year)]
+        accounts = reconcile(year_pages, dict(intake), dict(rates_by_year.get(year, {})), year)
+        out[year] = (accounts, fbar_totals(accounts))
+    return out

@@ -108,7 +108,7 @@ def box(x: float, y: float, w: float, h: float) -> dict[str, int]:
 
 
 def fmt_amount(minor: int, currency: str, style: str) -> str:
-    exp = EXPONENT[currency]
+    exp = EXPONENT.get(currency, 2)
     sign = "-" if minor < 0 else ""
     whole, frac = divmod(abs(minor), 10**exp) if exp else (abs(minor), 0)
     if style == "de":

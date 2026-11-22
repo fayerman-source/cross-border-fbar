@@ -17,6 +17,7 @@ import json
 import sys
 import urllib.parse
 import urllib.request
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -28,7 +29,39 @@ DATASET_PAGE = (
     "treasury-reporting-rates-of-exchange"
 )
 # ISO code -> Treasury's country_currency_desc label.
-TREASURY_LABELS = {"KRW": "Korea-Won", "EUR": "Euro Zone-Euro", "THB": "Thailand-Baht", "INR": "India-Rupee"}
+TREASURY_LABELS = {
+    "AED": "United Arab Emirates-Dirham",
+    "AUD": "Australia-Dollar",
+    "BHD": "Bahrain-Dinar",
+    "BRL": "Brazil-Real",
+    "CAD": "Canada-Dollar",
+    "CHF": "Switzerland-Franc",
+    "CNY": "China-Renminbi",
+    "DKK": "Denmark-Krone",
+    "EUR": "Euro Zone-Euro",
+    "GBP": "United Kingdom-Pound",
+    "HKD": "Hong Kong-Dollar",
+    "IDR": "Indonesia-Rupiah",
+    "ILS": "Israel-Shekel",
+    "INR": "India-Rupee",
+    "JOD": "Jordan-Dinar",
+    "JPY": "Japan-Yen",
+    "KRW": "Korea-Won",
+    "KWD": "Kuwait-Dinar",
+    "MXN": "Mexico-Peso",
+    "MYR": "Malaysia-Ringgit",
+    "NOK": "Norway-Krone",
+    "NZD": "New Zealand-Dollar",
+    "PHP": "Philippines-Peso",
+    "PLN": "Poland-Zloty",
+    "SAR": "Saudi Arabia-Riyal",
+    "SEK": "Sweden-Krona",
+    "SGD": "Singapore-Dollar",
+    "THB": "Thailand-Baht",
+    "TWD": "Taiwan-Dollar",
+    "VND": "Vietnam-Dong",
+    "ZAR": "South Africa-Rand",
+}
 DATA_DIR = Path(__file__).resolve().parent / "data"
 
 
@@ -110,17 +143,48 @@ def load_available(year: int, path: Path | None = None) -> dict[str, Rate]:
     return merged
 
 
+def load_years(years: Iterable[int], directory: Path | None = None) -> dict[int, dict[str, Rate]]:
+    """Load available Dec 31 Treasury rates for each tax year in a multi-year lookback.
+
+    Never invents or carries forward another year's exchange rate: if a year has no bundled or
+    workspace file, its mapping is empty so reconciliation raises `currency_unknown` for review.
+    """
+    result: dict[int, dict[str, Rate]] = {}
+    for year in years:
+        merged: dict[str, Rate] = {}
+        if rates_path(year).is_file():
+            merged.update(load(year))
+        base_dir = directory if directory is not None else (Path.cwd() / "data")
+        candidate = base_dir / f"treasury_rates_{year}.json"
+        if candidate.is_file():
+            merged.update(load(year, candidate))
+        result[year] = merged
+    return result
+
+
+def _parse_years(spec: str) -> list[int]:
+    if ".." in spec:
+        lo_s, hi_s = spec.split("..", 1)
+        lo, hi = int(lo_s), int(hi_s)
+        if hi < lo:
+            raise ValueError(f"reversed year range {spec!r}")
+        return list(range(lo, hi + 1))
+    return [int(part) for part in spec.split(",")]
+
+
 def main(argv: list[str]) -> None:
     if len(argv) < 3 or argv[0] != "fetch":
-        sys.exit("usage: python -m cross_border_fbar.rates fetch <year> <ISO> [<ISO> ...]")
-    year, currencies = int(argv[1]), argv[2:]
-    doc = fetch(year, currencies)
-    # Fetching writes to the current workspace, never into a potentially read-only installation.
-    out = Path.cwd() / "data" / f"treasury_rates_{year}.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
-    print(f"wrote {out}: " + ", ".join(f"{c} {r['units_per_usd']}" for c, r in doc["rates"].items()))
-    print(f"Load explicitly with rates.load({year}, path=Path({str(out)!r})).")
+        sys.exit("usage: python -m cross_border_fbar.rates fetch <year|start..end> <--all | ISO ...>")
+    years = _parse_years(argv[1])
+    currencies = sorted(TREASURY_LABELS) if argv[2:] == ["--all"] else argv[2:]
+    for year in years:
+        doc = fetch(year, currencies)
+        # Fetching writes to the current workspace, never into a potentially read-only installation.
+        out = Path.cwd() / "data" / f"treasury_rates_{year}.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+        print(f"wrote {out}: " + ", ".join(f"{c} {r['units_per_usd']}" for c, r in doc["rates"].items()))
+        print(f"Load explicitly with rates.load({year}, path=Path({str(out)!r})).")
 
 
 if __name__ == "__main__":

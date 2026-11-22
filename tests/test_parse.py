@@ -4,8 +4,10 @@ from decimal import Decimal
 import pytest
 
 from cross_border_fbar.extract.parse import (
+    KNOWN_CURRENCIES,
     normalize_account_number,
     parse_amount,
+    parse_currency,
     parse_date,
     parse_typed_amount,
 )
@@ -98,3 +100,30 @@ def test_a_typed_amount_is_read_by_the_printed_rules(text, value):
 )
 def test_a_typed_amount_that_does_not_read_one_clear_way_is_refused(text):
     assert parse_typed_amount(text) is None
+
+
+@pytest.mark.parametrize(
+    ("text", "want"),
+    [
+        ("1,250.375", Decimal("1250.375")),
+        ("1.250,375", Decimal("1250.375")),
+        ("0.375", Decimal("0.375")),
+        ("0,375", Decimal("0.375")),
+        ("1.234", Decimal("1234")),
+        ("1,234", Decimal("1234")),
+    ],
+)
+def test_three_decimal_currencies_parse_without_breaking_thousands_groups(text, want):
+    assert parse_amount(text) == want
+    assert parse_typed_amount(text) == want
+
+
+def test_expanded_currencies_parse_iso_codes_and_unambiguous_symbols_without_guessing():
+    for iso in ("CAD", "GBP", "JPY", "CHF", "CNY", "MXN", "ILS", "AUD", "SGD", "HKD", "KWD", "BHD", "JOD"):
+        assert iso in KNOWN_CURRENCIES
+        assert parse_currency(f"Statement currency: {iso}") == iso
+    assert parse_currency("₪") == "ILS"
+    assert parse_currency("₫") == "VND"
+    assert parse_currency("₱") == "PHP"
+    for ambiguous in ("$", "HK$", "CA$", "¥", "£", "Currency: Canadian Dollar", "AMOUNT"):
+        assert parse_currency(ambiguous) is None

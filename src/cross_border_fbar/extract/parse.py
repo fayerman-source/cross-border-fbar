@@ -11,6 +11,8 @@ import re
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
+from ..rates import TREASURY_LABELS
+
 BUDDHIST_ERA_OFFSET = 543
 
 
@@ -19,12 +21,16 @@ def _is_negative(s: str) -> bool:
 
 
 def _decimal_separator(digits: str) -> str | None:
-    """The decimal separator, if any. With both marks the last wins; alone, it needs exactly 2 decimals."""
+    """The decimal separator, if any.
+
+    With both marks the last wins; alone, it needs either 2 fractional digits or an unambiguous
+    leading-zero 3-decimal fraction (such as `0.375` KWD, since thousands groups never start with `0`).
+    """
     last_dot, last_comma = digits.rfind("."), digits.rfind(",")
     if last_dot >= 0 and last_comma >= 0:
         return "." if last_dot > last_comma else ","
     for sep in (",", "."):
-        if re.search(rf"\{sep}\d{{2}}$", digits):
+        if re.search(rf"\{sep}\d{{2}}$", digits) or re.fullmatch(rf"0\{sep}\d{{3}}", digits):
             return sep
     return None
 
@@ -52,9 +58,10 @@ _TYPED_NUMBERS = tuple(
     re.compile(pattern, re.ASCII)
     for pattern in (
         r"\d+(?:[.,]\d{2})?",
-        r"\d{1,3}(?:,\d{3})+(?:\.\d{2})?",
-        r"\d{1,3}(?:\.\d{3})+(?:,\d{2})?",
-        r"\d{1,3}(?: \d{3})+(?:[.,]\d{2})?",
+        r"0[.,]\d{3}",
+        r"\d{1,3}(?:,\d{3})+(?:\.\d{2,3})?",
+        r"\d{1,3}(?:\.\d{3})+(?:,\d{2,3})?",
+        r"\d{1,3}(?: \d{3})+(?:[.,]\d{2,3})?",
     )
 )
 _TYPED_NUMBER_MAX_LENGTH = 24  # stays within Decimal's default 28 digits of working precision
@@ -114,13 +121,22 @@ def normalize_name(text: str) -> str:
 
 # ISO codes the tool can convert (Treasury labels in rates.py) plus USD. Anything else is "unknown",
 # not guessed: "All amounts in KRW" must not read as ALL, and "HK$" must not read as USD.
-KNOWN_CURRENCIES = {"KRW", "EUR", "THB", "INR", "USD"}
-_UNAMBIGUOUS_UNITS = {"₩": "KRW", "원": "KRW", "€": "EUR", "฿": "THB", "₹": "INR"}
+KNOWN_CURRENCIES = set(TREASURY_LABELS) | {"USD"}
+_UNAMBIGUOUS_UNITS = {
+    "₩": "KRW",
+    "원": "KRW",
+    "€": "EUR",
+    "฿": "THB",
+    "₹": "INR",
+    "₪": "ILS",
+    "₫": "VND",
+    "₱": "PHP",
+}
 
 
 def parse_currency(text: str) -> str | None:
     t = (text or "").strip()
-    for token in re.findall(r"[A-Z]{3}", t.upper()):
+    for token in re.findall(r"(?<![A-Za-z])[A-Z]{3}(?![A-Za-z])", t.upper()):
         if token in KNOWN_CURRENCIES:
             return token
     for unit, iso in _UNAMBIGUOUS_UNITS.items():
