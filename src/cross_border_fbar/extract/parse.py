@@ -15,10 +15,12 @@ from ..rates import TREASURY_LABELS
 
 BUDDHIST_ERA_OFFSET = 543
 THREE_DECIMAL_CURRENCIES = frozenset({"BHD", "JOD", "KWD"})
+_CURRENCY_CHARS = " \t\r\n\f\vABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz€₩฿₹$£¥원₪₫₱"
 
 
 def _is_negative(s: str) -> bool:
-    return s.startswith("-") or s.endswith("-") or (s.startswith("(") and s.endswith(")"))
+    t = s.replace("\u2212", "-").strip(_CURRENCY_CHARS)
+    return t.startswith("-") or t.endswith("-") or (t.startswith("(") and t.endswith(")"))
 
 
 def _decimal_separator(digits: str, *, three_decimal_currency: bool = False) -> str | None:
@@ -49,7 +51,7 @@ def _space_grouped_three_decimal_sep(text: str, digits: str) -> str | None:
 
 def parse_amount(text: str, currency: str | None = None) -> Decimal | None:
     """Parse a printed amount; None if there is no number. A leading or trailing '-' is negative."""
-    s = (text or "").strip()
+    s = (text or "").strip().replace("\u2212", "-")
     digits = re.sub(r"[^\d.,]", "", s)
     if not re.search(r"\d", digits):
         return None
@@ -89,7 +91,7 @@ def parse_typed_amount(text: str, currency: str | None = None) -> Decimal | None
     parse_amount picks the digits out of what a model copied, which turns "12abc" into 12 and "1.5" into 15.
     For a correction, text that doesn't read one clear way is refused, not guessed at.
     """
-    s = (text or "").strip()
+    s = (text or "").strip().replace("\u2212", "-")
     if s.startswith("(") and s.endswith(")"):
         body = s[1:-1]
     elif s.startswith("-"):

@@ -15,6 +15,7 @@ Rules (FinCEN "Reporting Maximum Account Value"; IRS IRM 4.26.16):
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
@@ -24,7 +25,7 @@ from ..extract.parse import account_key, normalize_name
 from ..rates import Rate
 from .flags import CATALOG
 from .intake import Intake
-from .observe import Observation, Source, most_common
+from .observe import Observation, Source, _row_date, most_common
 
 
 @dataclass
@@ -99,6 +100,125 @@ def usd_bound(amount: Decimal, rate: Rate, *, upper: bool) -> Decimal:
 
 def _in_year(day: date | None, tax_year: int) -> bool:
     return day is not None and day.year == tax_year
+
+
+_PAGE_RE = re.compile(r"^(.*)-p([1-9]\d*)(?:\.[^./\\]+)?$")
+
+
+def _upload_page(upload: str) -> tuple[str, int | None]:
+    match = _PAGE_RE.match(upload)
+    return (match[1], int(match[2])) if match else (upload, None)
+
+
+def _upload_sort_key(upload: str) -> tuple[str, int, str]:
+    stem, page = _upload_page(upload)
+    return (stem, page if page is not None else 0, upload)
+
+
+def _inherit_continuation_headers(obs: list[Observation]) -> list[Observation]:
+    """Propagate period and currency from earlier pages of the same multi-page upload when omitted on
+    continuation pages, without overriding unreadable or conflicting fields."""
+    by_stem: dict[str, list[tuple[int, int]]] = defaultdict(list)
+    for idx, o in enumerate(obs):
+        stem, page = _upload_page(o.upload)
+        if page is not None:
+            by_stem[stem].append((page, idx))
+    out = list(obs)
+    for group in by_stem.values():
+        if len(group) < 2:
+            continue
+        group.sort()
+        period_src: Observation | None = None
+        currency_src: Observation | None = None
+        prev_page: int | None = None
+        for page, idx in group:
+            if prev_page is not None and page != prev_page + 1:
+                period_src = currency_src = None
+            prev_page = page
+            cur = out[idx]
+            if cur.period_start is not None and cur.period_end is not None:
+                period_src = cur
+            if cur.currency is not None:
+                currency_src = cur
+            updates: dict = {}
+            sources = dict(cur.sources)
+            problems = list(cur.problems)
+            if (
+                cur.period_start is None
+                and cur.period_end is None
+                and "period" not in problems
+                and period_src is not None
+            ):
+                start, end = period_src.period_start, period_src.period_end
+                updates["period_start"], updates["period_end"] = start, end
+                if "period" in period_src.sources:
+                    sources["period"] = period_src.sources["period"]
+                new_lines = []
+                for ln in cur.lines:
+                    if ln.day is None and ln.date_text:
+                        parsed = _row_date(ln.date_text, start, end)
+                        if parsed is not None:
+                            ln = replace(ln, day=parsed)
+                            prob_name = f"row:{ln.index}:date"
+                            if prob_name in problems:
+                                problems.remove(prob_name)
+                                sources.pop(prob_name, None)
+                    new_lines.append(ln)
+                updates["lines"] = new_lines
+            if cur.currency is None and "currency" not in problems and currency_src is not None:
+                updates["currency"] = currency_src.currency
+                if "currency" in currency_src.sources:
+                    sources["currency"] = currency_src.sources["currency"]
+            if updates:
+                out[idx] = replace(cur, **updates, sources=sources, problems=problems)
+    return out
+
+
+def _can_stitch(prev: Observation, cur: Observation) -> bool:
+    if (
+        prev.period_start is None
+        or prev.period_end is None
+        or (prev.period_start, prev.period_end) != (cur.period_start, cur.period_end)
+        or prev.currency is None
+        or prev.currency != cur.currency
+        or prev.closing is not None
+        or cur.opening is not None
+    ):
+        return False
+    stem1, page1 = _upload_page(prev.upload)
+    stem2, page2 = _upload_page(cur.upload)
+    return page1 is not None and page2 is not None and stem1 == stem2 and page2 == page1 + 1
+
+
+def _stitch_pages(obs: list[Observation]) -> list[Observation]:
+    """Combine consecutive continuation pages of one statement so balances chain across page breaks."""
+    if len(obs) < 2:
+        return obs
+    runs: list[list[Observation]] = [[obs[0]]]
+    for cur in obs[1:]:
+        if _can_stitch(runs[-1][-1], cur):
+            runs[-1].append(cur)
+        else:
+            runs.append([cur])
+    stitched = []
+    for run in runs:
+        if len(run) == 1:
+            stitched.append(run[0])
+            continue
+        first, last = run[0], run[-1]
+        sources = dict(first.sources)
+        if last.closing is not None and "closing_balance" in last.sources:
+            sources["closing_balance"] = last.sources["closing_balance"]
+        stitched.append(
+            replace(
+                first,
+                closing=last.closing,
+                lines=[ln for page in run for ln in page.lines],
+                sources=sources,
+                problems=[p for page in run for p in page.problems],
+            )
+        )
+    return stitched
 
 
 def _adjacent(prev: Observation, cur: Observation) -> bool:
@@ -202,29 +322,63 @@ def _coverage_flags(obs: list[Observation], tax_year: int, flags: list[Flag]) ->
                 d = stop + timedelta(days=1)
 
 
-def _seed(o: Observation, prev: Observation | None) -> tuple[Decimal | None, str]:
-    """Balance before the first line: printed opening, else the previous adjacent closing, else derived."""
+def _seed_balance(o: Observation, prev: Observation | None) -> tuple[Decimal | None, str, Source | None]:
+    """Balance before the first line, how it was obtained, and its source."""
     if o.opening is not None:
-        return o.opening, "printed"
+        return o.opening, "printed", o.sources["opening_balance"]
     if prev is not None and prev.closing is not None and _adjacent(prev, o):
-        return prev.closing, "computed"
+        return prev.closing, "computed", prev.sources["closing_balance"]
     for line in o.lines:
         if line.printed_balance is not None and line.amount is not None:
-            return line.printed_balance - line.amount, "computed"
+            return line.printed_balance - line.amount, "computed", line.source
         if line.amount is None:
             break
-    return None, "computed"
+    return None, "computed", None
 
 
-def _balances(o: Observation, prev: Observation | None, flags: list[Flag]) -> list[Balance]:
+def _seed(o: Observation, prev: Observation | None) -> tuple[Decimal | None, str]:
+    amount, kind, _ = _seed_balance(o, prev)
+    return amount, kind
+
+
+def _conflict_explains_empty_span(o: Observation, running: Decimal, conflicts: list) -> bool:
+    """When a zero-line page's opening or closing disagrees only because a duplicate reading misread that
+    boundary (already flagged by balance_readings_conflict), another reading of that boundary matches."""
+    by_boundary = {(day, boundary): {r.amount for r in readings} for day, boundary, readings in conflicts}
+    return running in by_boundary.get((o.period_end, "closing"), set()) or (
+        o.closing in by_boundary.get((o.period_start, "opening"), set())
+    )
+
+
+def _balances(
+    o: Observation,
+    prev: Observation | None,
+    flags: list[Flag],
+    tax_year: int | None = None,
+    conflicts: list = (),
+) -> list[Balance]:
     """Every balance a reader can get from one statement, checking printed against computed."""
     out = []
-    running, seed_kind = _seed(o, prev)
+    running, seed_kind, seed_src = _seed_balance(o, prev)
+    year_start = date(tax_year, 1, 1) if tax_year is not None else None
+    carry: Balance | None = None
+    crossed = False
     if o.opening is not None:
         out.append(Balance(o.opening, o.sources["opening_balance"], "printed", o.period_start))
+    if year_start and o.period_start and o.period_start < year_start and running is not None and seed_src:
+        carry = Balance(running, seed_src, seed_kind, year_start)
     for line in o.lines:
+        if year_start and not crossed:
+            if line.day is None:
+                carry = None
+            elif line.day >= year_start:
+                crossed = True
+                if carry is not None:
+                    out.append(carry)
+                    carry = None
         if running is not None:
             running = running + line.amount if line.amount is not None else None
+        line_bal: Balance | None = None
         if line.printed_balance is not None:
             if running is not None and running != line.printed_balance:
                 flags.append(
@@ -235,11 +389,21 @@ def _balances(o: Observation, prev: Observation | None, flags: list[Flag]) -> li
                     )
                 )
             running = line.printed_balance
-            out.append(Balance(line.printed_balance, line.source, "printed", line.day))
+            line_bal = Balance(line.printed_balance, line.source, "printed", line.day)
+            out.append(line_bal)
         elif running is not None:
-            out.append(Balance(running, line.source, "computed", line.day))
+            line_bal = Balance(running, line.source, "computed", line.day)
+            out.append(line_bal)
+        if year_start and not crossed and line.day is not None and line.day < year_start:
+            carry = Balance(line_bal.amount, line_bal.source, line_bal.kind, year_start) if line_bal else None
+    if year_start and not crossed and carry is not None and o.period_end and o.period_end >= year_start:
+        out.append(carry)
     if o.closing is not None:
-        if running is not None and o.lines and running != o.closing:
+        if (
+            running is not None
+            and running != o.closing
+            and (o.lines or not _conflict_explains_empty_span(o, running, conflicts))
+        ):
             flags.append(
                 Flag(
                     "arithmetic_mismatch",
@@ -445,7 +609,8 @@ def reconcile_account(
 ) -> AccountResult:
     flags: list[Flag] = []
     all_obs = obs
-    obs = sorted(obs, key=lambda o: (o.period_start or date.min, o.upload))
+    obs = _inherit_continuation_headers(obs)
+    obs = sorted(obs, key=lambda o: (o.period_start or date.min, *_upload_sort_key(o.upload)))
     out_of_year = [
         o
         for o in obs
@@ -480,7 +645,8 @@ def reconcile_account(
         else obs
     )
     unit_context_complete = all(o.currency is not None for o in effective_obs)
-    calc_obs = [o for o in effective_obs if o.currency is not None] if currency_ready else []
+    stitched_obs = _stitch_pages(effective_obs)
+    calc_obs = [o for o in stitched_obs if o.currency is not None] if currency_ready else []
     conflicts = _balance_conflicts(calc_obs)
     flags.extend(_conflict_flags(conflicts))
     prevs = [None, *calc_obs[:-1]] if calc_obs else []
@@ -502,7 +668,7 @@ def reconcile_account(
     balances = [
         b
         for o, p in zip(calc_obs, prevs, strict=True)
-        for b in _balances(o, p, flags)
+        for b in _balances(o, p, flags, tax_year, conflicts)
         if _in_year(b.day, tax_year)
     ]
     best = _max_value(balances)
@@ -598,8 +764,8 @@ def reconcile_account(
     elif ownership == "unknown":
         flags.append(Flag("ownership_unknown", "ownership not stated at intake"))
 
-    year_end, year_end_bounds = _year_end_evidence(effective_obs if currency_ready else [], tax_year, rate)
-    bounded = _annual_evidence_bounded(effective_obs, flags, tax_year)
+    year_end, year_end_bounds = _year_end_evidence(stitched_obs if currency_ready else [], tax_year, rate)
+    bounded = _annual_evidence_bounded(stitched_obs, flags, tax_year)
     maximum_bounds = _maximum_bounds(balances, intraday, rate, bounded, conflicts, flags)
     annual_max_complete = _annual_point_complete(best, bounded, conflicts, intraday, maximum_bounds)
     return AccountResult(

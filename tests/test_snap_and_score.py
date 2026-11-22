@@ -201,3 +201,74 @@ def test_recorded_opening_balance_highlight_lands_on_its_printed_line(inputs):
     assert not cell["y0"] <= raw_centre <= cell["y1"]  # the model's own box misses the line
     box = snap_fields(reading, inputs.set_dir / want["page_images"][0]["file"])["opening_balance"]
     assert box and cell["y0"] <= (box["y_min"] + box["y_max"]) / 2 <= cell["y1"]
+
+
+def test_multipage_rendered_statement_records_and_scores_page_two_headers(tmp_path):
+    from datetime import date
+
+    from cross_border_fbar.synth.model import Statement, Txn
+
+    spec = next(s for s in household(TAX_YEAR) if s.account_id == "de-joint")
+    txns = tuple(
+        Txn(
+            f"t-{i:02d}",
+            date(2025, 3, min(28, 1 + i // 2)),
+            f"Booking {i}",
+            10_000,
+            1_840_000 + (i + 1) * 10_000,
+            "routine",
+        )
+        for i in range(35)
+    )
+    stmt = Statement("de-joint", 2025, 3, spec.bank_for(3), 1_840_000, 2_190_000, txns)
+    drawn = render_statement(spec, stmt, FONTS, tmp_path / "de-joint_2025-03.pdf")
+    assert drawn["pages"] == 2
+    p2_fields = {
+        k: {**v, "value": major(v["value"], "EUR") if isinstance(v["value"], int) else v["value"]}
+        for k, v in drawn["page_fields"]["2"].items()
+    }
+    assert set(p2_fields) == {"institution", "account_number", "closing_balance"}
+    rec_p2 = {
+        "statement_id": stmt.statement_id,
+        "layout": "de_plain",
+        "period": "2025-03",
+        "fields": p2_fields,
+        "transactions": [
+            {
+                "txn_id": t.txn_id,
+                "date": t.day.isoformat(),
+                "amount": major(t.amount, "EUR"),
+                "balance_after": major(t.balance_after, "EUR"),
+                **drawn["lines"][t.txn_id],
+            }
+            for t in txns
+            if drawn["lines"][t.txn_id]["page"] == 2
+        ],
+        "doc_currency": "EUR",
+    }
+    zero_box = {"x_min": 0, "y_min": 0, "x_max": 10, "y_max": 10}
+    reading_p2 = {
+        "institution": {"text": "Rheinauen Privatbank", "status": "read", "bbox": zero_box},
+        "account_number": {"text": spec.account_number, "status": "read", "bbox": zero_box},
+        "holder": {"text": "", "status": "absent", "bbox": zero_box},
+        "period": {"text": "", "status": "absent", "bbox": zero_box},
+        "currency": {"text": "", "status": "absent", "bbox": zero_box},
+        "opening_balance": {"text": "", "status": "absent", "bbox": zero_box},
+        "closing_balance": {"text": "21.900,00 EUR", "status": "read", "bbox": zero_box},
+        "rows": [
+            {
+                "date_text": date.fromisoformat(t["date"]).strftime("%d.%m."),
+                "account_text": "",
+                "description": "Booking",
+                "amount_text": "100,00",
+                "amount_column": "signed",
+                "balance_text": "",
+                "row_bbox": zero_box,
+                "amount_bbox": zero_box,
+                "balance_bbox": zero_box,
+            }
+            for t in rec_p2["transactions"]
+        ],
+    }
+    scored = score_page(rec_p2, reading_p2, None)
+    assert all(f["value_ok"] for f in scored["fields"].values())
