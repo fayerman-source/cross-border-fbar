@@ -187,9 +187,7 @@ def _can_stitch(prev: Observation, cur: Observation) -> bool:
         return False
     stem1, page1 = _upload_page(prev.upload)
     stem2, page2 = _upload_page(cur.upload)
-    if page1 is not None or page2 is not None:
-        return page1 is not None and page2 is not None and stem1 == stem2 and page2 == page1 + 1
-    return prev.upload != cur.upload
+    return page1 is not None and page2 is not None and stem1 == stem2 and page2 == page1 + 1
 
 
 def _stitch_pages(obs: list[Observation]) -> list[Observation]:
