@@ -20,12 +20,13 @@ from pathlib import Path
 
 from babel.numbers import format_currency
 
-from ..extract.parse import parse_typed_amount
+from ..extract.parse import account_key, parse_typed_amount
 from ..reconcile.corrections import as_read, correction_key, line_as_read
 from ..reconcile.flags import CATALOG
+from ..reconcile.intake import IntakeDocument
 from . import phrases as phrase_tables
 from .phrases import LANGUAGES
-from .worksheet import Inputs, build, page_readings, readings_view, worksheet_hash
+from .worksheet import Inputs, _serialize_intake, build, page_readings, readings_view, worksheet_hash
 
 OWNERSHIPS = ("sole", "joint", "signature_authority")
 # The client summary is assembled from a fixed table of phrases, translated, plus the signed figures; the
@@ -154,6 +155,22 @@ def _account_context(value, key, path="worksheet"):
     return []
 
 
+def _merge_account_entry(prev_doc: IntakeDocument, row) -> object:
+    if not isinstance(row, dict):
+        return row
+    prev_acct = prev_doc.accounts.get(account_key(str(row.get("account_number", ""))))
+    return {**(prev_acct.metadata if prev_acct else {}), **row}
+
+
+def _merge_intake_metadata(prev_doc: IntakeDocument, intake_data: dict) -> dict:
+    merged_raw = {**prev_doc.metadata, **intake_data}
+    if isinstance(intake_data.get("household"), dict):
+        merged_raw["household"] = {**prev_doc.household.metadata, **intake_data["household"]}
+    if isinstance(intake_data.get("accounts"), list):
+        merged_raw["accounts"] = [_merge_account_entry(prev_doc, row) for row in intake_data["accounts"]]
+    return merged_raw
+
+
 class Review:
     def __init__(self, inputs: Inputs, review_dir: Path, root: Path | None = None):
         self.inputs = inputs
@@ -172,6 +189,7 @@ class Review:
         self.state.setdefault("interest", {})
         self.state.setdefault("ownership_details", {})
         self.state.setdefault("value_corrections", {})
+        self.state.setdefault("intake_override", None)
         self._retire_stale_value_corrections()
         self.worksheet = self._build()
         self._revalidate_signoff()
@@ -185,6 +203,7 @@ class Review:
             interest_overrides=self.state["interest"],
             ownership_details=self.state["ownership_details"],
             value_corrections=self.state["value_corrections"],
+            intake_override=self.state["intake_override"],
         )
 
     def _retire_stale_value_corrections(self) -> None:
@@ -232,7 +251,7 @@ class Review:
         shared = {
             k: v
             for k, v in self.worksheet.items()
-            if k not in {"accounts", "flags", "value_corrections", "totals", "form8938"}
+            if k not in {"accounts", "flags", "value_corrections", "totals", "form8938", "intake"}
         }
         shared_panel = {
             k: v
@@ -508,6 +527,40 @@ class Review:
                 after=value,
                 note=note.strip(),
             )
+
+    def update_intake(self, intake_data: dict, note: str, reviewer: str) -> None:
+        with self.lock:
+            self._require_open()
+            if not note.strip():
+                raise ReviewError("Record a note explaining the source of the intake update.")
+            if not isinstance(intake_data, dict):
+                raise ReviewError("intake must be an object")
+            prev_raw = (
+                self.state["intake_override"]
+                if self.state["intake_override"] is not None
+                else json.loads(self.inputs.intake.read_text(encoding="utf-8"))
+            )
+            merged_raw = _merge_intake_metadata(IntakeDocument.from_dict(prev_raw), intake_data)
+            try:
+                doc = IntakeDocument.from_dict(merged_raw)
+            except ValueError as e:
+                raise ReviewError(str(e)) from None
+            self.state["intake_override"] = _serialize_intake(doc)
+            self.worksheet = self._build()
+            self._audit(
+                "update_intake",
+                reviewer,
+                note=note.strip(),
+                client=doc.client,
+                accounts=len(doc.accounts),
+            )
+
+    def reload_inputs(self, reviewer: str, **detail) -> None:
+        with self.lock:
+            self._retire_stale_value_corrections()
+            self.worksheet = self._build()
+            self._revalidate_signoff()
+            self._audit("ingest_files", reviewer, **detail)
 
     def _value_as_read(self, upload, field) -> tuple[dict, dict | None]:
         page = page_readings(self.inputs).get(upload) if isinstance(upload, str) else None

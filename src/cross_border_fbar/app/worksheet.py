@@ -222,6 +222,30 @@ def _value_correction_views(corrections: dict, pages: list) -> dict:
     return views
 
 
+def _serialize_intake(doc: IntakeDocument) -> dict:
+    return {
+        "client": doc.client,
+        "source": doc.source,
+        "household": {
+            "filing_status": doc.household.filing_status,
+            "lives_abroad": doc.household.lives_abroad,
+            "spouse_specified_individual": doc.household.spouse_specified_individual,
+            **doc.household.metadata,
+        },
+        "accounts": [
+            {
+                "account_number": acct.account_number or key,
+                "ownership": acct.ownership,
+                "financial_interest": acct.financial_interest,
+                "joint_with_spouse": acct.joint_with_spouse,
+                **acct.metadata,
+            }
+            for key, acct in doc.accounts.items()
+        ],
+        **doc.metadata,
+    }
+
+
 def build(
     inp: Inputs,
     ownership_overrides: dict[str, str] | None = None,
@@ -232,8 +256,12 @@ def build(
     interest_overrides: dict | None = None,
     ownership_details: dict | None = None,
     value_corrections: dict | None = None,
+    intake_override: dict | None = None,
 ) -> dict:
-    intake_doc = IntakeDocument.from_dict(json.loads(inp.intake.read_text(encoding="utf-8")))
+    raw_intake = (
+        intake_override if intake_override is not None else json.loads(inp.intake.read_text(encoding="utf-8"))
+    )
+    intake_doc = IntakeDocument.from_dict(raw_intake)
     intake = _effective_intake(intake_doc, ownership_overrides, interest_overrides)
     year_rates = rates.load(inp.tax_year)
     observations, unread, unverified = load_observations(inp, value_corrections)
@@ -309,6 +337,7 @@ def build(
     return {
         "tax_year": inp.tax_year,
         "client": intake_doc.client,
+        "intake": _serialize_intake(intake_doc),
         "form8938": panel,
         "scope": SCOPE_LINE,
         "reader": {"model": readings_meta.get("model"), "prompt": readings_meta.get("prompt")},

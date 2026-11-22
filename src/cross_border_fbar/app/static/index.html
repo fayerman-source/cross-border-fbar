@@ -23,6 +23,63 @@
 
   <main class="layout">
     <section class="paper" aria-label="Worksheet">
+      <details class="schedule intake-panel" id="intake-panel">
+        <summary>Intake facts and statement ingestion</summary>
+        <form id="intake-form" class="signoff-form">
+          <label>Client <input id="intake-client"></label>
+          <label>Intake source <input id="intake-source"></label>
+          <label>Filing status
+            <select id="intake-filing-status">
+              <option value="">Not stated</option>
+              <option value="single">Single</option>
+              <option value="mfj">Married filing jointly</option>
+              <option value="mfs">Married filing separately</option>
+              <option value="hoh">Head of household</option>
+              <option value="qss">Qualifying surviving spouse</option>
+            </select>
+          </label>
+          <label>Lives abroad
+            <select id="intake-lives-abroad">
+              <option value="">Not stated</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </label>
+          <label>Spouse is a specified individual
+            <select id="intake-spouse-spec">
+              <option value="">Not stated</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </label>
+          <div class="table-wrap" style="width:100%">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Account number</th>
+                  <th scope="col">Ownership</th>
+                  <th scope="col">Financial interest</th>
+                  <th scope="col">Joint with spouse</th>
+                  <th scope="col"></th>
+                </tr>
+              </thead>
+              <tbody id="intake-accounts"></tbody>
+            </table>
+          </div>
+          <button type="button" class="link" id="intake-add-acct">+ Add account</button>
+          <label>Update note <input id="intake-note" placeholder="Source of intake update" required></label>
+          <button type="submit" id="intake-save-btn">Save intake facts</button>
+        </form>
+        <div id="upload-box">
+          <h3>Batch statement ingestion (multi-page PDF, CSV, or image)</h3>
+          <p class="hint">Text-layer PDFs and CSVs parse locally with zero model calls; scans and images fall back to the configured model.</p>
+          <label for="upload-files">Statement files</label>
+          <input type="file" id="upload-files" multiple accept=".pdf,.csv,.png,.jpg,.jpeg,.heic,.heif,.webp">
+          <label><input type="checkbox" id="upload-synthetic"> Confirm synthetic test documents only (no real personal data)</label>
+          <button type="button" id="upload-btn">Ingest selected files</button>
+        </div>
+      </details>
+
       <section class="schedule" aria-labelledby="sched-a">
         <h2 id="sched-a"><span class="sched-letter">A</span> Foreign accounts</h2>
         <div class="table-wrap">

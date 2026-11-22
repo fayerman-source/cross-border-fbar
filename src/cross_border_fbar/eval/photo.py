@@ -14,6 +14,7 @@ import math
 import os
 import tempfile
 import uuid
+from collections.abc import Sequence
 from pathlib import Path
 
 from PIL import Image, ImageOps
@@ -29,6 +30,11 @@ from ..reconcile.intake import IntakeDocument
 from .score import score_page, summarize
 
 MODEL = "muse-spark-1.3"
+SUPPORTED_EXTENSIONS = frozenset({".pdf", ".csv", ".png", ".jpg", ".jpeg", ".heic", ".heif", ".webp"})
+READINGS_FILENAME = "readings.json"
+INTAKE_FILENAME = "intake.json"
+LOCK_FILENAME = ".photo-eval.lock"
+LIVE_REQUIRED_ERR = "photo evaluation requires live extraction"
 
 
 def _open_page(path: Path, page: int) -> Image.Image:
@@ -208,45 +214,61 @@ def _validate_schema(value, schema, path="reading"):
         raise ValueError(f"{path} has an invalid integer value")
 
 
-def _existing_set(set_dir: Path, intake: dict, explicit_intake: bool) -> dict:
-    intake_file = set_dir / "intake.json"
-    readings_file = set_dir / "readings.json"
+def _existing_set(
+    set_dir: Path, intake: dict, explicit_intake: bool, readings_file: Path | None = None
+) -> dict:
+    intake_file = set_dir / INTAKE_FILENAME
+    readings_file = readings_file or (set_dir / READINGS_FILENAME)
     if intake_file.exists():
         saved = json.loads(intake_file.read_text(encoding="utf-8"))
         IntakeDocument.from_dict(saved)
         if explicit_intake and saved != intake:
             raise ValueError("review set already has different intake facts")
-    elif readings_file.exists():
+    elif readings_file.exists() and readings_file.parent == set_dir:
         raise ValueError("existing review set is missing intake.json")
     if not readings_file.exists():
         return {"model": MODEL, "prompt": PROMPT_VERSION, "pages": []}
     doc = json.loads(readings_file.read_text(encoding="utf-8"))
-    if doc.get("model") != MODEL or doc.get("prompt") != PROMPT_VERSION:
+    if readings_file.parent == set_dir and (doc.get("model") != MODEL or doc.get("prompt") != PROMPT_VERSION):
         raise ValueError("review set uses a different model or prompt")
     if not isinstance(doc.get("pages"), list):
         raise ValueError("review set pages must be a list")
-    # Catch inaccessible images or malformed existing readings before spending on another call.
-    build(Inputs(set_dir, readings_file, intake_file))
+    if intake_file.exists():
+        # Catch inaccessible images or malformed existing readings before spending on another call.
+        build(Inputs(set_dir, readings_file, intake_file))
     return doc
 
 
-def _append_capture(set_dir, intake, intake_path, item):
-    with exclusive(set_dir / ".photo-eval.lock"):
-        intake_file = set_dir / "intake.json"
-        readings_file = set_dir / "readings.json"
-        doc = _existing_set(set_dir, intake, bool(intake_path))
+def _append_captures(
+    set_dir: Path,
+    intake: dict,
+    intake_path: Path | None,
+    items: list[dict],
+    readings_file: Path | None = None,
+) -> Path:
+    target_readings = readings_file or (set_dir / READINGS_FILENAME)
+    target_readings.parent.mkdir(parents=True, exist_ok=True)
+    with exclusive(set_dir / LOCK_FILENAME):
+        intake_file = set_dir / INTAKE_FILENAME
+        doc = _existing_set(set_dir, intake, bool(intake_path), target_readings)
         if not intake_file.exists():
             _write_json_atomic(intake_file, intake)
-        updated = {**doc, "pages": [*doc["pages"], item]}
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=set_dir, delete=False) as tmp:
+        updated = {**doc, "pages": [*doc["pages"], *items]}
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=target_readings.parent, delete=False
+        ) as tmp:
             json.dump(updated, tmp, ensure_ascii=False)
             preview = Path(tmp.name)
         try:
             build(Inputs(set_dir, preview, intake_file))
-            _write_json_atomic(readings_file, updated)
+            _write_json_atomic(target_readings, updated)
         finally:
             preview.unlink(missing_ok=True)
-    return readings_file
+    return target_readings
+
+
+def _append_capture(set_dir, intake, intake_path, item):
+    return _append_captures(set_dir, intake, intake_path, [item])
 
 
 def _score_capture(statement, reading, image_path, corners):
@@ -305,7 +327,7 @@ def run(
     )
     IntakeDocument.from_dict(intake)
     if client is not None and client.mode != "live":
-        raise ValueError("photo evaluation requires live extraction")
+        raise ValueError(LIVE_REQUIRED_ERR)
 
     digital_reading: dict | None = None
     digital_mode: str | None = None
@@ -320,10 +342,10 @@ def run(
     if digital_reading is None:
         client = client or Client(mode="live")
         if client.mode != "live":
-            raise ValueError("photo evaluation requires live extraction")
+            raise ValueError(LIVE_REQUIRED_ERR)
 
     set_dir.mkdir(parents=True, exist_ok=True)
-    with exclusive(set_dir / ".photo-eval.lock"):
+    with exclusive(set_dir / LOCK_FILENAME):
         _existing_set(set_dir, intake, bool(intake_path))
     pages = set_dir / "pages"
     pages.mkdir(exist_ok=True)
@@ -404,6 +426,175 @@ def run(
         raise
 
 
+def _pdf_page_count(path: Path) -> int:
+    import pypdfium2 as pdfium
+
+    doc = pdfium.PdfDocument(str(path))
+    try:
+        return len(doc)
+    finally:
+        doc.close()
+
+
+def _expand_batch_inputs(inputs: Sequence[Path]) -> list[Path]:
+    expanded: list[Path] = []
+    for raw_item in inputs:
+        resolved = raw_item.resolve(strict=True)
+        if resolved.is_dir():
+            expanded.extend(
+                sorted(
+                    p for p in resolved.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
+                )
+            )
+        elif resolved.suffix.lower() in SUPPORTED_EXTENSIONS:
+            expanded.append(resolved)
+        else:
+            raise ValueError(f"unsupported statement file {resolved.name!r}")
+    if not expanded:
+        raise ValueError("no supported statement files found")
+    return expanded
+
+
+def _ingest_single_page(
+    file_path: Path,
+    pg: int,
+    set_dir: Path,
+    image_path: Path,
+    statement_id: str,
+    source_hash: str,
+    client: Client | None,
+) -> tuple[dict, Client | None]:
+    from ..reconcile.observe import observe
+
+    suffix = file_path.suffix.lower()
+    digital_reading: dict | None = None
+    digital_mode: str | None = None
+    if suffix == ".csv":
+        digital_reading = read_csv_statement(file_path)
+        digital_mode = "digital-csv"
+    elif suffix == ".pdf":
+        digital_reading = read_digital_pdf_page(file_path, page=pg)
+        if digital_reading is not None:
+            digital_mode = "digital-pdf"
+
+    if digital_reading is not None:
+        reading = (
+            render_csv_preview(digital_reading, image_path)
+            if suffix == ".csv"
+            else (_open_page(file_path, pg).save(image_path, format="PNG") or digital_reading)
+        )
+        metadata = {
+            "model": digital_mode,
+            "prompt": "digital_v1",
+            "cost_usd": 0.0,
+            "latency_s": 0.0,
+            "replayed": False,
+            "request_key": f"{source_hash}:p{pg}",
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+        }
+        recording_file = None
+        boxes_verified = True
+        geometry_label = "csv-preview" if suffix == ".csv" else "pdf-text-layer"
+    else:
+        client = client or Client(mode="live")
+        if client.mode != "live":
+            raise ValueError(LIVE_REQUIRED_ERR)
+        _open_page(file_path, pg).save(image_path, format="PNG")
+        rec_dir = set_dir / "recordings" / f"{statement_id}-p{pg}"
+        client.recordings = rec_dir
+        reading, metadata = read_page(client, MODEL, image_path, label=f"photo-eval:{statement_id}:p{pg}")
+        recording_file = str(rec_dir / MODEL / (metadata["request_key"] + ".json"))
+        boxes_verified = False
+        geometry_label = "unscored"
+
+    _validate_schema(reading, SCHEMA)
+    observe(reading, f"pages/{image_path.name}")
+    item = {
+        "statement_id": statement_id,
+        "page": pg,
+        "reading": reading,
+        "call": metadata,
+        "capture": {
+            "source_sha256": source_hash,
+            "source_page": pg,
+            "truth_page": None,
+            "boxes_verified": boxes_verified,
+            "synthetic_confirmed": True,
+            "case": None,
+            "recording_file": recording_file,
+            "corners": None,
+            "geometry": geometry_label,
+        },
+        "score": None,
+        "value_summary": None,
+        "geometry_summary": None,
+    }
+    return item, client
+
+
+def run_batch(
+    inputs: Sequence[Path],
+    set_dir: Path,
+    *,
+    synthetic: bool,
+    intake_path: Path | None = None,
+    readings_path: Path | None = None,
+    client: Client | None = None,
+) -> dict:
+    """Ingest multiple statement files or folders (including all pages of multi-page PDFs and CSVs)."""
+    if not synthetic:
+        raise ValueError("confirm that the input is synthetic; real people's documents are not permitted")
+    if client is not None and client.mode != "live":
+        raise ValueError(LIVE_REQUIRED_ERR)
+
+    expanded = _expand_batch_inputs(inputs)
+    set_dir = set_dir.resolve()
+    intake_path = intake_path.resolve(strict=True) if intake_path else None
+    target_readings = readings_path.resolve() if readings_path else (set_dir / READINGS_FILENAME)
+    intake = (
+        json.loads(intake_path.read_text(encoding="utf-8"))
+        if intake_path
+        else {"client": "Synthetic test client", "source": "Not stated", "accounts": []}
+    )
+    IntakeDocument.from_dict(intake)
+
+    set_dir.mkdir(parents=True, exist_ok=True)
+    with exclusive(set_dir / LOCK_FILENAME):
+        _existing_set(set_dir, intake, bool(intake_path), target_readings)
+
+    pages_dir = set_dir / "pages"
+    pages_dir.mkdir(exist_ok=True)
+    (set_dir / "recordings").mkdir(exist_ok=True)
+
+    created_images: list[Path] = []
+    items: list[dict] = []
+    try:
+        for file_path in expanded:
+            source_hash = hashlib.sha256(file_path.read_bytes()).hexdigest()
+            statement_id = "capture-" + uuid.uuid4().hex
+            total_pages = _pdf_page_count(file_path) if file_path.suffix.lower() == ".pdf" else 1
+            for pg in range(1, total_pages + 1):
+                image_path = pages_dir / f"{statement_id}-p{pg}.png"
+                created_images.append(image_path)
+                item, client = _ingest_single_page(
+                    file_path, pg, set_dir, image_path, statement_id, source_hash, client
+                )
+                items.append(item)
+        out_readings = _append_captures(set_dir, intake, intake_path, items, target_readings)
+        return {
+            "set": str(set_dir),
+            "readings": str(out_readings),
+            "files_ingested": len(expanded),
+            "pages_ingested": len(items),
+            "captures": sorted({it["statement_id"] for it in items}),
+            "cost_usd": round(sum(float(it["call"]["cost_usd"]) for it in items), 6),
+        }
+    except BaseException:
+        for img in created_images:
+            img.unlink(missing_ok=True)
+        raise
+
+
 def _corners(text: str) -> list[tuple[float, float]]:
     try:
         pairs = [part.split(",") for part in text.split(";")]
@@ -416,9 +607,10 @@ def _corners(text: str) -> list[tuple[float, float]]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("input", type=Path, help="synthetic image or PDF")
+    parser.add_argument("input", type=Path, nargs="+", help="synthetic image, PDF, CSV, or directory")
     parser.add_argument("--set", type=Path, default=Path("out/photo-review"))
     parser.add_argument("--confirm-synthetic", action="store_true", required=True)
+    parser.add_argument("--all-pages", action="store_true", help="ingest every page of multi-page PDFs")
     parser.add_argument("--page", type=int, default=1, help="1-based PDF page")
     parser.add_argument("--truth-page", type=int, default=1, help="1-based original page in the manifest")
     parser.add_argument("--manifest", type=Path)
@@ -426,17 +618,25 @@ def main() -> None:
     parser.add_argument("--corners", type=_corners, help="UL; UR; LR; LL pixel pairs as x,y;x,y;x,y;x,y")
     parser.add_argument("--intake", type=Path, help="optional synthetic intake JSON")
     args = parser.parse_args()
-    result = run(
-        args.input,
-        args.set,
-        synthetic=args.confirm_synthetic,
-        page=args.page,
-        truth_page=args.truth_page,
-        manifest=args.manifest,
-        case_id=args.case,
-        corners=args.corners,
-        intake_path=args.intake,
-    )
+    if args.all_pages or len(args.input) > 1 or args.input[0].is_dir():
+        result = run_batch(
+            args.input,
+            args.set,
+            synthetic=args.confirm_synthetic,
+            intake_path=args.intake,
+        )
+    else:
+        result = run(
+            args.input[0],
+            args.set,
+            synthetic=args.confirm_synthetic,
+            page=args.page,
+            truth_page=args.truth_page,
+            manifest=args.manifest,
+            case_id=args.case,
+            corners=args.corners,
+            intake_path=args.intake,
+        )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     print(f"Open: python -m cross_border_fbar.app --set {args.set} --readings {args.set / 'readings.json'}")
 

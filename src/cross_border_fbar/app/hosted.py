@@ -206,6 +206,7 @@ class HostedHandler(Handler):
     review = None  # set per request to the visitor's own Review
     store: VisitorStore
     public_host: str
+    allow_upload: bool = False
     _new_token: str | None = None
     _held: list | None = None
 
