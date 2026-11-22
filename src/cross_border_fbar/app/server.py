@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import binascii
 import json
 import os
 import re
@@ -192,7 +191,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise ReviewError(f"Unsupported filename or type: {name!r}")
                 try:
                     payload = base64.b64decode(str(item.get("data_b64", "")), validate=True)
-                except (binascii.Error, ValueError):
+                except ValueError:
                     raise ReviewError(f"Invalid base64 payload for {name}") from None
                 total_bytes += len(payload)
                 if total_bytes > 25 * 1024 * 1024:

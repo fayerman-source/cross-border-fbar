@@ -155,6 +155,22 @@ def _account_context(value, key, path="worksheet"):
     return []
 
 
+def _merge_account_entry(prev_doc: IntakeDocument, row) -> object:
+    if not isinstance(row, dict):
+        return row
+    prev_acct = prev_doc.accounts.get(account_key(str(row.get("account_number", ""))))
+    return {**(prev_acct.metadata if prev_acct else {}), **row}
+
+
+def _merge_intake_metadata(prev_doc: IntakeDocument, intake_data: dict) -> dict:
+    merged_raw = {**prev_doc.metadata, **intake_data}
+    if isinstance(intake_data.get("household"), dict):
+        merged_raw["household"] = {**prev_doc.household.metadata, **intake_data["household"]}
+    if isinstance(intake_data.get("accounts"), list):
+        merged_raw["accounts"] = [_merge_account_entry(prev_doc, row) for row in intake_data["accounts"]]
+    return merged_raw
+
+
 class Review:
     def __init__(self, inputs: Inputs, review_dir: Path, root: Path | None = None):
         self.inputs = inputs
@@ -524,26 +540,12 @@ class Review:
                 if self.state["intake_override"] is not None
                 else json.loads(self.inputs.intake.read_text(encoding="utf-8"))
             )
-            prev_doc = IntakeDocument.from_dict(prev_raw)
-            merged_raw = {**prev_doc.metadata, **intake_data}
-            if isinstance(intake_data.get("household"), dict):
-                merged_raw["household"] = {**prev_doc.household.metadata, **intake_data["household"]}
-            if isinstance(intake_data.get("accounts"), list):
-                merged_accounts = []
-                for row in intake_data["accounts"]:
-                    if isinstance(row, dict):
-                        key = account_key(str(row.get("account_number", "")))
-                        prev_acct = prev_doc.accounts.get(key)
-                        merged_accounts.append({**(prev_acct.metadata if prev_acct else {}), **row})
-                    else:
-                        merged_accounts.append(row)
-                merged_raw["accounts"] = merged_accounts
+            merged_raw = _merge_intake_metadata(IntakeDocument.from_dict(prev_raw), intake_data)
             try:
                 doc = IntakeDocument.from_dict(merged_raw)
             except ValueError as e:
                 raise ReviewError(str(e)) from None
-            normalized = _serialize_intake(doc)
-            self.state["intake_override"] = normalized
+            self.state["intake_override"] = _serialize_intake(doc)
             self.worksheet = self._build()
             self._audit(
                 "update_intake",

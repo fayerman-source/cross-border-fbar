@@ -31,6 +31,10 @@ from .score import score_page, summarize
 
 MODEL = "muse-spark-1.3"
 SUPPORTED_EXTENSIONS = frozenset({".pdf", ".csv", ".png", ".jpg", ".jpeg", ".heic", ".heif", ".webp"})
+READINGS_FILENAME = "readings.json"
+INTAKE_FILENAME = "intake.json"
+LOCK_FILENAME = ".photo-eval.lock"
+LIVE_REQUIRED_ERR = "photo evaluation requires live extraction"
 
 
 def _open_page(path: Path, page: int) -> Image.Image:
@@ -213,8 +217,8 @@ def _validate_schema(value, schema, path="reading"):
 def _existing_set(
     set_dir: Path, intake: dict, explicit_intake: bool, readings_file: Path | None = None
 ) -> dict:
-    intake_file = set_dir / "intake.json"
-    readings_file = readings_file or (set_dir / "readings.json")
+    intake_file = set_dir / INTAKE_FILENAME
+    readings_file = readings_file or (set_dir / READINGS_FILENAME)
     if intake_file.exists():
         saved = json.loads(intake_file.read_text(encoding="utf-8"))
         IntakeDocument.from_dict(saved)
@@ -242,10 +246,10 @@ def _append_captures(
     items: list[dict],
     readings_file: Path | None = None,
 ) -> Path:
-    target_readings = readings_file or (set_dir / "readings.json")
+    target_readings = readings_file or (set_dir / READINGS_FILENAME)
     target_readings.parent.mkdir(parents=True, exist_ok=True)
-    with exclusive(set_dir / ".photo-eval.lock"):
-        intake_file = set_dir / "intake.json"
+    with exclusive(set_dir / LOCK_FILENAME):
+        intake_file = set_dir / INTAKE_FILENAME
         doc = _existing_set(set_dir, intake, bool(intake_path), target_readings)
         if not intake_file.exists():
             _write_json_atomic(intake_file, intake)
@@ -323,7 +327,7 @@ def run(
     )
     IntakeDocument.from_dict(intake)
     if client is not None and client.mode != "live":
-        raise ValueError("photo evaluation requires live extraction")
+        raise ValueError(LIVE_REQUIRED_ERR)
 
     digital_reading: dict | None = None
     digital_mode: str | None = None
@@ -338,10 +342,10 @@ def run(
     if digital_reading is None:
         client = client or Client(mode="live")
         if client.mode != "live":
-            raise ValueError("photo evaluation requires live extraction")
+            raise ValueError(LIVE_REQUIRED_ERR)
 
     set_dir.mkdir(parents=True, exist_ok=True)
-    with exclusive(set_dir / ".photo-eval.lock"):
+    with exclusive(set_dir / LOCK_FILENAME):
         _existing_set(set_dir, intake, bool(intake_path))
     pages = set_dir / "pages"
     pages.mkdir(exist_ok=True)
@@ -432,21 +436,7 @@ def _pdf_page_count(path: Path) -> int:
         doc.close()
 
 
-def run_batch(
-    inputs: Sequence[Path],
-    set_dir: Path,
-    *,
-    synthetic: bool,
-    intake_path: Path | None = None,
-    readings_path: Path | None = None,
-    client: Client | None = None,
-) -> dict:
-    """Ingest multiple statement files or folders (including all pages of multi-page PDFs and CSVs)."""
-    if not synthetic:
-        raise ValueError("confirm that the input is synthetic; real people's documents are not permitted")
-    if client is not None and client.mode != "live":
-        raise ValueError("photo evaluation requires live extraction")
-
+def _expand_batch_inputs(inputs: Sequence[Path]) -> list[Path]:
     expanded: list[Path] = []
     for raw_item in inputs:
         resolved = raw_item.resolve(strict=True)
@@ -462,10 +452,105 @@ def run_batch(
             raise ValueError(f"unsupported statement file {resolved.name!r}")
     if not expanded:
         raise ValueError("no supported statement files found")
+    return expanded
 
+
+def _ingest_single_page(
+    file_path: Path,
+    pg: int,
+    set_dir: Path,
+    image_path: Path,
+    statement_id: str,
+    source_hash: str,
+    client: Client | None,
+) -> tuple[dict, Client | None]:
+    from ..reconcile.observe import observe
+
+    suffix = file_path.suffix.lower()
+    digital_reading: dict | None = None
+    digital_mode: str | None = None
+    if suffix == ".csv":
+        digital_reading = read_csv_statement(file_path)
+        digital_mode = "digital-csv"
+    elif suffix == ".pdf":
+        digital_reading = read_digital_pdf_page(file_path, page=pg)
+        if digital_reading is not None:
+            digital_mode = "digital-pdf"
+
+    if digital_reading is not None:
+        reading = (
+            render_csv_preview(digital_reading, image_path)
+            if suffix == ".csv"
+            else (_open_page(file_path, pg).save(image_path, format="PNG") or digital_reading)
+        )
+        metadata = {
+            "model": digital_mode,
+            "prompt": "digital_v1",
+            "cost_usd": 0.0,
+            "latency_s": 0.0,
+            "replayed": False,
+            "request_key": f"{source_hash}:p{pg}",
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+        }
+        recording_file = None
+        boxes_verified = True
+        geometry_label = "csv-preview" if suffix == ".csv" else "pdf-text-layer"
+    else:
+        client = client or Client(mode="live")
+        if client.mode != "live":
+            raise ValueError(LIVE_REQUIRED_ERR)
+        _open_page(file_path, pg).save(image_path, format="PNG")
+        rec_dir = set_dir / "recordings" / f"{statement_id}-p{pg}"
+        client.recordings = rec_dir
+        reading, metadata = read_page(client, MODEL, image_path, label=f"photo-eval:{statement_id}:p{pg}")
+        recording_file = str(rec_dir / MODEL / (metadata["request_key"] + ".json"))
+        boxes_verified = False
+        geometry_label = "unscored"
+
+    _validate_schema(reading, SCHEMA)
+    observe(reading, f"pages/{image_path.name}")
+    item = {
+        "statement_id": statement_id,
+        "page": pg,
+        "reading": reading,
+        "call": metadata,
+        "capture": {
+            "source_sha256": source_hash,
+            "source_page": pg,
+            "truth_page": None,
+            "boxes_verified": boxes_verified,
+            "synthetic_confirmed": True,
+            "case": None,
+            "recording_file": recording_file,
+            "corners": None,
+            "geometry": geometry_label,
+        },
+        "score": None,
+        "value_summary": None,
+        "geometry_summary": None,
+    }
+    return item, client
+
+
+def run_batch(
+    inputs: Sequence[Path],
+    set_dir: Path,
+    *,
+    synthetic: bool,
+    intake_path: Path | None = None,
+    readings_path: Path | None = None,
+    client: Client | None = None,
+) -> dict:
+    """Ingest multiple statement files or folders (including all pages of multi-page PDFs and CSVs)."""
+    if not synthetic:
+        raise ValueError("confirm that the input is synthetic; real people's documents are not permitted")
+    if client is not None and client.mode != "live":
+        raise ValueError(LIVE_REQUIRED_ERR)
+
+    expanded = _expand_batch_inputs(inputs)
     set_dir = set_dir.resolve()
     intake_path = intake_path.resolve(strict=True) if intake_path else None
-    target_readings = readings_path.resolve() if readings_path else (set_dir / "readings.json")
+    target_readings = readings_path.resolve() if readings_path else (set_dir / READINGS_FILENAME)
     intake = (
         json.loads(intake_path.read_text(encoding="utf-8"))
         if intake_path
@@ -474,92 +559,27 @@ def run_batch(
     IntakeDocument.from_dict(intake)
 
     set_dir.mkdir(parents=True, exist_ok=True)
-    with exclusive(set_dir / ".photo-eval.lock"):
+    with exclusive(set_dir / LOCK_FILENAME):
         _existing_set(set_dir, intake, bool(intake_path), target_readings)
 
     pages_dir = set_dir / "pages"
     pages_dir.mkdir(exist_ok=True)
     (set_dir / "recordings").mkdir(exist_ok=True)
 
-    from ..reconcile.observe import observe
-
     created_images: list[Path] = []
     items: list[dict] = []
     try:
         for file_path in expanded:
-            suffix = file_path.suffix.lower()
             source_hash = hashlib.sha256(file_path.read_bytes()).hexdigest()
             statement_id = "capture-" + uuid.uuid4().hex
-            total_pages = _pdf_page_count(file_path) if suffix == ".pdf" else 1
+            total_pages = _pdf_page_count(file_path) if file_path.suffix.lower() == ".pdf" else 1
             for pg in range(1, total_pages + 1):
                 image_path = pages_dir / f"{statement_id}-p{pg}.png"
                 created_images.append(image_path)
-                digital_reading: dict | None = None
-                digital_mode: str | None = None
-                if suffix == ".csv":
-                    digital_reading = read_csv_statement(file_path)
-                    digital_mode = "digital-csv"
-                elif suffix == ".pdf":
-                    digital_reading = read_digital_pdf_page(file_path, page=pg)
-                    if digital_reading is not None:
-                        digital_mode = "digital-pdf"
-
-                if digital_reading is not None:
-                    if suffix == ".csv":
-                        reading = render_csv_preview(digital_reading, image_path)
-                    else:
-                        _open_page(file_path, pg).save(image_path, format="PNG")
-                        reading = digital_reading
-                    metadata = {
-                        "model": digital_mode,
-                        "prompt": "digital_v1",
-                        "cost_usd": 0.0,
-                        "latency_s": 0.0,
-                        "replayed": False,
-                        "request_key": f"{source_hash}:p{pg}",
-                        "usage": {"prompt_tokens": 0, "completion_tokens": 0},
-                    }
-                    recording_file = None
-                    boxes_verified = True
-                    geometry_label = "csv-preview" if suffix == ".csv" else "pdf-text-layer"
-                else:
-                    client = client or Client(mode="live")
-                    if client.mode != "live":
-                        raise ValueError("photo evaluation requires live extraction")
-                    _open_page(file_path, pg).save(image_path, format="PNG")
-                    rec_dir = set_dir / "recordings" / f"{statement_id}-p{pg}"
-                    client.recordings = rec_dir
-                    reading, metadata = read_page(
-                        client, MODEL, image_path, label=f"photo-eval:{statement_id}:p{pg}"
-                    )
-                    recording_file = str(rec_dir / MODEL / (metadata["request_key"] + ".json"))
-                    boxes_verified = False
-                    geometry_label = "unscored"
-
-                _validate_schema(reading, SCHEMA)
-                observe(reading, f"pages/{image_path.name}")
-                items.append(
-                    {
-                        "statement_id": statement_id,
-                        "page": pg,
-                        "reading": reading,
-                        "call": metadata,
-                        "capture": {
-                            "source_sha256": source_hash,
-                            "source_page": pg,
-                            "truth_page": None,
-                            "boxes_verified": boxes_verified,
-                            "synthetic_confirmed": True,
-                            "case": None,
-                            "recording_file": recording_file,
-                            "corners": None,
-                            "geometry": geometry_label,
-                        },
-                        "score": None,
-                        "value_summary": None,
-                        "geometry_summary": None,
-                    }
+                item, client = _ingest_single_page(
+                    file_path, pg, set_dir, image_path, statement_id, source_hash, client
                 )
+                items.append(item)
         out_readings = _append_captures(set_dir, intake, intake_path, items, target_readings)
         return {
             "set": str(set_dir),

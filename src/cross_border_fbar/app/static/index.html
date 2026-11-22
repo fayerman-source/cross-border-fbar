@@ -73,6 +73,7 @@
         <div id="upload-box">
           <h3>Batch statement ingestion (multi-page PDF, CSV, or image)</h3>
           <p class="hint">Text-layer PDFs and CSVs parse locally with zero model calls; scans and images fall back to the configured model.</p>
+          <label for="upload-files">Statement files</label>
           <input type="file" id="upload-files" multiple accept=".pdf,.csv,.png,.jpg,.jpeg,.heic,.heif,.webp">
           <label><input type="checkbox" id="upload-synthetic"> Confirm synthetic test documents only (no real personal data)</label>
           <button type="button" id="upload-btn">Ingest selected files</button>

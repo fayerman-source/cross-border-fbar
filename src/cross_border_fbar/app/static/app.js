@@ -676,7 +676,7 @@ $("intake-form").addEventListener("submit", async (ev) => {
   const accounts = [...$("intake-accounts").querySelectorAll("tr")].map((tr) => {
     const account_number = tr.querySelector(".intake-acct-num").value.trim();
     return {
-      ...(prevByKey[normAcct(account_number)] || {}),
+      ...prevByKey[normAcct(account_number)],
       account_number,
       ownership: tr.querySelector(".intake-acct-own").value,
       financial_interest: parseTriState(tr.querySelector(".intake-acct-fin").value),
@@ -688,7 +688,7 @@ $("intake-form").addEventListener("submit", async (ev) => {
     client: $("intake-client").value.trim() || null,
     source: $("intake-source").value.trim() || null,
     household: {
-      ...(prev.household || {}),
+      ...prev.household,
       filing_status: $("intake-filing-status").value || null,
       lives_abroad: parseTriState($("intake-lives-abroad").value),
       spouse_specified_individual: parseTriState($("intake-spouse-spec").value),
@@ -710,7 +710,7 @@ $("upload-btn").addEventListener("click", async () => {
     const files = await Promise.all([...input.files].map(async (f) => {
       const bytes = new Uint8Array(await f.arrayBuffer());
       let bin = "";
-      for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode(...bytes.subarray(i, i + 8192));
+      for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCodePoint(...bytes.subarray(i, i + 8192));
       return { name: f.name, data_b64: btoa(bin) };
     }));
     state = await api("/api/upload", { synthetic_confirmed: true, files, reviewer: reviewer() || "reviewer" });
