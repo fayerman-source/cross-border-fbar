@@ -26,6 +26,7 @@ from ..reconcile.flags import CATALOG
 from . import phrases as phrase_tables
 from .csv_export import export_fincen114_csv
 from .phrases import LANGUAGES
+from .workpaper import export_workpaper_pdf
 from .worksheet import Inputs, build, page_readings, readings_view, worksheet_hash
 
 OWNERSHIPS = ("sole", "joint", "signature_authority")
@@ -614,6 +615,9 @@ class Review:
 
     def export_csv(self) -> str:
         return export_fincen114_csv(self.export())
+
+    def export_pdf(self) -> bytes:
+        return export_workpaper_pdf(self.export(), self.inputs.set_dir)
 
     # -- client summary ------------------------------------------------------------------------
     def summary_facts(self, language: str = "en_US") -> dict:

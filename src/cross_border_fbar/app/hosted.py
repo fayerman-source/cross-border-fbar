@@ -43,7 +43,7 @@ HOST_LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
 PUBLIC_HOST = re.compile(rf"{HOST_LABEL}(?:\.{HOST_LABEL})*(?::[0-9]{{1,5}})?")
 COOKIE = "__Host-fbar_visitor"  # the prefix makes browsers require Secure, Path=/ and no Domain
 TOKEN = re.compile(r"[A-Za-z0-9_-]{43}")  # secrets.token_urlsafe(32)
-VISITOR_GETS = frozenset({"/api/state", "/api/export", "/api/export.csv"})
+VISITOR_GETS = frozenset({"/api/state", "/api/export", "/api/export.csv", "/api/export.pdf"})
 RESET_PATH = "/api/demo/reset"
 
 SESSION_ENDED = (
