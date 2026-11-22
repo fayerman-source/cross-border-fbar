@@ -82,10 +82,12 @@ def main() -> None:
     p.add_argument("--model", default="muse-spark-1.3")
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--limit", type=int)
+    p.add_argument("--out", type=Path)
     a = p.parse_args()
     result = evaluate(a.set, a.model, a.mode, a.workers, a.limit)
-    RESULTS.mkdir(exist_ok=True)
-    out = RESULTS / f"{a.model}_{a.set.name}.json"
+    suffix = f"_limit{a.limit}" if a.limit is not None else ""
+    out = a.out or (RESULTS / f"{a.model}_{a.set.name}{suffix}.json")
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     print(json.dumps({k: result[k] for k in ("model", "prompt", "mode", "cost_usd_this_run")}))
     print(json.dumps(result["summary"], indent=1))

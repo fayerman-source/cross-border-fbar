@@ -227,6 +227,8 @@ def main() -> None:
     p.add_argument("--set", type=Path, default=Path("out/synth"))
     p.add_argument("--readings", type=Path, default=Path("results/muse-spark-1.3_synth.json"))
     p.add_argument("--intake", type=Path)
+    p.add_argument("--tax-year", type=int, default=2025)
+    p.add_argument("--rates", type=Path)
     p.add_argument("--review-dir", type=Path)
     p.add_argument("--port", type=int)
     p.add_argument(
@@ -238,7 +240,13 @@ def main() -> None:
         "--public-host", help="with --hosted: the demo's public host name, such as demo.example.org"
     )
     a = p.parse_args()
-    inputs = Inputs(a.set, a.readings, a.intake or a.set / "intake.json")
+    inputs = Inputs(
+        a.set,
+        a.readings,
+        a.intake or a.set / "intake.json",
+        tax_year=a.tax_year,
+        rates_path=a.rates,
+    )
     if a.hosted or a.public_host:
         from . import hosted
 

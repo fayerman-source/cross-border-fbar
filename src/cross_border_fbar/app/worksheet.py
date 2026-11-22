@@ -46,6 +46,7 @@ class Inputs:
     # Line snapping reads the page's pixels and takes most of a build. Giving a dict here remembers each
     # page's result; only for inputs known not to change while the process runs, such as the hosted demo.
     snap_cache: dict | None = None
+    rates_path: Path | None = None
 
 
 def _source(src: Source) -> dict:
@@ -235,7 +236,7 @@ def build(
 ) -> dict:
     intake_doc = IntakeDocument.from_dict(json.loads(inp.intake.read_text(encoding="utf-8")))
     intake = _effective_intake(intake_doc, ownership_overrides, interest_overrides)
-    year_rates = rates.load(inp.tax_year)
+    year_rates = rates.load_available(inp.tax_year, inp.rates_path)
     observations, unread, unverified = load_observations(inp, value_corrections)
     corrections = _value_correction_views(value_corrections or {}, observations)
     observations = [part for page in observations for part in split_by_row_account(page)]

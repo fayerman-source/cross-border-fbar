@@ -128,7 +128,7 @@ def _review_burden(results, truth_accounts, misread, upload_to_statement, name_c
     }
 
 
-def evaluate(set_dir: Path, model: str) -> dict:
+def evaluate(set_dir: Path, model: str, rates_path: Path | None = None) -> dict:
     truth = json.loads((set_dir / "truth.json").read_text(encoding="utf-8"))
     extraction = json.loads((RESULTS / f"{model}_{set_dir.name}.json").read_text(encoding="utf-8"))
     upload_to_statement, read_names, printed_names = {}, {}, {}
@@ -159,7 +159,7 @@ def evaluate(set_dir: Path, model: str) -> dict:
     results = reconcile(
         observations,
         intake,
-        rates.load(truth["tax_year"]),
+        rates.load_available(truth["tax_year"], rates_path),
         truth["tax_year"],
         truth["household"]["flag_threshold_usd"],
         unread,
@@ -282,8 +282,9 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--set", type=Path, default=Path("out/synth"))
     p.add_argument("--model", default="muse-spark-1.3")
+    p.add_argument("--rates", type=Path)
     a = p.parse_args()
-    result = evaluate(a.set, a.model)
+    result = evaluate(a.set, a.model, a.rates)
     out = RESULTS / f"{a.model}_{a.set.name}_reconcile.json"
     out.write_text(json.dumps(result, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     print(json.dumps(result["summary"], indent=1))

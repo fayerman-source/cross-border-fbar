@@ -45,6 +45,10 @@ def rates_path(year: int) -> Path:
     return DATA_DIR / f"treasury_rates_{year}.json"
 
 
+def workspace_rates_path(year: int) -> Path:
+    return Path.cwd() / "data" / f"treasury_rates_{year}.json"
+
+
 def query_url(year: int, currencies: list[str]) -> str:
     labels = ",".join(TREASURY_LABELS[c] for c in currencies)
     params = {
@@ -91,6 +95,19 @@ def load(year: int, path: Path | None = None) -> dict[str, Rate]:
         c: Rate(c, Decimal(r["units_per_usd"]), doc["record_date"], doc["source"]["api_query"])
         for c, r in doc["rates"].items()
     }
+
+
+def load_available(year: int, path: Path | None = None) -> dict[str, Rate]:
+    """Load an explicit rates file, or merge bundled and workspace rates for year when present."""
+    if path is not None:
+        return load(year, path)
+    merged: dict[str, Rate] = {}
+    if rates_path(year).is_file():
+        merged.update(load(year))
+    ws_path = workspace_rates_path(year)
+    if ws_path.is_file():
+        merged.update(load(year, ws_path))
+    return merged
 
 
 def main(argv: list[str]) -> None:
