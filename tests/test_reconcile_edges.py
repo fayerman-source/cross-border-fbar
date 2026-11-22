@@ -687,6 +687,28 @@ def test_multipage_statement_stitches_balances_inherits_headers_and_sorts_pages_
     assert res_ten.max_value.amount == D(2000)
     assert "arithmetic_mismatch" not in codes(res_ten)
 
+    # 4. Unnumbered rescans without shared -p<N> page identity are never stitched into 1,200.
+    scan_a = obs(
+        "scan_orig.png",
+        date(2025, 1, 1),
+        date(2025, 1, 31),
+        D(1000),
+        None,
+        [(date(2025, 1, 10), D(100), None)],
+        currency="EUR",
+    )
+    scan_b = obs(
+        "scan_retry.png",
+        date(2025, 1, 1),
+        date(2025, 1, 31),
+        None,
+        D(1100),
+        [(date(2025, 1, 10), D(100), None)],
+        currency="EUR",
+    )
+    (res_unnum,) = reconcile([scan_a, scan_b], SOLE, RATES, 2025)
+    assert res_unnum.max_value.amount == D(1100)
+
 
 def test_empty_rows_with_changed_closing_balance_raises_arithmetic_mismatch():
     from cross_border_fbar.reconcile.form8938 import Household, form8938_totals
