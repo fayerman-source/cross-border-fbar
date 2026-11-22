@@ -585,6 +585,25 @@ def test_reverse_chronological_statement_without_running_balances_finds_mid_mont
     assert "possible_intraday_peak" in codes(r_sd)
     assert not r_sd.annual_max_complete
 
+    # Partially anchored same-day run also keeps debits-first between anchors (no invented 10,000 peak).
+    partial_anchored = obs(
+        "jan-partial-rev",
+        date(2025, 1, 1),
+        date(2025, 1, 31),
+        D(5000),
+        D(6000),
+        lines=[
+            (date(2025, 1, 25), D(0), D(6000)),
+            (date(2025, 1, 16), D(5000), None),
+            (date(2025, 1, 16), D(-4000), None),
+            (date(2025, 1, 16), D(0), D(6000)),
+        ],
+    )
+    (r_pa,) = reconcile([partial_anchored, rest_6k], SOLE, RATES, 2025)
+    assert r_pa.max_value.amount == D(6000)
+    assert "possible_intraday_peak" in codes(r_pa)
+    assert not r_pa.annual_max_complete
+
 
 def test_mixed_date_or_inconsistent_reverse_statements_still_raise_arithmetic_mismatch():
     # Non-monotonic dates or tampered running balances must never be silently reordered.

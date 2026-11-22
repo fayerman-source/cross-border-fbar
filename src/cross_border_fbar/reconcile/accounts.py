@@ -379,24 +379,26 @@ def _day_runs(lines: list[Line]) -> list[list[Line]]:
     return runs
 
 
-def _conservative_reverse_runs(lines: list[Line]) -> list[Line]:
-    """Reverse day runs while ordering unanchored same-day rows debits-first to keep intraday uncertainty."""
-    ordered: list[Line] = []
-    for run in reversed(_day_runs(lines)):
-        if all(ln.printed_balance is not None for ln in run):
-            ordered.extend(reversed(run))
-        elif any(ln.printed_balance is not None for ln in run):
-            ordered.extend(run)
+def _debits_first_between_anchors(seq: list[Line]) -> list[Line]:
+    """Order unanchored rows between balance anchors debits-first so intraday uncertainty stays flagged."""
+    out: list[Line] = []
+    unanchored: list[Line] = []
+    for ln in seq:
+        if ln.printed_balance is None:
+            unanchored.append(ln)
         else:
-            ordered.extend(sorted(run, key=lambda ln: (ln.amount or Decimal(0)) > 0))
-    return ordered
+            out.extend(sorted(unanchored, key=lambda x: (x.amount or Decimal(0)) > 0))
+            unanchored.clear()
+            out.append(ln)
+    out.extend(sorted(unanchored, key=lambda x: (x.amount or Decimal(0)) > 0))
+    return out
 
 
 def _pick_descending_order(o: Observation, prev: Observation | None) -> list[Line]:
+    rev_runs = list(reversed(_day_runs(o.lines)))
     candidates = (
-        _conservative_reverse_runs(o.lines),
-        list(reversed(o.lines)),
-        [ln for run in reversed(_day_runs(o.lines)) for ln in run],
+        [ln for run in rev_runs for ln in _debits_first_between_anchors(list(reversed(run)))],
+        [ln for run in rev_runs for ln in _debits_first_between_anchors(run)],
     )
     for cand in candidates:
         if _mismatch_count(o, prev, cand) == 0 and _seed(o, prev, cand)[0] is not None:
@@ -418,7 +420,7 @@ def _ordered_lines(o: Observation, prev: Observation | None) -> list[Line]:
     if days[0] > days[-1]:
         return _pick_descending_order(o, prev)
     if any(ln.printed_balance is not None for ln in o.lines) and _mismatch_count(o, prev, o.lines) > 0:
-        rev_all = list(reversed(o.lines))
+        rev_all = _debits_first_between_anchors(list(reversed(o.lines)))
         if _mismatch_count(o, prev, rev_all) == 0:
             return rev_all
     return o.lines
