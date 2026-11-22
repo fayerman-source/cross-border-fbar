@@ -57,8 +57,8 @@ def parse_period(text: str) -> tuple[date | None, date | None]:
     return start, end
 
 
-def signed_amount(row: dict) -> Decimal | None:
-    amount = parse_amount(row["amount_text"])
+def signed_amount(row: dict, currency: str | None = None) -> Decimal | None:
+    amount = parse_amount(row["amount_text"], currency=currency)
     if amount is None or row["amount_column"] == "signed":
         return amount
     return -abs(amount) if row["amount_column"] == "debit" else abs(amount)
@@ -86,6 +86,7 @@ def observe(reading: dict, upload: str, snapped: dict | None = None) -> Observat
         return f["text"] if f["status"] != "unreadable" else ""
 
     start, end = parse_period(value("period"))
+    doc_currency = parse_currency(value("currency"))
     lines = []
     for i, row in enumerate(reading["rows"]):
         src = Source(upload, f"row:{i}", boxes_from["rows"][i]["row_bbox"])
@@ -93,8 +94,8 @@ def observe(reading: dict, upload: str, snapped: dict | None = None) -> Observat
             Line(
                 i,
                 _row_date(row["date_text"], start, end),
-                signed_amount(row),
-                parse_amount(row["balance_text"]),
+                signed_amount(row, currency=doc_currency),
+                parse_amount(row["balance_text"], currency=doc_currency),
                 row["description"],
                 src,
                 row.get("account_text", "").strip(),
@@ -105,9 +106,9 @@ def observe(reading: dict, upload: str, snapped: dict | None = None) -> Observat
     parsed = {
         "account_number": value("account_number").strip() or None,
         "period": start and end,
-        "currency": parse_currency(value("currency")),
-        "opening_balance": parse_amount(value("opening_balance")),
-        "closing_balance": parse_amount(value("closing_balance")),
+        "currency": doc_currency,
+        "opening_balance": parse_amount(value("opening_balance"), currency=doc_currency),
+        "closing_balance": parse_amount(value("closing_balance"), currency=doc_currency),
     }
     # "absent" is legitimate (page 2 of a statement has no opening); "unreadable" or unparseable is not.
     problems = [

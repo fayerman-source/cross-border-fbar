@@ -131,3 +131,101 @@ def test_eval_limit_writes_separate_output_and_app_accepts_tax_year_and_rates(tm
     )
     server.main()
     assert seen == {"tax_year": 2024, "rates_path": custom_rates}
+
+
+def test_multi_year_rate_loading_cli_range_fetch_and_lookback_reconciliation(tmp_path, monkeypatch):
+    from datetime import date
+
+    from cross_border_fbar.reconcile.accounts import Intake
+    from cross_border_fbar.reconcile.fbar import reconcile_years
+    from cross_border_fbar.reconcile.observe import Line, Observation, Source
+
+    # 1. CLI multi-year range + --all uses mocked fetch (zero network calls).
+    fetched_calls: list[tuple[int, int]] = []
+
+    def fake_fetch(year: int, currencies: list[str]) -> dict:
+        fetched_calls.append((year, len(currencies)))
+        return {
+            "tax_year": year,
+            "record_date": f"{year}-12-31",
+            "basis": "foreign currency units per 1 USD",
+            "source": {"api_query": f"{rates.API_URL}?year={year}"},
+            "rates": {
+                "CAD": {
+                    "treasury_label": "Canada-Dollar",
+                    "units_per_usd": "1.35" if year == 2023 else "1.44",
+                    "effective_date": f"{year}-12-31",
+                }
+            },
+        }
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(rates, "fetch", fake_fetch)
+    rates.main(["fetch", "2023..2024", "--all"])
+    assert fetched_calls == [(2023, len(rates.TREASURY_LABELS)), (2024, len(rates.TREASURY_LABELS))]
+
+    by_year = rates.load_years([2022, 2023, 2024, 2025])
+    assert by_year[2022] == {}  # missing year stays empty rather than borrowing another year's rate
+    assert by_year[2023]["CAD"].units_per_usd == Decimal("1.35")
+    assert by_year[2024]["CAD"].units_per_usd == Decimal("1.44")
+    assert "KRW" in by_year[2025]
+
+    # 2. Multi-year reconciliation converts 2023 and 2024 at each year's Dec 31 rate and flags 2022.
+    def make_obs(year: int) -> Observation:
+        src = Source(f"cad-{year}.png", "opening_balance", None)
+        return Observation(
+            upload=f"cad-{year}.png",
+            institution="Maple Bank",
+            currency="CAD",
+            account_key="CAD001",
+            account_number="CAD-001",
+            holder="Synthetic Holder",
+            period_start=date(year, 1, 1),
+            period_end=date(year, 12, 31),
+            opening=Decimal("14000.00"),
+            closing=Decimal("14000.00"),
+            lines=[Line(0, date(year, 6, 1), Decimal("0.00"), Decimal("14000.00"), "hold", src)],
+            sources={"opening_balance": src, "closing_balance": src},
+        )
+
+    lookback = reconcile_years(
+        [make_obs(2022), make_obs(2023), make_obs(2024)],
+        {"CAD001": Intake("sole", True)},
+        [2022, 2023, 2024],
+        by_year,
+    )
+    accts_2022, totals_2022 = lookback[2022]
+    assert accts_2022[0].max_value_usd is None
+    assert any(f.code == "currency_unknown" for f in accts_2022[0].flags)
+    assert totals_2022.above_aggregate_threshold is None
+
+    accts_2023, totals_2023 = lookback[2023]
+    accts_2024, totals_2024 = lookback[2024]
+    # 14,000 / 1.35 -> ceil $10,371 (> $10,000); 14,000 / 1.44 -> ceil $9,723 (<= $10,000)
+    assert accts_2023[0].max_value_usd == 10371
+    assert totals_2023.above_aggregate_threshold is True
+    assert accts_2024[0].max_value_usd == 9723
+    assert totals_2024.above_aggregate_threshold is False
+
+    # 3. Partial-period pages with one readable boundary retain their year's closing/opening evidence.
+    partial_src = Source("usd-partial.png", "closing_balance", None)
+    partial_2024 = Observation(
+        upload="usd-partial.png",
+        institution="Harbor Bank",
+        currency="USD",
+        account_key="USD999",
+        account_number="USD-999",
+        holder="Synthetic Holder",
+        period_start=None,
+        period_end=date(2024, 12, 31),
+        opening=None,
+        closing=Decimal("20000.00"),
+        lines=[Line(0, date(2023, 11, 15), Decimal("100.00"), Decimal("500.00"), "prior", partial_src)],
+        sources={"closing_balance": partial_src},
+    )
+    partial_lookback = reconcile_years([partial_2024], {}, [2024], by_year)
+    p_accts_2024, p_totals_2024 = partial_lookback[2024]
+    assert len(p_accts_2024) == 1
+    assert p_accts_2024[0].max_value_usd == 20000
+    assert p_accts_2024[0].year_end_balance == Decimal("20000.00")
+    assert p_totals_2024.above_aggregate_threshold is True

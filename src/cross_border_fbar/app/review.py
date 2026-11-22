@@ -21,7 +21,7 @@ from pathlib import Path
 from babel.numbers import format_currency
 
 from ..extract.parse import parse_typed_amount
-from ..reconcile.corrections import as_read, correction_key, line_as_read
+from ..reconcile.corrections import as_read, correction_key, line_as_read, page_currency
 from ..reconcile.flags import CATALOG
 from . import phrases as phrase_tables
 from .csv_export import export_fincen114_csv
@@ -510,23 +510,23 @@ class Review:
                 note=note.strip(),
             )
 
-    def _value_as_read(self, upload, field) -> tuple[dict, dict | None]:
+    def _value_as_read(self, upload, field) -> tuple[dict, dict | None, str | None]:
         page = page_readings(self.inputs).get(upload) if isinstance(upload, str) else None
         read = as_read(page, field) if page is not None and isinstance(field, str) else None
         if read is None:
             raise ReviewError("That value isn't on a page of this worksheet.")
-        return read, line_as_read(page, field)
+        return read, line_as_read(page, field), page_currency(page)
 
     def correct_value(self, upload: str, field: str, value: str, note: str, reviewer: str) -> None:
         """Correct a misread amount or balance. The reading stays as it was; the correction sits beside it,
         and reconciliation runs on the corrected value."""
         with self.lock:
             self._require_open()
-            read, line = self._value_as_read(upload, field)
+            read, line, ccy = self._value_as_read(upload, field)
             if not note.strip():
                 raise ReviewError("Record where the corrected figure comes from.")
             text = str(value).strip()
-            corrected = parse_typed_amount(text)
+            corrected = parse_typed_amount(text, currency=ccy)
             if corrected is None:
                 raise ReviewError("Enter the figure as printed, such as 1,234.56 or 1.234,56.")
             if read["value"] is not None and corrected == Decimal(read["value"]):

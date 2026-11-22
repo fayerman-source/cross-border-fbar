@@ -10,7 +10,7 @@ from __future__ import annotations
 import copy
 import re
 
-from ..extract.parse import parse_amount
+from ..extract.parse import parse_amount, parse_currency
 from .observe import signed_amount
 
 BALANCE_FIELDS = ("opening_balance", "closing_balance")
@@ -27,21 +27,29 @@ def field_ref(field: str) -> str:
     return field.rsplit(":", 1)[0] if field.startswith("row:") else field
 
 
+def page_currency(reading: dict) -> str | None:
+    ccy = reading.get("currency")
+    if not isinstance(ccy, dict) or ccy.get("status") == "unreadable":
+        return None
+    return parse_currency(ccy.get("text", ""))
+
+
 def as_read(reading: dict, field: str) -> dict | None:
     """What the model read for this value, as text and as a number; None if the page has no such value."""
+    ccy = page_currency(reading)
     if field in BALANCE_FIELDS:
         read = reading[field]
         text = read["text"] if read["status"] != "unreadable" else ""
-        value = parse_amount(text)
+        value = parse_amount(text, currency=ccy)
     else:
         match = _ROW_FIELD.fullmatch(field)
         if not match or int(match[1]) >= len(reading["rows"]):
             return None
         row = reading["rows"][int(match[1])]
         if match[2] == "amount":
-            text, value = row["amount_text"], signed_amount(row)
+            text, value = row["amount_text"], signed_amount(row, currency=ccy)
         else:
-            text, value = row["balance_text"], parse_amount(row["balance_text"])
+            text, value = row["balance_text"], parse_amount(row["balance_text"], currency=ccy)
     return {"text": text, "value": None if value is None else str(value)}
 
 

@@ -7,8 +7,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 
-# Digits after the decimal point. KRW has no minor unit.
-EXPONENT = {"KRW": 0, "EUR": 2, "THB": 2}
+# Digits after the decimal point. Zero-decimal (KRW, JPY, VND) and 3-decimal (KWD, BHD, JOD) currencies.
+EXPONENT = {"KRW": 0, "JPY": 0, "VND": 0, "EUR": 2, "THB": 2, "KWD": 3, "BHD": 3, "JOD": 3}
 
 
 @dataclass(frozen=True)

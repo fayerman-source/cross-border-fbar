@@ -11,7 +11,10 @@ import re
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
+from ..rates import TREASURY_LABELS
+
 BUDDHIST_ERA_OFFSET = 543
+THREE_DECIMAL_CURRENCIES = frozenset({"BHD", "JOD", "KWD"})
 _CURRENCY_CHARS = " \t\r\n\f\vABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz€₩฿₹$£¥원₪₫₱"
 
 
@@ -20,24 +23,42 @@ def _is_negative(s: str) -> bool:
     return t.startswith("-") or t.endswith("-") or (t.startswith("(") and t.endswith(")"))
 
 
-def _decimal_separator(digits: str) -> str | None:
-    """The decimal separator, if any. With both marks the last wins; alone, it needs exactly 2 decimals."""
+def _decimal_separator(digits: str, *, three_decimal_currency: bool = False) -> str | None:
+    """The decimal separator, if any.
+
+    With both marks the last wins; alone, it needs 2 fractional digits, an unambiguous leading-zero
+    3-decimal fraction (`0.375`), or a single separator with 3 fractional digits in a 3-decimal currency.
+    """
     last_dot, last_comma = digits.rfind("."), digits.rfind(",")
     if last_dot >= 0 and last_comma >= 0:
         return "." if last_dot > last_comma else ","
+    single_sep = digits.count(".") + digits.count(",") == 1
     for sep in (",", "."):
-        if re.search(rf"\{sep}\d{{2}}$", digits):
+        if re.search(rf"\{sep}\d{{2}}$", digits) or re.fullmatch(rf"0\{sep}\d{{3}}", digits):
+            return sep
+        if three_decimal_currency and single_sep and re.search(rf"\{sep}\d{{3}}$", digits):
             return sep
     return None
 
 
-def parse_amount(text: str) -> Decimal | None:
+def _space_grouped_three_decimal_sep(text: str, digits: str) -> str | None:
+    """Detect decimal mark in space-grouped 3-decimal amounts like `1 250.375` before spaces are stripped."""
+    if digits.count(".") + digits.count(",") != 1:
+        return None
+    m = re.search(r"\d\s\d{3}([.,])\d{3}(?!\d)", text)
+    return m.group(1) if m else None
+
+
+def parse_amount(text: str, currency: str | None = None) -> Decimal | None:
     """Parse a printed amount; None if there is no number. A leading or trailing '-' is negative."""
     s = (text or "").strip().replace("\u2212", "-")
     digits = re.sub(r"[^\d.,]", "", s)
     if not re.search(r"\d", digits):
         return None
-    sep = _decimal_separator(digits)
+    is_three_dec = (currency or "").upper() in THREE_DECIMAL_CURRENCIES
+    sep = _decimal_separator(digits, three_decimal_currency=is_three_dec) or _space_grouped_three_decimal_sep(
+        s, digits
+    )
     if sep:
         whole, _, frac = digits.rpartition(sep)
         normalized = re.sub(r"[.,]", "", whole) + "." + frac
@@ -54,15 +75,17 @@ _TYPED_NUMBERS = tuple(
     re.compile(pattern, re.ASCII)
     for pattern in (
         r"\d+(?:[.,]\d{2})?",
-        r"\d{1,3}(?:,\d{3})+(?:\.\d{2})?",
-        r"\d{1,3}(?:\.\d{3})+(?:,\d{2})?",
-        r"\d{1,3}(?: \d{3})+(?:[.,]\d{2})?",
+        r"0[.,]\d{3}",
+        r"\d{1,3}(?:,\d{3})+(?:\.\d{2,3})?",
+        r"\d{1,3}(?:\.\d{3})+(?:,\d{2,3})?",
+        r"\d{1,3}(?: \d{3})+(?:[.,]\d{2,3})?",
     )
 )
+_TYPED_THREE_DEC = re.compile(r"\d+[.,]\d{3}", re.ASCII)
 _TYPED_NUMBER_MAX_LENGTH = 24  # stays within Decimal's default 28 digits of working precision
 
 
-def parse_typed_amount(text: str) -> Decimal | None:
+def parse_typed_amount(text: str, currency: str | None = None) -> Decimal | None:
     """An amount a person typed, read by parse_amount's rules; None unless it is plainly just a number.
 
     parse_amount picks the digits out of what a model copied, which turns "12abc" into 12 and "1.5" into 15.
@@ -77,9 +100,13 @@ def parse_typed_amount(text: str) -> Decimal | None:
         body = s[:-1]
     else:
         body = s
-    if len(body) > _TYPED_NUMBER_MAX_LENGTH or not any(p.fullmatch(body) for p in _TYPED_NUMBERS):
+    is_three_dec = (currency or "").upper() in THREE_DECIMAL_CURRENCIES
+    matches_typed = any(p.fullmatch(body) for p in _TYPED_NUMBERS) or (
+        is_three_dec and bool(_TYPED_THREE_DEC.fullmatch(body))
+    )
+    if len(body) > _TYPED_NUMBER_MAX_LENGTH or not matches_typed:
         return None
-    return parse_amount(s)
+    return parse_amount(s, currency=currency)
 
 
 def parse_date(text: str, year_hint: int | None = None) -> date | None:
@@ -116,13 +143,22 @@ def normalize_name(text: str) -> str:
 
 # ISO codes the tool can convert (Treasury labels in rates.py) plus USD. Anything else is "unknown",
 # not guessed: "All amounts in KRW" must not read as ALL, and "HK$" must not read as USD.
-KNOWN_CURRENCIES = {"KRW", "EUR", "THB", "INR", "USD"}
-_UNAMBIGUOUS_UNITS = {"₩": "KRW", "원": "KRW", "€": "EUR", "฿": "THB", "₹": "INR"}
+KNOWN_CURRENCIES = set(TREASURY_LABELS) | {"USD"}
+_UNAMBIGUOUS_UNITS = {
+    "₩": "KRW",
+    "원": "KRW",
+    "€": "EUR",
+    "฿": "THB",
+    "₹": "INR",
+    "₪": "ILS",
+    "₫": "VND",
+    "₱": "PHP",
+}
 
 
 def parse_currency(text: str) -> str | None:
     t = (text or "").strip()
-    for token in re.findall(r"[A-Z]{3}", t.upper()):
+    for token in re.findall(r"(?<![A-Za-z])[A-Z]{3}(?![A-Za-z])", t.upper()):
         if token in KNOWN_CURRENCIES:
             return token
     for unit, iso in _UNAMBIGUOUS_UNITS.items():
