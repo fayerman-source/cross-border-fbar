@@ -144,6 +144,7 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 function render() {
   const signed = !!state.review.signoff;
   renderHeader(signed);
+  renderIntakeEditor(signed);
   renderAccounts(signed);
   renderValueCorrections();
   renderReadings();
@@ -151,6 +152,52 @@ function render() {
   renderForm8938();
   renderSignoff(signed);
   renderAudit();
+}
+
+function triStateValue(v) {
+  if (v === true) return "true";
+  if (v === false) return "false";
+  return "";
+}
+
+function parseTriState(s) {
+  if (s === "true") return true;
+  if (s === "false") return false;
+  return null;
+}
+
+function intakeAccountRow(acct = {}, signed = false) {
+  const tr = el("tr", {},
+    el("td", {}, el("input", { class: "intake-acct-num", value: acct.account_number || "", disabled: signed, required: true })),
+    el("td", {}, el("select", { class: "intake-acct-own", disabled: signed },
+      ...["sole", "joint", "signature_authority", "unknown"].map((k) =>
+        el("option", { value: k, selected: (acct.ownership || "unknown") === k }, OWNERSHIP[k])))),
+    el("td", {}, el("select", { class: "intake-acct-fin", disabled: signed },
+      el("option", { value: "", selected: acct.financial_interest == null }, "Not stated"),
+      el("option", { value: "true", selected: acct.financial_interest === true }, "Yes"),
+      el("option", { value: "false", selected: acct.financial_interest === false }, "No"))),
+    el("td", {}, el("select", { class: "intake-acct-spouse", disabled: signed },
+      el("option", { value: "", selected: acct.joint_with_spouse == null }, "Not stated"),
+      el("option", { value: "true", selected: acct.joint_with_spouse === true }, "Yes"),
+      el("option", { value: "false", selected: acct.joint_with_spouse === false }, "No"))),
+    el("td", {}, signed ? null : el("button", { type: "button", class: "link", onclick: () => tr.remove() }, "Remove")),
+  );
+  return tr;
+}
+
+function renderIntakeEditor(signed) {
+  const intake = state.worksheet.intake;
+  if (!intake) return;
+  $("intake-client").value = intake.client || "";
+  $("intake-source").value = intake.source || "";
+  $("intake-filing-status").value = intake.household?.filing_status || "";
+  $("intake-lives-abroad").value = triStateValue(intake.household?.lives_abroad);
+  $("intake-spouse-spec").value = triStateValue(intake.household?.spouse_specified_individual);
+  for (const id of ["intake-client", "intake-source", "intake-filing-status", "intake-lives-abroad", "intake-spouse-spec", "intake-note", "intake-save-btn", "intake-add-acct"]) {
+    $(id).disabled = signed;
+  }
+  $("intake-accounts").replaceChildren(...(intake.accounts || []).map((a) => intakeAccountRow(a, signed)));
+  $("upload-box").hidden = Boolean(state.hosted);
 }
 
 function renderHeader(signed) {
@@ -617,6 +664,52 @@ function itemRow(f, ack, signed, ws) {
     el("div", { class: "item-actions" }, actions),
     ack ? el("p", { class: "ack-note" }, `${ack.note} (${ack.reviewer})`) : null);
 }
+
+$("intake-add-acct").addEventListener("click", () => {
+  $("intake-accounts").append(intakeAccountRow({}, false));
+});
+$("intake-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const accounts = [...$("intake-accounts").querySelectorAll("tr")].map((tr) => ({
+    account_number: tr.querySelector(".intake-acct-num").value.trim(),
+    ownership: tr.querySelector(".intake-acct-own").value,
+    financial_interest: parseTriState(tr.querySelector(".intake-acct-fin").value),
+    joint_with_spouse: parseTriState(tr.querySelector(".intake-acct-spouse").value),
+  }));
+  const intake = {
+    client: $("intake-client").value.trim() || null,
+    source: $("intake-source").value.trim() || null,
+    household: {
+      filing_status: $("intake-filing-status").value || null,
+      lives_abroad: parseTriState($("intake-lives-abroad").value),
+      spouse_specified_individual: parseTriState($("intake-spouse-spec").value),
+    },
+    accounts,
+  };
+  try {
+    state = await api("/api/intake", { intake, note: $("intake-note").value.trim(), reviewer: reviewer() || "reviewer" });
+    $("intake-note").value = "";
+    render(); toast("Intake facts updated; worksheet recomputed");
+  } catch (e) { toast(e.message); }
+});
+$("upload-btn").addEventListener("click", async () => {
+  const input = $("upload-files");
+  if (!input.files?.length) { toast("Select one or more files first"); return; }
+  if (!$("upload-synthetic").checked) { toast("Confirm that the selected files are synthetic test documents"); return; }
+  $("upload-btn").disabled = true;
+  try {
+    const files = await Promise.all([...input.files].map(async (f) => {
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      let bin = "";
+      for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode(...bytes.subarray(i, i + 8192));
+      return { name: f.name, data_b64: btoa(bin) };
+    }));
+    state = await api("/api/upload", { synthetic_confirmed: true, files, reviewer: reviewer() || "reviewer" });
+    input.value = "";
+    render(); toast("Statements ingested; worksheet recomputed");
+  } catch (e) { toast(e.message); }
+  finally { $("upload-btn").disabled = false; }
+});
 
 // --- actions -----------------------------------------------------------------------------------
 $("signoff-form").addEventListener("submit", async (ev) => {

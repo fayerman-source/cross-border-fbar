@@ -9,13 +9,18 @@ demo instead (see hosted.py); nothing about this local mode changes unless that 
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import json
 import os
+import re
+import tempfile
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from ..eval import photo
 from ..llm import Client
 from .review import Review, ReviewError
 from .worksheet import Inputs
@@ -97,6 +102,7 @@ class Handler(BaseHTTPRequestHandler):
 
     review: Review
     assets: dict[str, Path]
+    allow_upload: bool = True
 
     def log_message(self, fmt, *args):  # quiet console
         pass
@@ -164,6 +170,52 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
         self._json(payload)
 
+    def _ingest_uploaded_files(self, body: dict, who: str) -> None:
+        if body.get("synthetic_confirmed") is not True:
+            raise ReviewError("Confirm that uploaded files are synthetic test documents.")
+        raw_files = body.get("files")
+        if not isinstance(raw_files, list) or not (1 <= len(raw_files) <= 32):
+            raise ReviewError("Select between 1 and 32 statement files to ingest.")
+        safe_name = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,120}")
+        total_bytes = 0
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            staged: list[Path] = []
+            for idx, item in enumerate(raw_files):
+                if not isinstance(item, dict):
+                    raise ReviewError("Invalid file upload entry.")
+                name = Path(str(item.get("name", ""))).name
+                if (
+                    not safe_name.fullmatch(name)
+                    or Path(name).suffix.lower() not in photo.SUPPORTED_EXTENSIONS
+                ):
+                    raise ReviewError(f"Unsupported filename or type: {name!r}")
+                try:
+                    payload = base64.b64decode(str(item.get("data_b64", "")), validate=True)
+                except (binascii.Error, ValueError):
+                    raise ReviewError(f"Invalid base64 payload for {name}") from None
+                total_bytes += len(payload)
+                if total_bytes > 25 * 1024 * 1024:
+                    raise ReviewError("Uploaded files exceed the 25 MB batch limit.")
+                dest = tmp_dir / f"{idx:02d}_{name}"
+                dest.write_bytes(payload)
+                staged.append(dest)
+            try:
+                summary = photo.run_batch(
+                    staged,
+                    self.review.inputs.set_dir,
+                    synthetic=True,
+                    readings_path=self.review.inputs.readings,
+                )
+            except ValueError as e:
+                raise ReviewError(str(e)) from None
+        self.assets.update(asset_index(self.review.inputs.set_dir))
+        self.review.reload_inputs(
+            who,
+            files=summary["files_ingested"],
+            pages=summary["pages_ingested"],
+        )
+
     def _post_action(self, body: dict):
         review, who = self.review, str(body.get("reviewer", "")).strip() or "reviewer"
         actions = {
@@ -180,6 +232,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/interest": lambda: review.set_financial_interest(
                 body["account"], body["value"], str(body.get("note", "")), who
             ),
+            "/api/intake": lambda: review.update_intake(body["intake"], str(body.get("note", "")), who),
             "/api/value": lambda: review.correct_value(
                 body["upload"], body["field"], body["value"], str(body.get("note", "")), who
             ),
@@ -190,6 +243,8 @@ class Handler(BaseHTTPRequestHandler):
                 who, body.get("confirm_unreviewed") is True, body.get("release", "ko")
             ),
         }
+        if self.allow_upload:
+            actions["/api/upload"] = lambda: self._ingest_uploaded_files(body, who)
         return actions.get(self.path)
 
     def _run_action(self, body: dict) -> tuple[dict, int]:

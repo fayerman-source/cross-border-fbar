@@ -23,9 +23,10 @@ from babel.numbers import format_currency
 from ..extract.parse import parse_typed_amount
 from ..reconcile.corrections import as_read, correction_key, line_as_read
 from ..reconcile.flags import CATALOG
+from ..reconcile.intake import IntakeDocument
 from . import phrases as phrase_tables
 from .phrases import LANGUAGES
-from .worksheet import Inputs, build, page_readings, readings_view, worksheet_hash
+from .worksheet import Inputs, _serialize_intake, build, page_readings, readings_view, worksheet_hash
 
 OWNERSHIPS = ("sole", "joint", "signature_authority")
 # The client summary is assembled from a fixed table of phrases, translated, plus the signed figures; the
@@ -172,6 +173,7 @@ class Review:
         self.state.setdefault("interest", {})
         self.state.setdefault("ownership_details", {})
         self.state.setdefault("value_corrections", {})
+        self.state.setdefault("intake_override", None)
         self._retire_stale_value_corrections()
         self.worksheet = self._build()
         self._revalidate_signoff()
@@ -185,6 +187,7 @@ class Review:
             interest_overrides=self.state["interest"],
             ownership_details=self.state["ownership_details"],
             value_corrections=self.state["value_corrections"],
+            intake_override=self.state["intake_override"],
         )
 
     def _retire_stale_value_corrections(self) -> None:
@@ -232,7 +235,7 @@ class Review:
         shared = {
             k: v
             for k, v in self.worksheet.items()
-            if k not in {"accounts", "flags", "value_corrections", "totals", "form8938"}
+            if k not in {"accounts", "flags", "value_corrections", "totals", "form8938", "intake"}
         }
         shared_panel = {
             k: v
@@ -508,6 +511,33 @@ class Review:
                 after=value,
                 note=note.strip(),
             )
+
+    def update_intake(self, intake_data: dict, note: str, reviewer: str) -> None:
+        with self.lock:
+            self._require_open()
+            if not note.strip():
+                raise ReviewError("Record a note explaining the source of the intake update.")
+            try:
+                doc = IntakeDocument.from_dict(intake_data)
+            except ValueError as e:
+                raise ReviewError(str(e)) from None
+            normalized = _serialize_intake(doc)
+            self.state["intake_override"] = normalized
+            self.worksheet = self._build()
+            self._audit(
+                "update_intake",
+                reviewer,
+                note=note.strip(),
+                client=doc.client,
+                accounts=len(doc.accounts),
+            )
+
+    def reload_inputs(self, reviewer: str, **detail) -> None:
+        with self.lock:
+            self._retire_stale_value_corrections()
+            self.worksheet = self._build()
+            self._revalidate_signoff()
+            self._audit("ingest_files", reviewer, **detail)
 
     def _value_as_read(self, upload, field) -> tuple[dict, dict | None]:
         page = page_readings(self.inputs).get(upload) if isinstance(upload, str) else None
