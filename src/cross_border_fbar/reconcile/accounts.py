@@ -369,14 +369,39 @@ def _mismatch_count(o: Observation, prev: Observation | None, lines: list[Line])
     return mismatches
 
 
-def _reverse_by_day_runs(lines: list[Line]) -> list[Line]:
+def _day_runs(lines: list[Line]) -> list[list[Line]]:
     runs: list[list[Line]] = []
     for line in lines:
         if runs and runs[-1][0].day == line.day:
             runs[-1].append(line)
         else:
             runs.append([line])
-    return [ln for run in reversed(runs) for ln in run]
+    return runs
+
+
+def _conservative_reverse_runs(lines: list[Line]) -> list[Line]:
+    """Reverse day runs while ordering unanchored same-day rows debits-first to keep intraday uncertainty."""
+    ordered: list[Line] = []
+    for run in reversed(_day_runs(lines)):
+        if all(ln.printed_balance is not None for ln in run):
+            ordered.extend(reversed(run))
+        elif any(ln.printed_balance is not None for ln in run):
+            ordered.extend(run)
+        else:
+            ordered.extend(sorted(run, key=lambda ln: (ln.amount or Decimal(0)) > 0))
+    return ordered
+
+
+def _pick_descending_order(o: Observation, prev: Observation | None) -> list[Line]:
+    candidates = (
+        _conservative_reverse_runs(o.lines),
+        list(reversed(o.lines)),
+        [ln for run in reversed(_day_runs(o.lines)) for ln in run],
+    )
+    for cand in candidates:
+        if _mismatch_count(o, prev, cand) == 0 and _seed(o, prev, cand)[0] is not None:
+            return cand
+    return o.lines
 
 
 def _ordered_lines(o: Observation, prev: Observation | None) -> list[Line]:
@@ -390,22 +415,12 @@ def _ordered_lines(o: Observation, prev: Observation | None) -> list[Line]:
     days = [ln.day for ln in o.lines]
     if not all(a >= b for a, b in zip(days, days[1:], strict=False)):
         return o.lines
-    has_printed_bal = any(ln.printed_balance is not None for ln in o.lines)
-    fwd_err = _mismatch_count(o, prev, o.lines)
-    rev_all = list(reversed(o.lines))
-    rev_all_err = _mismatch_count(o, prev, rev_all)
-    if has_printed_bal:
-        if fwd_err == 0:
-            return o.lines
-        if rev_all_err == 0:
+    if days[0] > days[-1]:
+        return _pick_descending_order(o, prev)
+    if any(ln.printed_balance is not None for ln in o.lines) and _mismatch_count(o, prev, o.lines) > 0:
+        rev_all = list(reversed(o.lines))
+        if _mismatch_count(o, prev, rev_all) == 0:
             return rev_all
-        if days[0] > days[-1]:
-            rev_days = _reverse_by_day_runs(o.lines)
-            if _mismatch_count(o, prev, rev_days) == 0:
-                return rev_days
-        return o.lines
-    if days[0] > days[-1] and rev_all_err == 0 and _seed(o, prev, rev_all)[0] is not None:
-        return rev_all
     return o.lines
 
 

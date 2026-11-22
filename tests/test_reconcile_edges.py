@@ -550,6 +550,41 @@ def test_reverse_chronological_statement_without_running_balances_finds_mid_mont
     assert r.max_value.amount == D(6000)
     assert {"max_not_at_month_end", "max_from_computed_balance"} <= codes(r)
 
+    # Sparse running balances with strictly descending dates still normalize to chronological order.
+    sparse = obs(
+        "jan-sparse-rev",
+        date(2025, 1, 1),
+        date(2025, 1, 31),
+        D(1000),
+        D(1000),
+        lines=[
+            (date(2025, 1, 30), D(0), D(1000)),
+            (date(2025, 1, 20), D(-5000), None),
+            (date(2025, 1, 10), D(5000), None),
+        ],
+    )
+    (r_sparse,) = reconcile([sparse, rest], SOLE, RATES, 2025)
+    assert r_sparse.max_value.amount == D(6000)
+
+    # Unbalanced same-day rows on a reversed statement preserve intraday uncertainty (no invented 10,000).
+    sameday_plain = obs(
+        "jan-sameday-rev",
+        date(2025, 1, 1),
+        date(2025, 1, 31),
+        D(5000),
+        D(6000),
+        lines=[
+            (date(2025, 1, 25), D(0), None),
+            (date(2025, 1, 16), D(-4000), None),
+            (date(2025, 1, 16), D(5000), None),
+        ],
+    )
+    rest_6k = obs("rest6", date(2025, 2, 1), date(2025, 12, 31), D(6000), D(6000))
+    (r_sd,) = reconcile([sameday_plain, rest_6k], SOLE, RATES, 2025)
+    assert r_sd.max_value.amount == D(6000)
+    assert "possible_intraday_peak" in codes(r_sd)
+    assert not r_sd.annual_max_complete
+
 
 def test_mixed_date_or_inconsistent_reverse_statements_still_raise_arithmetic_mismatch():
     # Non-monotonic dates or tampered running balances must never be silently reordered.
