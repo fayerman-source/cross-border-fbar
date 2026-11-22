@@ -265,8 +265,13 @@ def test_photo_runner_ingests_born_digital_pdf_and_csv_offline_without_api_key(t
         ("foo,bar\n1,2\n", "no recognizable date and amount"),
         ("Date,Debit,Credit\n2025-01-02,100,200\n", "both debit and credit"),
         ("Date,Amount,Currency\n2025-01-02,100,EUR\n2025-01-03,100,KRW\n", "multiple currencies"),
+        ("Currency,EUR\nDate,Amount,Currency\n2025-01-02,100,KRW\n", "multiple currencies"),
         (
             "Opening Balance,100.00\nClosing Balance,999.00\nDate,Amount\n2025-01-02,50.00\n",
+            "reconciliation",
+        ),
+        (
+            "Date,Amount,Balance\n2025-01-01,10,100\n2025-01-02,20,\n2025-01-03,30,130\n",
             "reconciliation",
         ),
     ],
@@ -276,3 +281,19 @@ def test_csv_statement_rejects_ambiguous_or_unreconciled_files(tmp_path, csv_bod
     p.write_text(csv_body, encoding="utf-8")
     with pytest.raises(ValueError, match=err_match):
         read_csv_statement(p)
+
+
+def test_csv_zero_padded_debit_credit_and_sparse_running_balances_reconcile(tmp_path):
+    p = tmp_path / "zero_col.csv"
+    p.write_text(
+        "Currency,EUR\n"
+        "Closing Balance,150.00\n"
+        "Date,Debit,Credit,Balance\n"
+        "2025-01-01,0.00,10.00,100.00\n"
+        "2025-01-02,20.00,0.00,\n"
+        "2025-01-03,0.00,70.00,150.00\n",
+        encoding="utf-8",
+    )
+    r = read_csv_statement(p)
+    assert [row["amount_column"] for row in r["rows"]] == ["credit", "debit", "credit"]
+    assert [row["amount_text"] for row in r["rows"]] == ["10.00", "20.00", "70.00"]
