@@ -308,6 +308,8 @@ def read_digital_pdf_page(pdf_path: Path, page: int = 1) -> dict | None:
             raise ValueError("PDF page is outside the document")
         pg = doc[page - 1]
         try:
+            if pg.get_rotation() != 0:
+                return None
             w_pt, h_pt = pg.get_size()
             tp = pg.get_textpage()
             try:
@@ -747,25 +749,30 @@ def render_csv_preview(reading: dict, out_png: Path) -> dict:
 
     y = max(y + 12, top_h)
     draw.rectangle((24, y, 976, y + row_h - 4), fill=(235, 235, 235))
-    draw.text((30, y + 4), "Date", fill=(20, 20, 20))
-    draw.text((150, y + 4), "Description", fill=(20, 20, 20))
-    draw.text((470, y + 4), "Direction", fill=(20, 20, 20))
-    draw.text((560, y + 4), "Amount", fill=(20, 20, 20))
-    draw.text((760, y + 4), "Balance", fill=(20, 20, 20))
+    draw.text((28, y + 4), "Date", fill=(20, 20, 20))
+    draw.text((135, y + 4), "Account", fill=(20, 20, 20))
+    draw.text((285, y + 4), "Description", fill=(20, 20, 20))
+    draw.text((490, y + 4), "Direction", fill=(20, 20, 20))
+    draw.text((575, y + 4), "Amount", fill=(20, 20, 20))
+    draw.text((765, y + 4), "Balance", fill=(20, 20, 20))
     y += row_h
 
+    header_acct = reading["account_number"]["text"]
     for row in reading["rows"]:
         y0, y1 = y, y + row_h - 4
-        draw.text((30, y0 + 4), row["date_text"][:18], fill=(20, 20, 20))
-        draw.text((150, y0 + 4), row["description"][:42], fill=(20, 20, 20))
-        draw.text((470, y0 + 4), row["amount_column"].upper(), fill=(20, 20, 20))
-        draw.text((560, y0 + 4), row["amount_text"], fill=(20, 20, 20))
+        acct_label = (row.get("account_text") or header_acct)[:20]
+        draw.text((28, y0 + 4), row["date_text"][:14], fill=(20, 20, 20))
+        if acct_label:
+            draw.text((135, y0 + 4), acct_label, fill=(20, 20, 20))
+        draw.text((285, y0 + 4), row["description"][:28], fill=(20, 20, 20))
+        draw.text((490, y0 + 4), row["amount_column"].upper(), fill=(20, 20, 20))
+        draw.text((575, y0 + 4), row["amount_text"], fill=(20, 20, 20))
         if row["balance_text"]:
-            draw.text((760, y0 + 4), row["balance_text"], fill=(20, 20, 20))
+            draw.text((765, y0 + 4), row["balance_text"], fill=(20, 20, 20))
         rbox = _clamp_box(24, y0 / height * 1000, 976, y1 / height * 1000)
-        abox = _clamp_box(465, y0 / height * 1000, 735, y1 / height * 1000)
+        abox = _clamp_box(485, y0 / height * 1000, 740, y1 / height * 1000)
         bbox = (
-            _clamp_box(755, y0 / height * 1000, 960, y1 / height * 1000)
+            _clamp_box(760, y0 / height * 1000, 960, y1 / height * 1000)
             if row["balance_text"]
             else dict(ZERO_BOX)
         )

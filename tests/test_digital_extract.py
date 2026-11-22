@@ -329,18 +329,65 @@ def test_csv_unpadded_decimals_multi_account_balances_and_preview_direction(tmp_
         with pytest.raises(ValueError, match="unparseable"):
             read_csv_statement(bad_csv)
 
-    # 2. Multi-account CSV reconciles running balances per account instead of mixing A and B.
+    # 2. Multi-account CSV reconciles running balances per account and renders row account in preview.
     multi_csv = tmp_path / "multi_acct.csv"
     multi_csv.write_text(
         "Currency,EUR\n"
         "Date,Account,Amount,Balance\n"
         "2025-01-01,DE111,10.00,110.00\n"
-        "2025-01-02,DE222,20.00,220.00\n"
+        "2025-01-01,DE222,10.00,110.00\n"
         "2025-01-03,DE111,5.00,115.00\n",
         encoding="utf-8",
     )
     multi_reading = read_csv_statement(multi_csv)
     assert len(multi_reading["rows"]) == 3
+    multi_png = tmp_path / "multi-p1.png"
+    multi_rendered = render_csv_preview(multi_reading, multi_png)
+    with Image.open(multi_png) as mimg:
+        mw, mh = mimg.size
+        rb0 = multi_rendered["rows"][0]["row_bbox"]
+        rb1 = multi_rendered["rows"][1]["row_bbox"]
+        row_crop_0 = mimg.crop(
+            (
+                rb0["x_min"] * mw // 1000,
+                rb0["y_min"] * mh // 1000,
+                rb0["x_max"] * mw // 1000,
+                rb0["y_max"] * mh // 1000,
+            )
+        )
+        row_crop_1 = mimg.crop(
+            (
+                rb1["x_min"] * mw // 1000,
+                rb1["y_min"] * mh // 1000,
+                rb1["x_max"] * mw // 1000,
+                rb1["y_max"] * mh // 1000,
+            )
+        )
+        assert row_crop_0.tobytes() != row_crop_1.tobytes()
+
+    # Rotated born-digital PDF pages conservatively return None so source highlights never mirror.
+    import pypdfium2 as pdfium
+
+    spec = _spec("saebyeol", "KRW", "110-482-913746")
+    rot_stmt = Statement(
+        account_id=spec.account_id,
+        year=2025,
+        month=3,
+        bank=SAEBYEOL,
+        opening_balance=10_000_000,
+        closing_balance=11_000_000,
+        txns=(Txn("t1", date(2025, 3, 5), "Transfer", 1_000_000, 11_000_000, "routine"),),
+    )
+    unrotated_pdf = tmp_path / "unrot.pdf"
+    rotated_pdf = tmp_path / "rot180.pdf"
+    render_statement(spec, rot_stmt, FONTS, unrotated_pdf)
+    doc = pdfium.PdfDocument(str(unrotated_pdf))
+    try:
+        doc[0].set_rotation(180)
+        doc.save(str(rotated_pdf))
+    finally:
+        doc.close()
+    assert read_digital_pdf_page(rotated_pdf, page=1) is None
 
     broken_multi = tmp_path / "broken_multi.csv"
     broken_multi.write_text(
