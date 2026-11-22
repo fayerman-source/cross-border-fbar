@@ -277,8 +277,7 @@ def _passes_reconciliation_guard(reading: dict) -> bool:
     obs = observe(reading, "digital-check")
     if obs.problems:
         return False
-    running = obs.opening
-    prev_printed: Decimal | None = obs.opening
+    running: Decimal | None = obs.opening
     for line in obs.lines:
         if line.amount is None or line.day is None:
             return False
@@ -286,11 +285,8 @@ def _passes_reconciliation_guard(reading: dict) -> bool:
             running += line.amount
             if line.printed_balance is not None and running != line.printed_balance:
                 return False
-        elif prev_printed is not None and line.printed_balance is not None:
-            if prev_printed + line.amount != line.printed_balance:
-                return False
-        if line.printed_balance is not None:
-            prev_printed = line.printed_balance
+        elif line.printed_balance is not None:
+            running = line.printed_balance
     if running is not None and obs.closing is not None and running != obs.closing:
         return False
     return True
@@ -586,7 +582,13 @@ def read_csv_statement(csv_path: Path) -> dict:
                 raise ValueError(f"CSV row {r_i} has an unparseable debit or credit figure")
             if deb_val and cred_val:
                 raise ValueError(f"CSV row {r_i} has both debit and credit populated")
-            if deb_val is not None and (cred_val is None):
+            if deb_val:
+                amount_text = deb
+                amount_column = "debit"
+            elif cred_val:
+                amount_text = cred
+                amount_column = "credit"
+            elif deb_val is not None:
                 amount_text = deb
                 amount_column = "debit"
             elif cred_val is not None:
@@ -632,7 +634,13 @@ def read_csv_statement(csv_path: Path) -> dict:
             }
         )
 
-    if len(col_values["currency"]) > 1:
+    raw_currencies = set(col_values["currency"])
+    if meta.get("currency"):
+        raw_currencies.add(meta["currency"])
+    parsed_currencies = {parse_currency(c) for c in raw_currencies}
+    if None in parsed_currencies:
+        raise ValueError("CSV statement contains an unrecognized currency")
+    if len(parsed_currencies) > 1 or len(col_values["currency"]) > 1:
         raise ValueError("CSV statement mixes multiple currencies; split by currency before import")
 
     fields = {name: _field(meta.get(name, "")) for name in FIELD_NAMES}
