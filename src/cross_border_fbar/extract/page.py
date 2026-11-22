@@ -97,3 +97,52 @@ def read_page(client: Client, model: str, image: Path, label: str = "") -> tuple
         "usage": r.usage,
     }
     return json.loads(r.content), meta
+
+
+def read_statement_source(
+    source: Path,
+    *,
+    page: int = 1,
+    client: Client | None = None,
+    model: str = "muse-spark-1.3",
+    image: Path | None = None,
+    label: str = "",
+) -> tuple[dict, dict]:
+    """Parse CSV or text-layer PDF locally at $0 when unambiguous; otherwise fall back to `read_page`."""
+    import hashlib
+    import time
+
+    from .digital import read_csv_statement, read_digital_pdf_page
+
+    suffix = source.suffix.lower()
+    t0 = time.perf_counter()
+    if suffix == ".csv":
+        if page != 1:
+            raise ValueError("CSV statements have only page 1")
+        reading = read_csv_statement(source)
+        digest = hashlib.sha256(source.read_bytes()).hexdigest()
+        return reading, {
+            "model": "digital-csv",
+            "prompt": "digital_v1",
+            "cost_usd": 0.0,
+            "latency_s": round(time.perf_counter() - t0, 4),
+            "replayed": False,
+            "request_key": digest,
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+        }
+    if suffix == ".pdf":
+        reading = read_digital_pdf_page(source, page=page)
+        if reading is not None:
+            digest = hashlib.sha256(source.read_bytes() + f":{page}".encode()).hexdigest()
+            return reading, {
+                "model": "digital-pdf",
+                "prompt": "digital_v1",
+                "cost_usd": 0.0,
+                "latency_s": round(time.perf_counter() - t0, 4),
+                "replayed": False,
+                "request_key": digest,
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+            }
+    if client is None or image is None:
+        raise ValueError("vision fallback requires both a model client and a rendered page image")
+    return read_page(client, model, image, label=label)
