@@ -202,29 +202,50 @@ def _coverage_flags(obs: list[Observation], tax_year: int, flags: list[Flag]) ->
                 d = stop + timedelta(days=1)
 
 
-def _seed(o: Observation, prev: Observation | None) -> tuple[Decimal | None, str]:
-    """Balance before the first line: printed opening, else the previous adjacent closing, else derived."""
+def _seed_balance(o: Observation, prev: Observation | None) -> tuple[Decimal | None, str, Source | None]:
+    """Balance before the first line, how it was obtained, and its source."""
     if o.opening is not None:
-        return o.opening, "printed"
+        return o.opening, "printed", o.sources["opening_balance"]
     if prev is not None and prev.closing is not None and _adjacent(prev, o):
-        return prev.closing, "computed"
+        return prev.closing, "computed", prev.sources["closing_balance"]
     for line in o.lines:
         if line.printed_balance is not None and line.amount is not None:
-            return line.printed_balance - line.amount, "computed"
+            return line.printed_balance - line.amount, "computed", line.source
         if line.amount is None:
             break
-    return None, "computed"
+    return None, "computed", None
 
 
-def _balances(o: Observation, prev: Observation | None, flags: list[Flag]) -> list[Balance]:
+def _seed(o: Observation, prev: Observation | None) -> tuple[Decimal | None, str]:
+    amount, kind, _ = _seed_balance(o, prev)
+    return amount, kind
+
+
+def _balances(
+    o: Observation, prev: Observation | None, flags: list[Flag], tax_year: int | None = None
+) -> list[Balance]:
     """Every balance a reader can get from one statement, checking printed against computed."""
     out = []
-    running, seed_kind = _seed(o, prev)
+    running, seed_kind, seed_src = _seed_balance(o, prev)
+    year_start = date(tax_year, 1, 1) if tax_year is not None else None
+    carry: Balance | None = None
+    crossed = False
     if o.opening is not None:
         out.append(Balance(o.opening, o.sources["opening_balance"], "printed", o.period_start))
+    if year_start and o.period_start and o.period_start < year_start and running is not None and seed_src:
+        carry = Balance(running, seed_src, seed_kind, year_start)
     for line in o.lines:
+        if year_start and not crossed:
+            if line.day is None:
+                carry = None
+            elif line.day >= year_start:
+                crossed = True
+                if carry is not None:
+                    out.append(carry)
+                    carry = None
         if running is not None:
             running = running + line.amount if line.amount is not None else None
+        line_bal: Balance | None = None
         if line.printed_balance is not None:
             if running is not None and running != line.printed_balance:
                 flags.append(
@@ -235,9 +256,15 @@ def _balances(o: Observation, prev: Observation | None, flags: list[Flag]) -> li
                     )
                 )
             running = line.printed_balance
-            out.append(Balance(line.printed_balance, line.source, "printed", line.day))
+            line_bal = Balance(line.printed_balance, line.source, "printed", line.day)
+            out.append(line_bal)
         elif running is not None:
-            out.append(Balance(running, line.source, "computed", line.day))
+            line_bal = Balance(running, line.source, "computed", line.day)
+            out.append(line_bal)
+        if year_start and not crossed and line.day is not None and line.day < year_start:
+            carry = Balance(line_bal.amount, line_bal.source, line_bal.kind, year_start) if line_bal else None
+    if year_start and not crossed and carry is not None and o.period_end and o.period_end >= year_start:
+        out.append(carry)
     if o.closing is not None:
         if running is not None and o.lines and running != o.closing:
             flags.append(
@@ -502,7 +529,7 @@ def reconcile_account(
     balances = [
         b
         for o, p in zip(calc_obs, prevs, strict=True)
-        for b in _balances(o, p, flags)
+        for b in _balances(o, p, flags, tax_year)
         if _in_year(b.day, tax_year)
     ]
     best = _max_value(balances)
