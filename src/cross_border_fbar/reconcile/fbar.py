@@ -69,10 +69,10 @@ def _relevant_to_year(page: Observation, year: int) -> bool:
     year_start, year_end = date(year, 1, 1), date(year, 12, 31)
     if page.period_start is not None and page.period_end is not None:
         return page.period_start <= year_end and page.period_end >= year_start
-    days = [ln.day for ln in page.lines if ln.day is not None]
-    if days:
-        return any(d.year == year for d in days)
-    return True
+    known_dates = [
+        d for d in (page.period_start, page.period_end, *(ln.day for ln in page.lines)) if d is not None
+    ]
+    return not known_dates or (min(known_dates) <= year_end and max(known_dates) >= year_start)
 
 
 def reconcile_years(

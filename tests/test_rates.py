@@ -206,3 +206,26 @@ def test_multi_year_rate_loading_cli_range_fetch_and_lookback_reconciliation(tmp
     assert totals_2023.above_aggregate_threshold is True
     assert accts_2024[0].max_value_usd == 9723
     assert totals_2024.above_aggregate_threshold is False
+
+    # 3. Partial-period pages with one readable boundary retain their year's closing/opening evidence.
+    partial_src = Source("usd-partial.png", "closing_balance", None)
+    partial_2024 = Observation(
+        upload="usd-partial.png",
+        institution="Harbor Bank",
+        currency="USD",
+        account_key="USD999",
+        account_number="USD-999",
+        holder="Synthetic Holder",
+        period_start=None,
+        period_end=date(2024, 12, 31),
+        opening=None,
+        closing=Decimal("20000.00"),
+        lines=[Line(0, date(2023, 11, 15), Decimal("100.00"), Decimal("500.00"), "prior", partial_src)],
+        sources={"closing_balance": partial_src},
+    )
+    partial_lookback = reconcile_years([partial_2024], {}, [2024], by_year)
+    p_accts_2024, p_totals_2024 = partial_lookback[2024]
+    assert len(p_accts_2024) == 1
+    assert p_accts_2024[0].max_value_usd == 20000
+    assert p_accts_2024[0].year_end_balance == Decimal("20000.00")
+    assert p_totals_2024.above_aggregate_threshold is True

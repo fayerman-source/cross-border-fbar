@@ -107,6 +107,10 @@ def test_a_typed_amount_that_does_not_read_one_clear_way_is_refused(text):
     [
         ("1,250.375", Decimal("1250.375")),
         ("1.250,375", Decimal("1250.375")),
+        ("1 250.375", Decimal("1250.375")),
+        ("1 250,375", Decimal("1250.375")),
+        ("-1 250.375", Decimal("-1250.375")),
+        ("12 345 678,375", Decimal("12345678.375")),
         ("0.375", Decimal("0.375")),
         ("0,375", Decimal("0.375")),
         ("1.234", Decimal("1234")),

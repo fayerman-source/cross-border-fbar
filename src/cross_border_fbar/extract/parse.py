@@ -35,13 +35,21 @@ def _decimal_separator(digits: str) -> str | None:
     return None
 
 
+def _space_grouped_three_decimal_sep(text: str, digits: str) -> str | None:
+    """Detect decimal mark in space-grouped 3-decimal amounts like `1 250.375` before spaces are stripped."""
+    if digits.count(".") + digits.count(",") != 1:
+        return None
+    m = re.search(r"\d\s\d{3}([.,])\d{3}(?!\d)", text)
+    return m.group(1) if m else None
+
+
 def parse_amount(text: str) -> Decimal | None:
     """Parse a printed amount; None if there is no number. A leading or trailing '-' is negative."""
     s = (text or "").strip()
     digits = re.sub(r"[^\d.,]", "", s)
     if not re.search(r"\d", digits):
         return None
-    sep = _decimal_separator(digits)
+    sep = _decimal_separator(digits) or _space_grouped_three_decimal_sep(s, digits)
     if sep:
         whole, _, frac = digits.rpartition(sep)
         normalized = re.sub(r"[.,]", "", whole) + "." + frac
