@@ -71,6 +71,87 @@ def _write_wrapped(
     pdf.multi_cell(0, 4.8, text, new_x="LMARGIN", new_y="NEXT")
 
 
+def _format_correction_line(corr: dict) -> str:
+    read_info = corr.get("read") or {}
+    orig = read_info.get("text") or read_info.get("value") or "nothing"
+    src_wp = (corr.get("source") or {}).get("wp") or corr.get("upload") or ""
+    typed = corr.get("text") or corr.get("value") or ""
+    return (
+        f"Reviewer correction · {src_wp} ({corr['field']}): read {orig} -> "
+        f"corrected to {corr['value']} ({typed}) by {corr['reviewer']} · Note: {corr['note']}"
+    )
+
+
+def _format_audit_entry(entry: dict) -> str:
+    who = entry.get("reviewer") or entry.get("initials") or ""
+    if entry.get("upload") and entry.get("field"):
+        target = f"{entry['upload']} {entry['field']}"
+    else:
+        target = entry.get("flag") or entry.get("field") or entry.get("account") or entry.get("hash", "")[:12]
+    change = f"{entry.get('before')} -> {entry.get('after')}" if "before" in entry else ""
+    note = f"Note: {entry['note']}" if entry.get("note") else ""
+    parts = [p for p in (entry.get("ts", ""), entry.get("action", ""), who, target, change, note) if p]
+    return " · ".join(parts)
+
+
+def _render_account_block(
+    pdf: FPDF,
+    acct: dict,
+    set_dir: Path | None,
+    items: list[dict],
+    corrections: list[dict],
+) -> None:
+    if pdf.get_y() > 245:
+        pdf.add_page()
+    institutions = "; ".join(acct["institutions"]) if acct["institutions"] else "Institution not stated"
+    acct_label = acct["account_number"] or "; ".join(acct["uploads"])
+    usd_text = f"${acct['max_usd']:,}" if acct["max_usd"] is not None else "UNDETERMINED"
+    _write_wrapped(
+        pdf,
+        f"{institutions} · {acct_label} · {_fincen_part(acct)} · Max USD: {usd_text}",
+        size=9.5,
+        bold=True,
+    )
+
+    holders = "; ".join(acct["holders"]) if acct["holders"] else "Not stated"
+    max_info = acct["max"]
+    if max_info:
+        kind_label = (
+            f"{max_info['kind']}, reviewer-corrected" if max_info.get("correction") else max_info["kind"]
+        )
+        native_line = (
+            f"Holders: {holders} · Max observed: {max_info['amount']} {acct['currency'] or ''} "
+            f"({kind_label}, {max_info['day'] or 'date unstated'}) · "
+            f"Rate: {acct['rate'] or 'n/a'} ({acct['rate_basis'] or 'n/a'}) · "
+            f"Source: {max_info['source']['wp']}"
+        )
+    else:
+        native_line = (
+            f"Holders: {holders} · Max observed: UNDETERMINED · "
+            f"Uploads: {'; '.join(acct['uploads']) or 'none'}"
+        )
+    _write_wrapped(pdf, native_line, size=8.2)
+
+    effective_corrections = corrections
+    if not effective_corrections and max_info and max_info.get("correction"):
+        effective_corrections = [max_info["correction"]]
+    for corr in effective_corrections:
+        _write_wrapped(pdf, _format_correction_line(corr), size=8, grey=True)
+
+    strip = _crop_source_strip(set_dir, max_info["source"] if max_info else None)
+    if strip is not None:
+        if pdf.get_y() > 250:
+            pdf.add_page()
+        pdf.image(strip, x=pdf.l_margin, w=180)
+        pdf.ln(1)
+
+    for item in items:
+        ack = item.get("acknowledgement")
+        ack_suffix = f" [Ack by {ack['reviewer']}: {ack['note']}]" if ack else ""
+        _write_wrapped(pdf, f"Review flag · {item['code']}: {item['message']}{ack_suffix}", size=8, grey=True)
+    pdf.ln(2)
+
+
 def export_workpaper_pdf(exported: dict, set_dir: Path | None = None) -> bytes:
     """Render a signed worksheet export dict as a draft PDF workpaper for preparer check."""
     ws = exported["worksheet"]
@@ -82,6 +163,10 @@ def export_workpaper_pdf(exported: dict, set_dir: Path | None = None) -> bytes:
     remaining_by_account: dict[str, list[dict]] = {}
     for item in exported["remaining_review_items"]:
         remaining_by_account.setdefault(item["account"], []).append(item)
+
+    corrections_by_account: dict[str, list[dict]] = {}
+    for corr in ws.get("value_corrections") or []:
+        corrections_by_account.setdefault(corr["account"], []).append(corr)
 
     pdf = _new_pdf()
     pdf.add_page()
@@ -119,48 +204,13 @@ def export_workpaper_pdf(exported: dict, set_dir: Path | None = None) -> bytes:
     pdf.ln(1)
 
     for acct in ws["accounts"]:
-        if pdf.get_y() > 245:
-            pdf.add_page()
-        institutions = "; ".join(acct["institutions"]) if acct["institutions"] else "Institution not stated"
-        acct_label = acct["account_number"] or "; ".join(acct["uploads"])
-        usd_text = f"${acct['max_usd']:,}" if acct["max_usd"] is not None else "UNDETERMINED"
-        _write_wrapped(
+        _render_account_block(
             pdf,
-            f"{institutions} · {acct_label} · {_fincen_part(acct)} · Max USD: {usd_text}",
-            size=9.5,
-            bold=True,
+            acct,
+            set_dir,
+            remaining_by_account.get(acct["key"], []),
+            corrections_by_account.get(acct["key"], []),
         )
-
-        holders = "; ".join(acct["holders"]) if acct["holders"] else "Not stated"
-        max_info = acct["max"]
-        if max_info:
-            native_line = (
-                f"Holders: {holders} · Max observed: {max_info['amount']} {acct['currency'] or ''} "
-                f"({max_info['kind']}, {max_info['day'] or 'date unstated'}) · "
-                f"Rate: {acct['rate'] or 'n/a'} ({acct['rate_basis'] or 'n/a'}) · "
-                f"Source: {max_info['source']['wp']}"
-            )
-        else:
-            native_line = (
-                f"Holders: {holders} · Max observed: UNDETERMINED · "
-                f"Uploads: {'; '.join(acct['uploads']) or 'none'}"
-            )
-        _write_wrapped(pdf, native_line, size=8.2)
-
-        strip = _crop_source_strip(set_dir, max_info["source"] if max_info else None)
-        if strip is not None:
-            if pdf.get_y() > 250:
-                pdf.add_page()
-            pdf.image(strip, x=pdf.l_margin, w=180)
-            pdf.ln(1)
-
-        for item in remaining_by_account.get(acct["key"], []):
-            ack = item.get("acknowledgement")
-            ack_suffix = f" [Ack by {ack['reviewer']}: {ack['note']}]" if ack else ""
-            _write_wrapped(
-                pdf, f"Review flag · {item['code']}: {item['message']}{ack_suffix}", size=8, grey=True
-            )
-        pdf.ln(2)
 
     if exported["open_determinations"]:
         if pdf.get_y() > 245:
@@ -176,9 +226,6 @@ def export_workpaper_pdf(exported: dict, set_dir: Path | None = None) -> bytes:
             pdf.add_page()
         _write_wrapped(pdf, "Schedule C · Review Audit Log (Recent Entries)", size=11, bold=True)
         for entry in audit_entries[-40:]:
-            who = entry.get("reviewer") or entry.get("initials") or ""
-            detail = entry.get("flag") or entry.get("field") or entry.get("hash", "")[:12]
-            parts = [p for p in (entry.get("ts", ""), entry.get("action", ""), who, detail) if p]
-            _write_wrapped(pdf, " · ".join(parts), size=7.8, grey=True)
+            _write_wrapped(pdf, _format_audit_entry(entry), size=7.8, grey=True)
 
     return bytes(pdf.output())

@@ -160,6 +160,41 @@ def test_workpaper_pdf_requires_signoff_embeds_crops_flags_and_draft_banner(work
     assert review.state["signoff"]["hash"] in extracted
 
 
+def test_workpaper_pdf_preserves_reviewer_value_correction_provenance(workpaper_inputs, tmp_path):
+    review = Review(workpaper_inputs, tmp_path / "rv_corr", root=tmp_path)
+    review.correct_value(
+        "pages/sole-p1.png",
+        "row:0:amount",
+        "15,000,000",
+        "verified credit slip on page 1",
+        "A. Rivera",
+    )
+    review.correct_value(
+        "pages/sole-p1.png",
+        "closing_balance",
+        "25,000,000",
+        "verified closing stamp on page 1",
+        "A. Rivera",
+    )
+    for fid in review.open_review_flags():
+        review.acknowledge(fid, "checked synthetic statement", "A. Rivera")
+    # Pad audit log past 40 entries to prove Schedule A retains correction provenance independently.
+    for idx in range(42):
+        review._audit("note_check", "A. Rivera", field=f"pad_{idx}")
+    review.sign_off("A. Rivera", "AR")
+
+    extracted = _pdf_text(review.export_pdf())
+    flat = " ".join(extracted.split())
+    assert "reviewer-corrected" in flat
+    assert "read 10,000,000 -> corrected to 15000000 (15,000,000) by A. Rivera" in flat
+    assert "verified credit slip on page 1" in flat
+    assert "read 20,000,000 -> corrected to 25000000 (25,000,000) by A. Rivera" in flat
+    assert "verified closing stamp on page 1" in flat
+    assert "\u2014" not in extracted
+    assert "CPA" not in extracted
+    assert not OUT_OF_SCOPE.search(extracted)
+
+
 def test_local_and_hosted_servers_serve_pdf_workpaper_only_after_signoff(workpaper_inputs, tmp_path):
     rv = Review(workpaper_inputs, tmp_path / "local_rv", root=tmp_path)
     srv = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(rv, workpaper_inputs.set_dir))
