@@ -297,3 +297,93 @@ def test_csv_zero_padded_debit_credit_and_sparse_running_balances_reconcile(tmp_
     r = read_csv_statement(p)
     assert [row["amount_column"] for row in r["rows"]] == ["credit", "debit", "credit"]
     assert [row["amount_text"] for row in r["rows"]] == ["10.00", "20.00", "70.00"]
+
+
+def test_csv_unpadded_decimals_multi_account_balances_and_preview_direction(tmp_path):
+    from decimal import Decimal
+
+    from cross_border_fbar.extract.digital import render_csv_preview
+    from cross_border_fbar.reconcile.observe import observe
+
+    # 1. Unpadded 1-decimal CSV amounts normalize cleanly rather than becoming 10x larger, while junk rejects.
+    dec_csv = tmp_path / "unpadded.csv"
+    dec_csv.write_text(
+        "Currency,EUR\n"
+        "Opening Balance,10.5\n"
+        "Closing Balance,12.0\n"
+        "Date,Amount\n"
+        "2025-01-01,1.5\n"
+        "2025-01-02,+0.5\n"
+        "2025-01-03,-0.5\n",
+        encoding="utf-8",
+    )
+    dec_reading = read_csv_statement(dec_csv)
+    obs = observe(dec_reading, "unpadded.csv")
+    assert obs.opening == Decimal("10.50")
+    assert obs.closing == Decimal("12.00")
+    assert [ln.amount for ln in obs.lines] == [Decimal("1.50"), Decimal("0.50"), Decimal("-0.50")]
+
+    for bad_val in ("12abc", "1.2345"):
+        bad_csv = tmp_path / f"bad_{bad_val}.csv"
+        bad_csv.write_text(f"Date,Amount\n2025-01-01,{bad_val}\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="unparseable"):
+            read_csv_statement(bad_csv)
+
+    # 2. Multi-account CSV reconciles running balances per account instead of mixing A and B.
+    multi_csv = tmp_path / "multi_acct.csv"
+    multi_csv.write_text(
+        "Currency,EUR\n"
+        "Date,Account,Amount,Balance\n"
+        "2025-01-01,DE111,10.00,110.00\n"
+        "2025-01-02,DE222,20.00,220.00\n"
+        "2025-01-03,DE111,5.00,115.00\n",
+        encoding="utf-8",
+    )
+    multi_reading = read_csv_statement(multi_csv)
+    assert len(multi_reading["rows"]) == 3
+
+    broken_multi = tmp_path / "broken_multi.csv"
+    broken_multi.write_text(
+        "Currency,EUR\n"
+        "Date,Account,Amount,Balance\n"
+        "2025-01-01,DE111,10.00,110.00\n"
+        "2025-01-02,DE222,20.00,220.00\n"
+        "2025-01-03,DE111,5.00,999.00\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="reconciliation"):
+        read_csv_statement(broken_multi)
+
+    # 3. Rendered CSV preview distinguishes debit vs credit direction inside the highlighted amount region.
+    dir_csv = tmp_path / "dir.csv"
+    dir_csv.write_text(
+        "Currency,EUR\n"
+        "Date,Description,Debit,Credit,Balance\n"
+        "2025-02-01,Transfer A,100.00,,900.00\n"
+        "2025-02-02,Transfer A,,100.00,1000.00\n",
+        encoding="utf-8",
+    )
+    dir_reading = read_csv_statement(dir_csv)
+    preview_png = tmp_path / "dir-p1.png"
+    rendered = render_csv_preview(dir_reading, preview_png)
+    with Image.open(preview_png) as img:
+        w, h = img.size
+        b0 = rendered["rows"][0]["amount_bbox"]
+        b1 = rendered["rows"][1]["amount_bbox"]
+        crop_dr = img.crop(
+            (
+                b0["x_min"] * w // 1000,
+                b0["y_min"] * h // 1000,
+                b0["x_max"] * w // 1000,
+                b0["y_max"] * h // 1000,
+            )
+        )
+        crop_cr = img.crop(
+            (
+                b1["x_min"] * w // 1000,
+                b1["y_min"] * h // 1000,
+                b1["x_max"] * w // 1000,
+                b1["y_max"] * h // 1000,
+            )
+        )
+        assert crop_dr.tobytes() != crop_cr.tobytes()

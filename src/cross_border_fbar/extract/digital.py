@@ -18,9 +18,10 @@ from pathlib import Path
 import pypdfium2 as pdfium
 from PIL import Image, ImageDraw
 
+from ..reconcile.accounts import split_by_row_account
 from ..reconcile.observe import observe
 from .page import FIELD_NAMES
-from .parse import parse_amount, parse_currency, parse_date
+from .parse import parse_amount, parse_currency, parse_date, parse_typed_amount
 
 ZERO_BOX = {"x_min": 0, "y_min": 0, "x_max": 0, "y_max": 0}
 
@@ -272,13 +273,9 @@ def _direction_to_column(text: str) -> str | None:
     return None
 
 
-def _passes_reconciliation_guard(reading: dict) -> bool:
-    """Reject a digital parse if any field/row failed to parse or if balances disagree."""
-    obs = observe(reading, "digital-check")
-    if obs.problems:
-        return False
-    running: Decimal | None = obs.opening
-    for line in obs.lines:
+def _part_balances_reconcile(part) -> bool:
+    running: Decimal | None = part.opening
+    for line in part.lines:
         if line.amount is None or line.day is None:
             return False
         if running is not None:
@@ -287,9 +284,18 @@ def _passes_reconciliation_guard(reading: dict) -> bool:
                 return False
         elif line.printed_balance is not None:
             running = line.printed_balance
-    if running is not None and obs.closing is not None and running != obs.closing:
+    return not (running is not None and part.closing is not None and running != part.closing)
+
+
+def _passes_reconciliation_guard(reading: dict) -> bool:
+    """Reject a digital parse if any field/row failed to parse or if per-account balances disagree."""
+    obs = observe(reading, "digital-check")
+    if obs.problems:
         return False
-    return True
+    parts = split_by_row_account(obs)
+    if len(parts) > 1 and not obs.account_key and (obs.opening is not None or obs.closing is not None):
+        return False
+    return all(_part_balances_reconcile(part) for part in parts)
 
 
 def read_digital_pdf_page(pdf_path: Path, page: int = 1) -> dict | None:
@@ -516,6 +522,80 @@ _CSV_HEADER_MAP = {
 }
 
 
+_CSV_ONE_DEC_RE = re.compile(
+    r"(?:\d+|\d{1,3}(?:,\d{3})+)\.\d|(?:\d+|\d{1,3}(?:\.\d{3})+),\d",
+    re.ASCII,
+)
+
+
+def _strip_sign_affix(s: str) -> tuple[str, str, str]:
+    if s.startswith("(") and s.endswith(")"):
+        return "(", s[1:-1].strip(), ")"
+    if s.startswith(("+", "-")):
+        return ("-" if s[0] == "-" else ""), s[1:].strip(), ""
+    if s.endswith("-"):
+        return "", s[:-1].strip(), "-"
+    return "", s, ""
+
+
+def _normalize_csv_number(raw: str) -> tuple[str, Decimal] | None:
+    """Validate strict CSV numeric syntax and return `(canonical_text, value)` agreed on by `parse_amount`."""
+    s = (raw or "").strip()
+    if not s:
+        return None
+    pre, body, suf = _strip_sign_affix(s)
+    clean = f"{pre}{body}{suf}"
+    typed = parse_typed_amount(clean)
+    if typed is not None and parse_amount(clean) == typed:
+        return clean, typed
+    if _CSV_ONE_DEC_RE.fullmatch(body):
+        padded = f"{pre}{body}0{suf}"
+        val = parse_amount(padded)
+        return (padded, val) if val is not None else None
+    return None
+
+
+def _parse_csv_amount_cell(cell, mapped_cols: dict[str, int], r_i: int) -> tuple[str, str]:
+    if "debit" in mapped_cols and "credit" in mapped_cols:
+        deb = cell("debit")
+        cred = cell("credit")
+        deb_norm = _normalize_csv_number(deb) if deb else None
+        cred_norm = _normalize_csv_number(cred) if cred else None
+        if (deb and deb_norm is None) or (cred and cred_norm is None):
+            raise ValueError(f"CSV row {r_i} has an unparseable debit or credit figure")
+        if deb_norm and cred_norm and deb_norm[1] and cred_norm[1]:
+            raise ValueError(f"CSV row {r_i} has both debit and credit populated")
+        if deb_norm and deb_norm[1]:
+            return deb_norm[0], "debit"
+        if cred_norm and cred_norm[1]:
+            return cred_norm[0], "credit"
+        if deb_norm is not None:
+            return deb_norm[0], "debit"
+        if cred_norm is not None:
+            return cred_norm[0], "credit"
+        raise ValueError(f"CSV row {r_i} has no transaction amount")
+
+    raw_amt = cell("amount")
+    amt_norm = _normalize_csv_number(raw_amt)
+    if amt_norm is None:
+        raise ValueError(f"CSV row {r_i} has an unparseable amount {raw_amt!r}")
+    if "direction" in mapped_cols and cell("direction"):
+        mapped_dir = _direction_to_column(cell("direction"))
+        if mapped_dir is None:
+            raise ValueError(f"CSV row {r_i} has unrecognized direction {cell('direction')!r}")
+        return amt_norm[0], mapped_dir
+    return amt_norm[0], "signed"
+
+
+def _validate_csv_meta_balances(meta: dict[str, str]) -> None:
+    for bal_field in ("opening_balance", "closing_balance"):
+        if meta.get(bal_field):
+            norm_bal = _normalize_csv_number(meta[bal_field])
+            if norm_bal is None:
+                raise ValueError(f"CSV {bal_field} has an unparseable amount {meta[bal_field]!r}")
+            meta[bal_field] = norm_bal[0]
+
+
 def read_csv_statement(csv_path: Path) -> dict:
     """Parse a structured UTF-8 CSV bank statement into a `SCHEMA` reading.
 
@@ -552,6 +632,7 @@ def read_csv_statement(csv_path: Path) -> dict:
 
     if header_idx is None:
         raise ValueError("CSV statement has no recognizable date and amount header row")
+    _validate_csv_meta_balances(meta)
 
     data_rows = raw_rows[header_idx + 1 :]
     parsed_rows: list[dict] = []
@@ -573,44 +654,16 @@ def read_csv_statement(csv_path: Path) -> dict:
         if not date_text:
             raise ValueError(f"CSV row {r_i} is missing a date")
 
-        if "debit" in mapped_cols and "credit" in mapped_cols:
-            deb = cell("debit")
-            cred = cell("credit")
-            deb_val = parse_amount(deb) if deb else None
-            cred_val = parse_amount(cred) if cred else None
-            if deb and deb_val is None or cred and cred_val is None:
-                raise ValueError(f"CSV row {r_i} has an unparseable debit or credit figure")
-            if deb_val and cred_val:
-                raise ValueError(f"CSV row {r_i} has both debit and credit populated")
-            if deb_val:
-                amount_text = deb
-                amount_column = "debit"
-            elif cred_val:
-                amount_text = cred
-                amount_column = "credit"
-            elif deb_val is not None:
-                amount_text = deb
-                amount_column = "debit"
-            elif cred_val is not None:
-                amount_text = cred
-                amount_column = "credit"
-            else:
-                raise ValueError(f"CSV row {r_i} has no transaction amount")
-        else:
-            amount_text = cell("amount")
-            if parse_amount(amount_text) is None:
-                raise ValueError(f"CSV row {r_i} has an unparseable amount {amount_text!r}")
-            if "direction" in mapped_cols and cell("direction"):
-                mapped_dir = _direction_to_column(cell("direction"))
-                if mapped_dir is None:
-                    raise ValueError(f"CSV row {r_i} has unrecognized direction {cell('direction')!r}")
-                amount_column = mapped_dir
-            else:
-                amount_column = "signed"
+        amount_text, amount_column = _parse_csv_amount_cell(cell, mapped_cols, r_i)
 
-        balance_text = cell("balance")
-        if balance_text and parse_amount(balance_text) is None:
-            raise ValueError(f"CSV row {r_i} has an unparseable balance {balance_text!r}")
+        raw_bal = cell("balance")
+        if raw_bal:
+            bal_norm = _normalize_csv_number(raw_bal)
+            if bal_norm is None:
+                raise ValueError(f"CSV row {r_i} has an unparseable balance {raw_bal!r}")
+            balance_text = bal_norm[0]
+        else:
+            balance_text = ""
 
         acct_cell = cell("account_number")
         if acct_cell:
@@ -694,22 +747,25 @@ def render_csv_preview(reading: dict, out_png: Path) -> dict:
 
     y = max(y + 12, top_h)
     draw.rectangle((24, y, 976, y + row_h - 4), fill=(235, 235, 235))
-    draw.text(
-        (30, y + 4),
-        "Date          Description                                Amount           Balance",
-        fill=(20, 20, 20),
-    )
+    draw.text((30, y + 4), "Date", fill=(20, 20, 20))
+    draw.text((150, y + 4), "Description", fill=(20, 20, 20))
+    draw.text((470, y + 4), "Direction", fill=(20, 20, 20))
+    draw.text((560, y + 4), "Amount", fill=(20, 20, 20))
+    draw.text((760, y + 4), "Balance", fill=(20, 20, 20))
     y += row_h
 
     for row in reading["rows"]:
         y0, y1 = y, y + row_h - 4
-        desc = row["description"][:38]
-        line_text = f"{row['date_text']:<13} {desc:<40} {row['amount_text']:>14}   {row['balance_text']:>14}"
-        draw.text((30, y0 + 4), line_text, fill=(20, 20, 20))
+        draw.text((30, y0 + 4), row["date_text"][:18], fill=(20, 20, 20))
+        draw.text((150, y0 + 4), row["description"][:42], fill=(20, 20, 20))
+        draw.text((470, y0 + 4), row["amount_column"].upper(), fill=(20, 20, 20))
+        draw.text((560, y0 + 4), row["amount_text"], fill=(20, 20, 20))
+        if row["balance_text"]:
+            draw.text((760, y0 + 4), row["balance_text"], fill=(20, 20, 20))
         rbox = _clamp_box(24, y0 / height * 1000, 976, y1 / height * 1000)
-        abox = _clamp_box(520, y0 / height * 1000, 720, y1 / height * 1000)
+        abox = _clamp_box(465, y0 / height * 1000, 735, y1 / height * 1000)
         bbox = (
-            _clamp_box(740, y0 / height * 1000, 960, y1 / height * 1000)
+            _clamp_box(755, y0 / height * 1000, 960, y1 / height * 1000)
             if row["balance_text"]
             else dict(ZERO_BOX)
         )
