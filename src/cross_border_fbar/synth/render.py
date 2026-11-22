@@ -242,9 +242,13 @@ def render_statement(spec: AccountSpec, stmt: Statement, fonts: Path, out: Path)
     money = lambda m: fmt_amount(m, cur, style)  # noqa: E731
     start, end = date(stmt.year, stmt.month, 1), _month_end(stmt.year, stmt.month)
     fields: dict[str, dict] = {}
+    page_fields: dict[str, dict[str, dict]] = {}
 
-    def field(name, value, pos):
-        fields[name] = {"value": value, **pos}
+    def field(name, value, pos, *, primary=True):
+        entry = {"value": value, **pos}
+        page_fields.setdefault(str(pos["page"]), {})[name] = entry
+        if primary:
+            fields[name] = entry
 
     def header(first: bool) -> float:
         doc.new_page()
@@ -254,8 +258,7 @@ def render_statement(spec: AccountSpec, stmt: Statement, fonts: Path, out: Path)
         if key == "th":
             doc.text(x, y + 7, 120, 5, stmt.bank.name_en, size=9, font="latin")
             printed_names.append(stmt.bank.name_en)
-        if first:
-            field("institution", stmt.bank.name, {**bank_pos, "printed_names": printed_names})
+        field("institution", stmt.bank.name, {**bank_pos, "printed_names": printed_names}, primary=first)
         if key == "de_saldo":
             doc.text(x, y + 7, 120, 5, "Rechtsnachfolgerin der Rheinauen Privatbank", size=8, grey=True)
         doc.text(x, y + 12, 120, 5, stmt.bank.address, size=8, grey=True)
@@ -294,8 +297,10 @@ def render_statement(spec: AccountSpec, stmt: Statement, fonts: Path, out: Path)
                 bold=name == "account_number",
                 font="latin" if name == "account_number" else None,
             )
-            if first:
-                field(name, value, pos)
+            if name != "product":
+                field(name, value, pos, primary=first)
+            elif first:
+                fields[name] = {"value": value, **pos}
             y += 6
         if key.startswith("de") and first and stmt.bank.bic:
             doc.text(x, y, 32, 5.5, "BIC", size=8.5, grey=True)
@@ -489,6 +494,7 @@ def render_statement(spec: AccountSpec, stmt: Statement, fonts: Path, out: Path)
         "pages": pages,
         "prints_running_balance": lay.prints_running_balance,
         "fields": fields,
+        **({"page_fields": page_fields} if pages > 1 else {}),
         "lines": lines,
     }
 
