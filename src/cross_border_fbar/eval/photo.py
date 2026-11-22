@@ -20,6 +20,7 @@ from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener
 
 from ..app.worksheet import Inputs, build
+from ..extract.digital import read_csv_statement, read_digital_pdf_page, render_csv_preview
 from ..extract.page import PROMPT_VERSION, SCHEMA, read_page
 from ..extract.snap import snap_rows
 from ..filelock import exclusive
@@ -285,7 +286,15 @@ def run(
     set_dir = set_dir.resolve()
     manifest = manifest.resolve(strict=True) if manifest else None
     intake_path = intake_path.resolve(strict=True) if intake_path else None
-    image = _open_page(input_path, page)
+    is_csv = input_path.suffix.lower() == ".csv"
+    if is_csv:
+        if page != 1:
+            raise ValueError("CSV statements have only page 1")
+        if corners:
+            raise ValueError("page corners do not apply to CSV statements")
+        image = None
+    else:
+        image = _open_page(input_path, page)
     statement, size = _case(manifest, case_id, truth_page) if manifest else (None, None)
     if corners:
         image = _rectify(image, corners, size)
@@ -295,9 +304,24 @@ def run(
         else {"client": "Synthetic test client", "source": "Not stated", "accounts": []}
     )
     IntakeDocument.from_dict(intake)
-    client = client or Client(mode="live")
-    if client.mode != "live":
+    if client is not None and client.mode != "live":
         raise ValueError("photo evaluation requires live extraction")
+
+    digital_reading: dict | None = None
+    digital_mode: str | None = None
+    if is_csv:
+        digital_reading = read_csv_statement(input_path)
+        digital_mode = "digital-csv"
+    elif input_path.suffix.lower() == ".pdf" and not corners:
+        digital_reading = read_digital_pdf_page(input_path, page=page)
+        if digital_reading is not None:
+            digital_mode = "digital-pdf"
+
+    if digital_reading is None:
+        client = client or Client(mode="live")
+        if client.mode != "live":
+            raise ValueError("photo evaluation requires live extraction")
+
     set_dir.mkdir(parents=True, exist_ok=True)
     with exclusive(set_dir / ".photo-eval.lock"):
         _existing_set(set_dir, intake, bool(intake_path))
@@ -306,18 +330,44 @@ def run(
     (set_dir / "recordings").mkdir(exist_ok=True)
     capture_id = "capture-" + uuid.uuid4().hex
     image_path = pages / f"{capture_id}-p1.png"
-    # The exact raster sent to the model is also the page the worksheet displays.
-    image.save(image_path, format="PNG")
-    # Each call has a distinct recording directory, even when the exact same image is read again.
-    client.recordings = set_dir / "recordings" / capture_id
     try:
-        reading, metadata = read_page(client, MODEL, image_path, label=f"photo-eval:{capture_id}")
+        if digital_reading is not None:
+            if is_csv:
+                reading = render_csv_preview(digital_reading, image_path)
+            else:
+                image.save(image_path, format="PNG")
+                reading = digital_reading
+            source_hash = hashlib.sha256(input_path.read_bytes()).hexdigest()
+            metadata = {
+                "model": digital_mode,
+                "prompt": "digital_v1",
+                "cost_usd": 0.0,
+                "latency_s": 0.0,
+                "replayed": False,
+                "request_key": source_hash,
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+            }
+            recording_file = None
+            boxes_verified = True
+            geometry_label = "csv-preview" if is_csv else "pdf-text-layer"
+        else:
+            # The exact raster sent to the model is also the page the worksheet displays.
+            image.save(image_path, format="PNG")
+            # Each call has a distinct recording directory, even when the exact same image is read again.
+            client.recordings = set_dir / "recordings" / capture_id
+            reading, metadata = read_page(client, MODEL, image_path, label=f"photo-eval:{capture_id}")
+            recording_file = str(client.recordings / MODEL / (metadata["request_key"] + ".json"))
+            boxes_verified = False
+            geometry_label = "operator-supplied page corners; verify alignment" if corners else "unscored"
+
         _validate_schema(reading, SCHEMA)
         # Validate through the real worksheet pipeline before publishing the new reading.
         from ..reconcile.observe import observe
 
         observe(reading, f"pages/{image_path.name}")
-        scored, summary, geometry = _score_capture(statement, reading, image_path, corners)
+        scored, summary, geometry = _score_capture(
+            statement, reading, image_path, corners or (digital_mode == "digital-pdf")
+        )
         item = {
             "statement_id": capture_id,
             "page": 1,
@@ -327,12 +377,12 @@ def run(
                 "source_sha256": hashlib.sha256(input_path.read_bytes()).hexdigest(),
                 "source_page": page,
                 "truth_page": truth_page if manifest else None,
-                "boxes_verified": False,
+                "boxes_verified": boxes_verified,
                 "synthetic_confirmed": True,
                 "case": case_id,
-                "recording_file": str(client.recordings / MODEL / (metadata["request_key"] + ".json")),
+                "recording_file": recording_file,
                 "corners": corners,
-                "geometry": "operator-supplied page corners; verify alignment" if corners else "unscored",
+                "geometry": geometry_label,
             },
             "score": scored,
             "value_summary": summary,
@@ -343,7 +393,7 @@ def run(
             "set": str(set_dir),
             "readings": str(readings_file),
             "capture": capture_id,
-            "recording_file": item["capture"]["recording_file"],
+            "recording_file": recording_file,
             "call": metadata,
             "value_summary": summary,
             "geometry_summary": geometry,
