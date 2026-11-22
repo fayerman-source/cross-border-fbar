@@ -521,6 +521,122 @@ def test_an_empty_currency_selection_does_not_release_conflicting_currency_value
     assert account.year_end_balance is None
 
 
+def test_reverse_chronological_statement_with_running_balances_reconciles_cleanly():
+    # Newest-first portal export (opening=5000, closing=5000), including a same-day debit-before-credit pair.
+    rows = [
+        (date(2025, 1, 25), D(-1000), D(5000)),
+        (date(2025, 1, 16), D(5000), D(6000)),
+        (date(2025, 1, 16), D(-4000), D(1000)),
+        (date(2025, 1, 5), D(0), D(5000)),
+    ]
+    jan = obs("jan-rev", date(2025, 1, 1), date(2025, 1, 31), D(5000), D(5000), lines=rows)
+    rest = obs("rest", date(2025, 2, 1), date(2025, 12, 31), D(5000), D(5000))
+    (r,) = reconcile([jan, rest], SOLE, RATES, 2025)
+    assert "arithmetic_mismatch" not in codes(r)
+    assert r.max_value.amount == D(6000)
+    assert "possible_intraday_peak" in codes(r)  # 5000 + 5000 = 10000 > 6000 on Jan 16
+
+
+def test_reverse_chronological_statement_without_running_balances_finds_mid_month_peak():
+    # Newest-first single-column layout (no running balances): +5000 on Jan 10 (peak 6000), -5000 on Jan 20.
+    rows = [
+        (date(2025, 1, 20), D(-5000), None),
+        (date(2025, 1, 10), D(5000), None),
+    ]
+    jan = obs("jan-plain-rev", date(2025, 1, 1), date(2025, 1, 31), D(1000), D(1000), lines=rows)
+    rest = obs("rest", date(2025, 2, 1), date(2025, 12, 31), D(1000), D(1000))
+    (r,) = reconcile([jan, rest], SOLE, RATES, 2025)
+    assert "arithmetic_mismatch" not in codes(r)
+    assert r.max_value.amount == D(6000)
+    assert {"max_not_at_month_end", "max_from_computed_balance"} <= codes(r)
+
+    # Sparse running balances with strictly descending dates still normalize to chronological order.
+    sparse = obs(
+        "jan-sparse-rev",
+        date(2025, 1, 1),
+        date(2025, 1, 31),
+        D(1000),
+        D(1000),
+        lines=[
+            (date(2025, 1, 30), D(0), D(1000)),
+            (date(2025, 1, 20), D(-5000), None),
+            (date(2025, 1, 10), D(5000), None),
+        ],
+    )
+    (r_sparse,) = reconcile([sparse, rest], SOLE, RATES, 2025)
+    assert r_sparse.max_value.amount == D(6000)
+
+    # Unbalanced same-day rows on a reversed statement preserve intraday uncertainty (no invented 10,000).
+    sameday_plain = obs(
+        "jan-sameday-rev",
+        date(2025, 1, 1),
+        date(2025, 1, 31),
+        D(5000),
+        D(6000),
+        lines=[
+            (date(2025, 1, 25), D(0), None),
+            (date(2025, 1, 16), D(-4000), None),
+            (date(2025, 1, 16), D(5000), None),
+        ],
+    )
+    rest_6k = obs("rest6", date(2025, 2, 1), date(2025, 12, 31), D(6000), D(6000))
+    (r_sd,) = reconcile([sameday_plain, rest_6k], SOLE, RATES, 2025)
+    assert r_sd.max_value.amount == D(6000)
+    assert "possible_intraday_peak" in codes(r_sd)
+    assert not r_sd.annual_max_complete
+
+    # Partially anchored same-day run also keeps debits-first between anchors (no invented 10,000 peak).
+    partial_anchored = obs(
+        "jan-partial-rev",
+        date(2025, 1, 1),
+        date(2025, 1, 31),
+        D(5000),
+        D(6000),
+        lines=[
+            (date(2025, 1, 25), D(0), D(6000)),
+            (date(2025, 1, 16), D(5000), None),
+            (date(2025, 1, 16), D(-4000), None),
+            (date(2025, 1, 16), D(0), D(6000)),
+        ],
+    )
+    (r_pa,) = reconcile([partial_anchored, rest_6k], SOLE, RATES, 2025)
+    assert r_pa.max_value.amount == D(6000)
+    assert "possible_intraday_peak" in codes(r_pa)
+    assert not r_pa.annual_max_complete
+
+
+def test_mixed_date_or_inconsistent_reverse_statements_still_raise_arithmetic_mismatch():
+    # Non-monotonic dates or tampered running balances must never be silently reordered.
+    scrambled = obs(
+        "scrambled",
+        date(2025, 1, 1),
+        date(2025, 1, 31),
+        D(1000),
+        D(1200),
+        lines=[
+            (date(2025, 1, 20), D(100), D(1200)),
+            (date(2025, 1, 5), D(-200), D(800)),
+            (date(2025, 1, 12), D(300), D(1100)),
+        ],
+    )
+    (r1,) = reconcile([scrambled], SOLE, RATES, 2025)
+    assert "arithmetic_mismatch" in codes(r1)
+
+    broken_rev = obs(
+        "broken-rev",
+        date(2025, 1, 1),
+        date(2025, 1, 31),
+        D(1000),
+        D(9999),
+        lines=[
+            (date(2025, 1, 20), D(200), D(1200)),
+            (date(2025, 1, 10), D(0), D(1000)),
+        ],
+    )
+    (r2,) = reconcile([broken_rev], SOLE, RATES, 2025)
+    assert "arithmetic_mismatch" in codes(r2)
+
+
 def test_multipage_statement_stitches_balances_inherits_headers_and_sorts_pages_numerically():
     # 1. Two-page de_plain statement with repeated headers: +90,000/-90,000 spike on page 2 is found.
     p1 = obs(
