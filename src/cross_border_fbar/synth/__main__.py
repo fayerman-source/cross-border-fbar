@@ -165,6 +165,24 @@ def generate(out: Path, seed: int, png: bool, dpi: int, threshold_usd: int) -> d
                     }
                     for k, v in drawn["fields"].items()
                 },
+                **(
+                    {
+                        "page_fields": {
+                            pg: {
+                                k: {
+                                    **v,
+                                    "value": major(v["value"], spec.currency)
+                                    if isinstance(v["value"], int)
+                                    else v["value"],
+                                }
+                                for k, v in pf.items()
+                            }
+                            for pg, pf in drawn["page_fields"].items()
+                        }
+                    }
+                    if "page_fields" in drawn
+                    else {}
+                ),
                 "transactions": [
                     {
                         "txn_id": t.txn_id,

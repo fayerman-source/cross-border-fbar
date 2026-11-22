@@ -521,6 +521,133 @@ def test_an_empty_currency_selection_does_not_release_conflicting_currency_value
     assert account.year_end_balance is None
 
 
+def test_multipage_statement_stitches_balances_inherits_headers_and_sorts_pages_numerically():
+    # 1. Two-page de_plain statement with repeated headers: +90,000/-90,000 spike on page 2 is found.
+    p1 = obs(
+        "pages/stmt-p1.png",
+        date(2025, 3, 1),
+        date(2025, 3, 31),
+        D(1000),
+        None,
+        [(date(2025, 3, 5), D(500), None)],
+        currency="EUR",
+    )
+    p2 = obs(
+        "pages/stmt-p2.png",
+        date(2025, 3, 1),
+        date(2025, 3, 31),
+        None,
+        D(1500),
+        [(date(2025, 3, 20), D(90000), None), (date(2025, 3, 22), D(-90000), None)],
+        currency="EUR",
+    )
+    rest = [
+        obs(f"m{m}", date(2025, m, 1), _month_end(m), D(1500 if m > 3 else 1000), D(1500 if m > 3 else 1000))
+        for m in range(1, 13)
+        if m != 3
+    ]
+    (res,) = reconcile([p1, p2, *rest], SOLE, RATES, 2025)
+    assert res.max_value.amount == D(91500)
+    assert res.max_value.source.upload == "pages/stmt-p2.png"
+    assert res.annual_max_complete
+    assert "arithmetic_mismatch" not in codes(res)
+
+    # 2. Continuation page omitting period/currency and printing year-less DD.MM. dates inherits page 1.
+    box = {"x_min": 0, "y_min": 0, "x_max": 10, "y_max": 10}
+    r_p1 = {
+        "institution": {"text": "Bank", "status": "read", "bbox": box},
+        "currency": {"text": "EUR", "status": "read", "bbox": box},
+        "account_number": {"text": "ACC1", "status": "read", "bbox": box},
+        "holder": {"text": "Holder", "status": "read", "bbox": box},
+        "period": {"text": "01.12.2025 - 31.12.2025", "status": "read", "bbox": box},
+        "opening_balance": {"text": "1.000,00", "status": "read", "bbox": box},
+        "closing_balance": {"text": "", "status": "absent", "bbox": box},
+        "rows": [
+            {
+                "date_text": "05.12.",
+                "account_text": "",
+                "description": "a",
+                "amount_text": "500,00",
+                "amount_column": "signed",
+                "balance_text": "",
+                "row_bbox": box,
+                "amount_bbox": box,
+                "balance_bbox": box,
+            }
+        ],
+    }
+    r_p2 = {
+        "institution": {"text": "Bank", "status": "read", "bbox": box},
+        "currency": {"text": "", "status": "absent", "bbox": box},
+        "account_number": {"text": "ACC1", "status": "read", "bbox": box},
+        "holder": {"text": "", "status": "absent", "bbox": box},
+        "period": {"text": "", "status": "absent", "bbox": box},
+        "opening_balance": {"text": "", "status": "absent", "bbox": box},
+        "closing_balance": {"text": "2.500,00", "status": "read", "bbox": box},
+        "rows": [
+            {
+                "date_text": "20.12.",
+                "account_text": "",
+                "description": "b",
+                "amount_text": "1.000,00",
+                "amount_column": "signed",
+                "balance_text": "",
+                "row_bbox": box,
+                "amount_bbox": box,
+                "balance_bbox": box,
+            }
+        ],
+    }
+    jan_nov = [obs(f"m{m}", date(2025, m, 1), _month_end(m), D(1000), D(1000)) for m in range(1, 12)]
+    o1 = observe(r_p1, "pages/dec-p1.png")
+    o2 = observe(r_p2, "pages/dec-p2.png")
+    (res_dec,) = reconcile([*jan_nov, o2, o1], SOLE, RATES, 2025)
+    assert res_dec.max_value.amount == D("2500.00")
+    assert res_dec.year_end_balance == D("2500.00")
+    assert res_dec.annual_max_complete
+    assert res_dec.flags == []
+
+    # 3. 10-page statement sorts -p2 .. -p9 before -p10 so page-10 closing balance reconciles cleanly.
+    ten_pages = []
+    for pg in range(1, 11):
+        ten_pages.append(
+            obs(
+                f"pages/long-p{pg}.png",
+                date(2025, 1, 1),
+                date(2025, 1, 31),
+                D(1000) if pg == 1 else None,
+                D(2000) if pg == 10 else None,
+                [(date(2025, 1, min(28, pg)), D(100), None)],
+                currency="EUR",
+            )
+        )
+    (res_ten,) = reconcile(list(reversed(ten_pages)), SOLE, RATES, 2025)
+    assert res_ten.max_value.amount == D(2000)
+    assert "arithmetic_mismatch" not in codes(res_ten)
+
+    # 4. Unnumbered rescans without shared -p<N> page identity are never stitched into 1,200.
+    scan_a = obs(
+        "scan_orig.png",
+        date(2025, 1, 1),
+        date(2025, 1, 31),
+        D(1000),
+        None,
+        [(date(2025, 1, 10), D(100), None)],
+        currency="EUR",
+    )
+    scan_b = obs(
+        "scan_retry.png",
+        date(2025, 1, 1),
+        date(2025, 1, 31),
+        None,
+        D(1100),
+        [(date(2025, 1, 10), D(100), None)],
+        currency="EUR",
+    )
+    (res_unnum,) = reconcile([scan_a, scan_b], SOLE, RATES, 2025)
+    assert res_unnum.max_value.amount == D(1100)
+
+
 def test_empty_rows_with_changed_closing_balance_raises_arithmetic_mismatch():
     from cross_border_fbar.reconcile.form8938 import Household, form8938_totals
 

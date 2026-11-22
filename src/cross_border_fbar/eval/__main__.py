@@ -31,9 +31,12 @@ def evaluate(set_dir: Path, model: str, mode: str, workers: int, limit: int | No
 
     def page_view(st: dict, page: int) -> dict:
         """The fields and rows printed on one page of a document."""
+        per_page = (st.get("page_fields") or {}).get(str(page))
         return {
             **st,
-            "fields": {k: v for k, v in st["fields"].items() if v["page"] == page},
+            "fields": per_page
+            if per_page is not None
+            else {k: v for k, v in st["fields"].items() if v["page"] == page},
             "transactions": [t for t in st["transactions"] if t["page"] == page],
             "doc_currency": (st["fields"].get("currency") or {}).get("value"),
         }

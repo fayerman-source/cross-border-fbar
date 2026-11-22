@@ -29,6 +29,7 @@ class Line:
     description: str
     source: Source
     account_text: str = ""  # the row's own account number, on lists covering several accounts
+    date_text: str = ""
 
 
 @dataclass
@@ -97,6 +98,7 @@ def observe(reading: dict, upload: str, snapped: dict | None = None) -> Observat
                 row["description"],
                 src,
                 row.get("account_text", "").strip(),
+                row["date_text"].strip(),
             )
         )
     sources = {n: Source(upload, n, boxes_from[n]["bbox"]) for n in (*KEY_FIELDS, "institution")}
