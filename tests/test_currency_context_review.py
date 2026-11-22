@@ -18,6 +18,7 @@ def test_explicit_currency_selection_resolves_unknown_units_without_inheriting_t
             date(2025, 12, 31),
             Decimal(1000),
             Decimal(60000),
+            [(date(2025, 12, 15), Decimal(59000), Decimal(60000))],
             currency=None,
             problems=["currency"],
         ),

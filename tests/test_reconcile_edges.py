@@ -521,6 +521,33 @@ def test_an_empty_currency_selection_does_not_release_conflicting_currency_value
     assert account.year_end_balance is None
 
 
+def test_empty_rows_with_changed_closing_balance_raises_arithmetic_mismatch():
+    from cross_border_fbar.reconcile.form8938 import Household, form8938_totals
+
+    # Neighboring months chain cleanly while March returned zero transaction lines; missing transactions
+    # must flag arithmetic_mismatch and withhold finite annual upper bounds.
+    feb = obs("feb", date(2025, 2, 1), date(2025, 2, 28), D(3800), D(3800), currency="USD")
+    mar = obs("mar", date(2025, 3, 1), date(2025, 3, 31), D(3800), D(4000), lines=(), currency="USD")
+    rest = [
+        obs(
+            f"m{m}",
+            date(2025, m, 1),
+            _month_end(m),
+            D(4000 if m > 3 else 3800),
+            D(4000 if m > 3 else 3800),
+            currency="USD",
+        )
+        for m in range(1, 13)
+        if m not in (2, 3)
+    ]
+    (res,) = reconcile([feb, mar, *rest], SOLE, {}, 2025)
+    assert "arithmetic_mismatch" in codes(res)
+    assert not res.annual_max_complete
+    assert res.maximum_bounds.high_usd is None
+    assert fbar_totals([res]).above_aggregate_threshold is None
+    assert form8938_totals([res], Household("single", False), {}).any_time.result == "incomplete"
+
+
 def test_cross_year_statement_carries_balance_into_january_first():
     from cross_border_fbar.reconcile.form8938 import Household, form8938_totals
 

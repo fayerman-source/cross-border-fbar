@@ -221,8 +221,21 @@ def _seed(o: Observation, prev: Observation | None) -> tuple[Decimal | None, str
     return amount, kind
 
 
+def _conflict_explains_empty_span(o: Observation, running: Decimal, conflicts: list) -> bool:
+    """When a zero-line page's opening or closing disagrees only because a duplicate reading misread that
+    boundary (already flagged by balance_readings_conflict), another reading of that boundary matches."""
+    by_boundary = {(day, boundary): {r.amount for r in readings} for day, boundary, readings in conflicts}
+    return running in by_boundary.get((o.period_end, "closing"), set()) or (
+        o.closing in by_boundary.get((o.period_start, "opening"), set())
+    )
+
+
 def _balances(
-    o: Observation, prev: Observation | None, flags: list[Flag], tax_year: int | None = None
+    o: Observation,
+    prev: Observation | None,
+    flags: list[Flag],
+    tax_year: int | None = None,
+    conflicts: list = (),
 ) -> list[Balance]:
     """Every balance a reader can get from one statement, checking printed against computed."""
     out = []
@@ -266,7 +279,11 @@ def _balances(
     if year_start and not crossed and carry is not None and o.period_end and o.period_end >= year_start:
         out.append(carry)
     if o.closing is not None:
-        if running is not None and o.lines and running != o.closing:
+        if (
+            running is not None
+            and running != o.closing
+            and (o.lines or not _conflict_explains_empty_span(o, running, conflicts))
+        ):
             flags.append(
                 Flag(
                     "arithmetic_mismatch",
@@ -529,7 +546,7 @@ def reconcile_account(
     balances = [
         b
         for o, p in zip(calc_obs, prevs, strict=True)
-        for b in _balances(o, p, flags, tax_year)
+        for b in _balances(o, p, flags, tax_year, conflicts)
         if _in_year(b.day, tax_year)
     ]
     best = _max_value(balances)
