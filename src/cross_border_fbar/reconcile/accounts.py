@@ -24,7 +24,7 @@ from ..extract.parse import account_key, normalize_name
 from ..rates import Rate
 from .flags import CATALOG
 from .intake import Intake
-from .observe import Observation, Source, most_common
+from .observe import Line, Observation, Source, most_common
 
 
 @dataclass
@@ -202,13 +202,15 @@ def _coverage_flags(obs: list[Observation], tax_year: int, flags: list[Flag]) ->
                 d = stop + timedelta(days=1)
 
 
-def _seed(o: Observation, prev: Observation | None) -> tuple[Decimal | None, str]:
-    """Balance before the first line: printed opening, else the previous adjacent closing, else derived."""
+def _seed(
+    o: Observation, prev: Observation | None, lines: list[Line] | None = None
+) -> tuple[Decimal | None, str]:
+    """Balance before the first chronological line: printed opening, else previous closing, else derived."""
     if o.opening is not None:
         return o.opening, "printed"
     if prev is not None and prev.closing is not None and _adjacent(prev, o):
         return prev.closing, "computed"
-    for line in o.lines:
+    for line in lines if lines is not None else o.lines:
         if line.printed_balance is not None and line.amount is not None:
             return line.printed_balance - line.amount, "computed"
         if line.amount is None:
@@ -216,13 +218,69 @@ def _seed(o: Observation, prev: Observation | None) -> tuple[Decimal | None, str
     return None, "computed"
 
 
+def _mismatch_count(o: Observation, prev: Observation | None, lines: list[Line]) -> int:
+    mismatches = 0
+    running, _ = _seed(o, prev, lines)
+    for line in lines:
+        if running is not None:
+            running = running + line.amount if line.amount is not None else None
+        if line.printed_balance is not None:
+            if running is not None and running != line.printed_balance:
+                mismatches += 1
+            running = line.printed_balance
+    if o.closing is not None and running is not None and lines and running != o.closing:
+        mismatches += 1
+    return mismatches
+
+
+def _reverse_by_day_runs(lines: list[Line]) -> list[Line]:
+    runs: list[list[Line]] = []
+    for line in lines:
+        if runs and runs[-1][0].day == line.day:
+            runs[-1].append(line)
+        else:
+            runs.append([line])
+    return [ln for run in reversed(runs) for ln in run]
+
+
+def _ordered_lines(o: Observation, prev: Observation | None) -> list[Line]:
+    """Return `o.lines` in chronological order when reverse-chronological order is unambiguous.
+
+    Never guesses on mixed/non-monotonic dates or when neither direction reconciles cleanly:
+    keeps printed order so `arithmetic_mismatch` flags the statement for preparer review.
+    """
+    if len(o.lines) < 2 or any(ln.day is None for ln in o.lines):
+        return o.lines
+    days = [ln.day for ln in o.lines]
+    if not all(a >= b for a, b in zip(days, days[1:], strict=False)):
+        return o.lines
+    has_printed_bal = any(ln.printed_balance is not None for ln in o.lines)
+    fwd_err = _mismatch_count(o, prev, o.lines)
+    rev_all = list(reversed(o.lines))
+    rev_all_err = _mismatch_count(o, prev, rev_all)
+    if has_printed_bal:
+        if fwd_err == 0:
+            return o.lines
+        if rev_all_err == 0:
+            return rev_all
+        if days[0] > days[-1]:
+            rev_days = _reverse_by_day_runs(o.lines)
+            if _mismatch_count(o, prev, rev_days) == 0:
+                return rev_days
+        return o.lines
+    if days[0] > days[-1] and rev_all_err == 0 and _seed(o, prev, rev_all)[0] is not None:
+        return rev_all
+    return o.lines
+
+
 def _balances(o: Observation, prev: Observation | None, flags: list[Flag]) -> list[Balance]:
     """Every balance a reader can get from one statement, checking printed against computed."""
     out = []
-    running, seed_kind = _seed(o, prev)
+    lines = _ordered_lines(o, prev)
+    running, _ = _seed(o, prev, lines)
     if o.opening is not None:
         out.append(Balance(o.opening, o.sources["opening_balance"], "printed", o.period_start))
-    for line in o.lines:
+    for line in lines:
         if running is not None:
             running = running + line.amount if line.amount is not None else None
         if line.printed_balance is not None:
@@ -239,7 +297,7 @@ def _balances(o: Observation, prev: Observation | None, flags: list[Flag]) -> li
         elif running is not None:
             out.append(Balance(running, line.source, "computed", line.day))
     if o.closing is not None:
-        if running is not None and o.lines and running != o.closing:
+        if running is not None and lines and running != o.closing:
             flags.append(
                 Flag(
                     "arithmetic_mismatch",
@@ -254,15 +312,16 @@ def _balances(o: Observation, prev: Observation | None, flags: list[Flag]) -> li
 def _intraday(
     o: Observation, prev: Observation | None, tax_year: int
 ) -> list[tuple[Decimal, list[Source], date]]:
-    """Same-day runs, in printed order: the balance if credits had posted first, when above all shown."""
+    """Same-day runs in chronological order: balance if credits had posted first, when above all shown."""
     out = []
-    running, _ = _seed(o, prev)
+    lines = _ordered_lines(o, prev)
+    running, _ = _seed(o, prev, lines)
     i = 0
-    while i < len(o.lines):
+    while i < len(lines):
         j = i
-        while j + 1 < len(o.lines) and o.lines[j + 1].day == o.lines[i].day:
+        while j + 1 < len(lines) and lines[j + 1].day == lines[i].day:
             j += 1
-        run = o.lines[i : j + 1]
+        run = lines[i : j + 1]
         i = j + 1
         if running is None or any(ln.amount is None for ln in run):
             running = run[-1].printed_balance  # resync where the statement prints one
@@ -347,9 +406,10 @@ def _has_balance_anchor(observations: list[Observation]) -> bool:
 
 
 def _statement_numeric_complete(observation: Observation, previous: Observation | None) -> bool:
-    if observation.lines and _seed(observation, previous)[0] is None:
+    lines = _ordered_lines(observation, previous)
+    if lines and _seed(observation, previous, lines)[0] is None:
         return False
-    return all(line.day is not None and line.amount is not None for line in observation.lines)
+    return all(line.day is not None and line.amount is not None for line in lines)
 
 
 def _annual_evidence_bounded(obs, flags, tax_year) -> bool:
