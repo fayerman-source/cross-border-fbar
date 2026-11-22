@@ -122,6 +122,45 @@ def test_three_decimal_currencies_parse_without_breaking_thousands_groups(text, 
     assert parse_typed_amount(text) == want
 
 
+def test_sub_thousand_three_decimal_currencies_use_currency_precision():
+    from cross_border_fbar.extract.page import FIELD_NAMES
+    from cross_border_fbar.reconcile.observe import observe
+
+    for ccy in ("KWD", "BHD", "JOD"):
+        assert parse_amount("125.375", currency=ccy) == Decimal("125.375")
+        assert parse_typed_amount("125.375", currency=ccy) == Decimal("125.375")
+        assert parse_amount("125,375", currency=ccy) == Decimal("125.375")
+    # Thousands-grouped integers in 2-decimal/0-decimal currencies stay unchanged.
+    assert parse_amount("125.375", currency="EUR") == Decimal("125375")
+    assert parse_amount("125,375", currency="KRW") == Decimal("125375")
+
+    zero = {"x_min": 0, "y_min": 0, "x_max": 0, "y_max": 0}
+    reading = {name: {"text": "", "status": "absent", "bbox": zero} for name in FIELD_NAMES}
+    reading["account_number"] = {"text": "KW-001", "status": "read", "bbox": zero}
+    reading["currency"] = {"text": "KWD", "status": "read", "bbox": zero}
+    reading["period"] = {"text": "2025-01-01 ~ 2025-12-31", "status": "read", "bbox": zero}
+    reading["opening_balance"] = {"text": "125.375", "status": "read", "bbox": zero}
+    reading["closing_balance"] = {"text": "200.500", "status": "read", "bbox": zero}
+    reading["rows"] = [
+        {
+            "date_text": "2025-06-01",
+            "account_text": "",
+            "description": "deposit",
+            "amount_text": "75.125",
+            "amount_column": "credit",
+            "balance_text": "200.500",
+            "row_bbox": zero,
+            "amount_bbox": zero,
+            "balance_bbox": zero,
+        }
+    ]
+    obs = observe(reading, "kwd.png")
+    assert obs.opening == Decimal("125.375")
+    assert obs.closing == Decimal("200.500")
+    assert obs.lines[0].amount == Decimal("75.125")
+    assert obs.lines[0].printed_balance == Decimal("200.500")
+
+
 def test_expanded_currencies_parse_iso_codes_and_unambiguous_symbols_without_guessing():
     for iso in ("CAD", "GBP", "JPY", "CHF", "CNY", "MXN", "ILS", "AUD", "SGD", "HKD", "KWD", "BHD", "JOD"):
         assert iso in KNOWN_CURRENCIES
