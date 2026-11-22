@@ -12,11 +12,11 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 
 BUDDHIST_ERA_OFFSET = 543
-_CURRENCY_WRAP = re.compile(r"^[\sA-Za-z€₩฿₹$£¥원]+|[\sA-Za-z€₩฿₹$£¥원]+$")
+_CURRENCY_CHARS = " \t\r\n\f\vABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz€₩฿₹$£¥원₪₫₱"
 
 
 def _is_negative(s: str) -> bool:
-    t = _CURRENCY_WRAP.sub("", s.replace("\u2212", "-"))
+    t = s.replace("\u2212", "-").strip(_CURRENCY_CHARS)
     return t.startswith("-") or t.endswith("-") or (t.startswith("(") and t.endswith(")"))
 
 
