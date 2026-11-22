@@ -670,16 +670,25 @@ $("intake-add-acct").addEventListener("click", () => {
 });
 $("intake-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
-  const accounts = [...$("intake-accounts").querySelectorAll("tr")].map((tr) => ({
-    account_number: tr.querySelector(".intake-acct-num").value.trim(),
-    ownership: tr.querySelector(".intake-acct-own").value,
-    financial_interest: parseTriState(tr.querySelector(".intake-acct-fin").value),
-    joint_with_spouse: parseTriState(tr.querySelector(".intake-acct-spouse").value),
-  }));
+  const prev = state.worksheet.intake || {};
+  const normAcct = (s) => String(s || "").replace(/[\s-]/g, "").toUpperCase();
+  const prevByKey = Object.fromEntries((prev.accounts || []).map((a) => [normAcct(a.account_number), a]));
+  const accounts = [...$("intake-accounts").querySelectorAll("tr")].map((tr) => {
+    const account_number = tr.querySelector(".intake-acct-num").value.trim();
+    return {
+      ...(prevByKey[normAcct(account_number)] || {}),
+      account_number,
+      ownership: tr.querySelector(".intake-acct-own").value,
+      financial_interest: parseTriState(tr.querySelector(".intake-acct-fin").value),
+      joint_with_spouse: parseTriState(tr.querySelector(".intake-acct-spouse").value),
+    };
+  });
   const intake = {
+    ...prev,
     client: $("intake-client").value.trim() || null,
     source: $("intake-source").value.trim() || null,
     household: {
+      ...(prev.household || {}),
       filing_status: $("intake-filing-status").value || null,
       lives_abroad: parseTriState($("intake-lives-abroad").value),
       spouse_specified_individual: parseTriState($("intake-spouse-spec").value),

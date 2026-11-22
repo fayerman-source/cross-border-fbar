@@ -116,6 +116,25 @@ def test_intake_editor_updates_household_and_accounts_and_upload_endpoint_is_loc
     _make_single_page_pdf(seed_pdf)
     set_dir = tmp_path / "set"
     photo.run_batch([seed_pdf], set_dir, synthetic=True)
+    # Seed extra document, household, and account metadata to verify form saves preserve unedited metadata.
+    (set_dir / "intake.json").write_text(
+        json.dumps(
+            {
+                "client": "Initial",
+                "source": "Initial",
+                "engagement_code": "ENG-2025",
+                "household": {"residency_country": "KR"},
+                "accounts": [
+                    {
+                        "account_number": "110-482-913746",
+                        "ownership": "unknown",
+                        "preparer_tag": "primary-checking",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
     inp = Inputs(set_dir, set_dir / "readings.json", set_dir / "intake.json")
 
     rv = Review(inp, tmp_path / "rv", root=tmp_path)
@@ -149,6 +168,9 @@ def test_intake_editor_updates_household_and_accounts_and_upload_endpoint_is_loc
     assert rv.worksheet["client"] == "Joy Seulgi Jung"
     assert rv.worksheet["accounts"][0]["ownership"] == "sole"
     assert rv.worksheet["form8938"]["year_end"]["threshold_usd"] == "200000"
+    assert rv.worksheet["intake"]["engagement_code"] == "ENG-2025"
+    assert rv.worksheet["intake"]["household"]["residency_country"] == "KR"
+    assert rv.worksheet["intake"]["accounts"][0]["preparer_tag"] == "primary-checking"
 
     # Exercise local HTTP /api/upload (ingesting a 2-page PDF) and /api/intake
     multipage_pdf = tmp_path / "multi.pdf"

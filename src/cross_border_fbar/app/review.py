@@ -20,7 +20,7 @@ from pathlib import Path
 
 from babel.numbers import format_currency
 
-from ..extract.parse import parse_typed_amount
+from ..extract.parse import account_key, parse_typed_amount
 from ..reconcile.corrections import as_read, correction_key, line_as_read
 from ..reconcile.flags import CATALOG
 from ..reconcile.intake import IntakeDocument
@@ -517,8 +517,29 @@ class Review:
             self._require_open()
             if not note.strip():
                 raise ReviewError("Record a note explaining the source of the intake update.")
+            if not isinstance(intake_data, dict):
+                raise ReviewError("intake must be an object")
+            prev_raw = (
+                self.state["intake_override"]
+                if self.state["intake_override"] is not None
+                else json.loads(self.inputs.intake.read_text(encoding="utf-8"))
+            )
+            prev_doc = IntakeDocument.from_dict(prev_raw)
+            merged_raw = {**prev_doc.metadata, **intake_data}
+            if isinstance(intake_data.get("household"), dict):
+                merged_raw["household"] = {**prev_doc.household.metadata, **intake_data["household"]}
+            if isinstance(intake_data.get("accounts"), list):
+                merged_accounts = []
+                for row in intake_data["accounts"]:
+                    if isinstance(row, dict):
+                        key = account_key(str(row.get("account_number", "")))
+                        prev_acct = prev_doc.accounts.get(key)
+                        merged_accounts.append({**(prev_acct.metadata if prev_acct else {}), **row})
+                    else:
+                        merged_accounts.append(row)
+                merged_raw["accounts"] = merged_accounts
             try:
-                doc = IntakeDocument.from_dict(intake_data)
+                doc = IntakeDocument.from_dict(merged_raw)
             except ValueError as e:
                 raise ReviewError(str(e)) from None
             normalized = _serialize_intake(doc)
