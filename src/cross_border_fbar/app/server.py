@@ -156,6 +156,12 @@ class Handler(BaseHTTPRequestHandler):
         asset = self.assets.get(path)
         if asset is not None:
             return self._send(200, asset.read_bytes(), CONTENT_TYPES[asset.suffix])
+        if path == "/api/export.csv":
+            try:
+                csv_text = self.review.export_csv()
+            except ReviewError as e:
+                return self._json({"error": str(e)}, HTTPStatus.CONFLICT)
+            return self._send(200, csv_text.encode("utf-8"), "text/csv; charset=utf-8")
         try:
             payload = self._api_get(path)
         except ReviewError as e:

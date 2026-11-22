@@ -24,6 +24,7 @@ from ..extract.parse import parse_typed_amount
 from ..reconcile.corrections import as_read, correction_key, line_as_read
 from ..reconcile.flags import CATALOG
 from . import phrases as phrase_tables
+from .csv_export import export_fincen114_csv
 from .phrases import LANGUAGES
 from .worksheet import Inputs, build, page_readings, readings_view, worksheet_hash
 
@@ -610,6 +611,9 @@ class Review:
             "client_summary": self.state["summary"],
             "audit": self.audit_tail(10_000),
         }
+
+    def export_csv(self) -> str:
+        return export_fincen114_csv(self.export())
 
     # -- client summary ------------------------------------------------------------------------
     def summary_facts(self, language: str = "en_US") -> dict:
