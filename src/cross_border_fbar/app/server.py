@@ -162,6 +162,12 @@ class Handler(BaseHTTPRequestHandler):
             except ReviewError as e:
                 return self._json({"error": str(e)}, HTTPStatus.CONFLICT)
             return self._send(200, csv_text.encode("utf-8"), "text/csv; charset=utf-8")
+        if path == "/api/export.pdf":
+            try:
+                pdf_bytes = self.review.export_pdf()
+            except ReviewError as e:
+                return self._json({"error": str(e)}, HTTPStatus.CONFLICT)
+            return self._send(200, pdf_bytes, "application/pdf")
         try:
             payload = self._api_get(path)
         except ReviewError as e:
