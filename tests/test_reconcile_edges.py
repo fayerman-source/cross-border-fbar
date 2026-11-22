@@ -624,3 +624,82 @@ def test_multipage_statement_stitches_balances_inherits_headers_and_sorts_pages_
     (res_ten,) = reconcile(list(reversed(ten_pages)), SOLE, RATES, 2025)
     assert res_ten.max_value.amount == D(2000)
     assert "arithmetic_mismatch" not in codes(res_ten)
+
+
+def test_empty_rows_with_changed_closing_balance_raises_arithmetic_mismatch():
+    from cross_border_fbar.reconcile.form8938 import Household, form8938_totals
+
+    # Neighboring months chain cleanly while March returned zero transaction lines; missing transactions
+    # must flag arithmetic_mismatch and withhold finite annual upper bounds.
+    feb = obs("feb", date(2025, 2, 1), date(2025, 2, 28), D(3800), D(3800), currency="USD")
+    mar = obs("mar", date(2025, 3, 1), date(2025, 3, 31), D(3800), D(4000), lines=(), currency="USD")
+    rest = [
+        obs(
+            f"m{m}",
+            date(2025, m, 1),
+            _month_end(m),
+            D(4000 if m > 3 else 3800),
+            D(4000 if m > 3 else 3800),
+            currency="USD",
+        )
+        for m in range(1, 13)
+        if m not in (2, 3)
+    ]
+    (res,) = reconcile([feb, mar, *rest], SOLE, {}, 2025)
+    assert "arithmetic_mismatch" in codes(res)
+    assert not res.annual_max_complete
+    assert res.maximum_bounds.high_usd is None
+    assert fbar_totals([res]).above_aggregate_threshold is None
+    assert form8938_totals([res], Household("single", False), {}).any_time.result == "incomplete"
+
+
+def test_cross_year_statement_carries_balance_into_january_first():
+    from cross_border_fbar.reconcile.form8938 import Household, form8938_totals
+
+    # $10,400 held from Dec 15 across Jan 1..4 before a -$500 withdrawal on Jan 5 -> above $10,000 threshold.
+    dec_jan = obs(
+        "dec_jan",
+        date(2024, 12, 15),
+        date(2025, 1, 14),
+        D(10400),
+        D(9900),
+        [(date(2025, 1, 5), D(-500), D(9900))],
+        currency="USD",
+    )
+    rest = obs("rest", date(2025, 1, 15), date(2025, 12, 31), D(9900), D(9900), currency="USD")
+    (res,) = reconcile([dec_jan, rest], SOLE, {}, 2025)
+    assert res.max_value.amount == D(10400)
+    assert res.max_value.day == date(2025, 1, 1)
+    assert res.max_value_usd == 10400
+    assert res.flags == []
+    assert fbar_totals([res]).above_aggregate_threshold is True
+
+    # Pre-year deposit (+$100k to $600k on Dec 20) still held Jan 1..4 counts; Form 8938 is above threshold.
+    rest_1k = obs("rest_1k", date(2025, 1, 15), date(2025, 12, 31), D(1000), D(1000), currency="USD")
+    spike_carried = obs(
+        "spike",
+        date(2024, 12, 15),
+        date(2025, 1, 14),
+        D(500000),
+        D(1000),
+        [(date(2024, 12, 20), D(100000), D(600000)), (date(2025, 1, 5), D(-599000), D(1000))],
+        currency="USD",
+    )
+    (res_spike,) = reconcile([spike_carried, rest_1k], SOLE, {}, 2025)
+    assert res_spike.max_value_usd == 600000
+    assert [f.code for f in res_spike.flags] == ["max_not_at_month_end"]
+    assert form8938_totals([res_spike], Household("single", False), {}).any_time.result == "above"
+
+    # A peak withdrawn before Jan 1 ($50,000 reduced to $1,000 on Dec 20, 2024) does not count in 2025.
+    withdrawn_in_2024 = obs(
+        "pre_year_only",
+        date(2024, 12, 15),
+        date(2025, 1, 14),
+        D(50000),
+        D(1000),
+        [(date(2024, 12, 20), D(-49000), D(1000))],
+        currency="USD",
+    )
+    (res_pre,) = reconcile([withdrawn_in_2024, rest_1k], SOLE, {}, 2025)
+    assert res_pre.max_value_usd == 1000
+    assert fbar_totals([res_pre]).above_aggregate_threshold is False
