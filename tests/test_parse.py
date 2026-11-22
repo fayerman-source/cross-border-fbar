@@ -22,6 +22,12 @@ from cross_border_fbar.extract.parse import (
         ("407,150.25", Decimal("407150.25")),  # Thai
         ("(1,000.00)", Decimal("-1000.00")),
         ("1,377", Decimal("1377")),
+        ("EUR -310,00", Decimal("-310.00")),
+        ("$ -100.00", Decimal("-100.00")),
+        ("1.234,56- EUR", Decimal("-1234.56")),
+        ("(1,000.00) USD", Decimal("-1000.00")),
+        ("USD (1,000.00)", Decimal("-1000.00")),
+        ("\u2212310,00", Decimal("-310.00")),
     ],
 )
 def test_parse_amount_locales(text, want):
@@ -67,6 +73,7 @@ def test_account_numbers_compare_without_spaces_or_hyphens():
         ("0", "0"),
         (" 500 ", "500"),
         ("-500,000", "-500000"),
+        ("\u2212500,000", "-500000"),
         ("500,000-", "-500000"),
         ("(500,000)", "-500000"),
     ],
